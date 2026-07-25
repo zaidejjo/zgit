@@ -49,32 +49,42 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 }
 
+// getContext returns the Wails context if available, falling back to Background().
+// This prevents "cannot create context from nil parent" errors when the frontend
+// makes API calls before startup() has been invoked.
+func (a *App) getContext() context.Context {
+	if a.ctx != nil {
+		return a.ctx
+	}
+	return context.Background()
+}
+
 // --- Git operations ---
 
 // GetStatus returns the current working tree status.
 func (a *App) GetStatus() (*models.Status, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 10e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.Status(ctx)
 }
 
 // GetLog returns commit history.
 func (a *App) GetLog(count int) ([]*models.Commit, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 10e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.Log(ctx, git.LogOptions{Count: count})
 }
 
 // GetBranches returns all local branches.
 func (a *App) GetBranches() ([]*models.Branch, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 10e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.Branches(ctx)
 }
 
 // GetDiff returns the diff for a specific file or the entire working tree.
 func (a *App) GetDiff(pathspec string) (*models.Diff, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 10e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	opts := git.DiffOptions{
 		Unified:  true,
@@ -93,35 +103,35 @@ func (a *App) GetFileDiff(pathspec string) (*models.Diff, error) {
 
 // StageFile stages a file.
 func (a *App) StageFile(file string) error {
-	ctx, cancel := context.WithTimeout(a.ctx, 10e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.Add(ctx, git.AddOptions{}, file)
 }
 
 // UnstageFile unstages a file.
 func (a *App) UnstageFile(file string) error {
-	ctx, cancel := context.WithTimeout(a.ctx, 10e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.Reset(ctx, file)
 }
 
 // StageAll stages all changes.
 func (a *App) StageAll() error {
-	ctx, cancel := context.WithTimeout(a.ctx, 10e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.Add(ctx, git.AddOptions{All: true})
 }
 
 // UnstageAll unstages all changes.
 func (a *App) UnstageAll() error {
-	ctx, cancel := context.WithTimeout(a.ctx, 10e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.Reset(ctx)
 }
 
 // Commit creates a new commit.
 func (a *App) Commit(message string) (string, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 30e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
 	defer cancel()
 	opts := git.CommitOptions{Message: message}
 	if err := a.engine.Git.Commit(ctx, opts); err != nil {
@@ -137,28 +147,28 @@ func (a *App) Commit(message string) (string, error) {
 
 // CheckoutBranch checks out a branch.
 func (a *App) CheckoutBranch(name string) error {
-	ctx, cancel := context.WithTimeout(a.ctx, 10e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.Checkout(ctx, name)
 }
 
 // CreateBranch creates and checks out a new branch.
 func (a *App) CreateBranch(name string) error {
-	ctx, cancel := context.WithTimeout(a.ctx, 10e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.CreateBranchAndCheckout(ctx, name)
 }
 
 // DeleteBranch deletes a branch.
 func (a *App) DeleteBranch(name string, force bool) error {
-	ctx, cancel := context.WithTimeout(a.ctx, 10e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.BranchDelete(ctx, name, force)
 }
 
 // CurrentBranch returns the current branch name.
 func (a *App) CurrentBranch() (string, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 10e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.CurrentBranch(ctx)
 }
@@ -175,7 +185,7 @@ func (a *App) GetGitHubUser() (*models.User, error) {
 	if !a.engine.IsGitHubAuthenticated() {
 		return nil, fmt.Errorf("GitHub not authenticated")
 	}
-	ctx, cancel := context.WithTimeout(a.ctx, 10e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.GitHub.GetAuthenticatedUser(ctx)
 }
@@ -186,7 +196,7 @@ func (a *App) GetPullRequests() ([]*models.PullRequestSummary, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(a.ctx, 15e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
 	defer cancel()
 	return a.engine.GitHub.ListPullRequests(ctx, owner, repo, github.PRFilter{
 		State: "open",
@@ -201,7 +211,7 @@ func (a *App) GetIssues() ([]*models.Issue, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(a.ctx, 15e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
 	defer cancel()
 	return a.engine.GitHub.ListIssues(ctx, owner, repo, github.IssuesFilter{
 		State: "open",
@@ -216,7 +226,7 @@ func (a *App) GetRepository() (*models.Repo, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(a.ctx, 10e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.GitHub.GetRepository(ctx, owner, repo)
 }
@@ -232,7 +242,7 @@ func (a *App) GetCurrentRepoPath() string {
 
 // guessRepo extracts owner/repo from git remotes.
 func (a *App) guessRepo() (string, string, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 5e9)
+	ctx, cancel := context.WithTimeout(a.getContext(), 5e9)
 	defer cancel()
 	remotes, err := a.engine.Git.RemoteList(ctx)
 	if err != nil {
