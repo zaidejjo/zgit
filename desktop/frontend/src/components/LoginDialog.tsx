@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAppStore } from "@/store/app";
 import { Button } from "@/components/ui/button";
+import { BrowserOpenURL } from "../../wailsjs/runtime";
 
 export default function LoginDialog() {
   const { loginDialogOpen, setLoginDialogOpen, authenticateGitHub, loading } = useAppStore();
@@ -43,10 +44,12 @@ export default function LoginDialog() {
               <p>
                 Create one at{" "}
                 <a
-                  href="https://github.com/settings/tokens"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary underline underline-offset-2"
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    BrowserOpenURL("https://github.com/settings/tokens");
+                  }}
+                  className="text-primary underline underline-offset-2 cursor-pointer"
                 >
                   github.com/settings/tokens
                 </a>
