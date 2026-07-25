@@ -6,12 +6,14 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/zaidejjo/zgit/pkg/core/config"
 	"github.com/zaidejjo/zgit/pkg/core/git"
 )
 
 var (
 	repoPath string
 	gitExec  *git.NativeExec
+	cfg      *config.Manager
 )
 
 // rootCmd is the base command for zgit.
@@ -28,6 +30,16 @@ Supports both CLI commands and an interactive TUI.`,
 			return nil
 		}
 		var err error
+
+		// Init config (safe to call multiple times)
+		if cfg == nil {
+			cfg, err = config.New()
+			if err != nil {
+				return fmt.Errorf("init config: %w", err)
+			}
+		}
+
+		// Init git backend
 		gitExec, err = git.NewNativeExec("")
 		if err != nil {
 			return fmt.Errorf("initialize git: %w", err)
@@ -66,4 +78,8 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(logCmd)
 	rootCmd.AddCommand(branchCmd)
+	rootCmd.AddCommand(authCmd)
+	rootCmd.AddCommand(prCmd)
+	rootCmd.AddCommand(issueCmd)
+	rootCmd.AddCommand(actionsCmd)
 }
