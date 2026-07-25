@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"strings"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -184,6 +185,53 @@ func (a *App) IsGitHubAuthenticated() bool {
 // AuthenticateGitHub sets a GitHub PAT and initializes the client.
 func (a *App) AuthenticateGitHub(token string) error {
 	return a.engine.AuthenticateGitHub(token)
+}
+
+// StartDeviceFlow initiates GitHub OAuth Device Flow.
+// Returns the device code, user code, verification URI, and polling interval.
+func (a *App) StartDeviceFlow() (*models.DeviceFlowCode, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+
+	clientID := a.engine.Config.GetString("github.device_flow_client_id")
+	if clientID == "" {
+		clientID = github.DefaultDeviceFlowClientID
+	}
+
+	token, err := github.StartDeviceFlow(ctx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	return &models.DeviceFlowCode{
+		DeviceCode:      token.DeviceCode,
+		UserCode:        token.UserCode,
+		VerificationURI: token.VerificationURI,
+		Interval:        token.Interval,
+	}, nil
+}
+
+// PollDeviceFlow polls GitHub for device flow authorization.
+// Returns the access token when authorized, or empty string if still pending.
+// The caller should retry after the interval from StartDeviceFlow.
+func (a *App) PollDeviceFlow(deviceCode string) (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
+	defer cancel()
+
+	clientID := a.engine.Config.GetString("github.device_flow_client_id")
+	if clientID == "" {
+		clientID = github.DefaultDeviceFlowClientID
+	}
+
+	token, err := github.PollDeviceFlow(ctx, clientID, deviceCode)
+	if err != nil {
+		// If it's an authorization_pending error, return empty string — caller retries
+		errStr := err.Error()
+		if strings.Contains(errStr, "authorization_pending") {
+			return "", nil
+		}
+		return "", err
+	}
+	return token, nil
 }
 
 // GetGitHubUser returns the authenticated GitHub user.

@@ -3,6 +3,8 @@
 import {models} from '../models';
 import {embed} from '../models';
 
+export function AuthenticateGitHub(arg1:string):Promise<void>;
+
 export function CheckoutBranch(arg1:string):Promise<void>;
 
 export function Commit(arg1:string):Promise<string>;

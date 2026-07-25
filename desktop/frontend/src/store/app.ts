@@ -124,6 +124,13 @@ export interface GitHubUser {
   public_repos: number;
 }
 
+export interface DeviceFlowCode {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  interval: number;
+}
+
 // Wails runtime injects window.go.main.App during dev/build.
 // The generated wrappers at wailsjs/go/main/App.js call the same runtime.
 declare global {
@@ -151,6 +158,8 @@ declare global {
           GetCurrentRepoPath(): Promise<string>;
           GetGitHubUser(): Promise<GitHubUser>;
           AuthenticateGitHub(token: string): Promise<void>;
+          StartDeviceFlow(): Promise<DeviceFlowCode>;
+          PollDeviceFlow(deviceCode: string): Promise<string>;
         };
       };
     };
@@ -201,6 +210,8 @@ interface AppState {
   fetchRepository: () => Promise<void>;
   checkGitHubAuth: () => Promise<void>;
   authenticateGitHub: (token: string) => Promise<boolean>;
+  startDeviceFlow: () => Promise<DeviceFlowCode | null>;
+  pollDeviceFlow: (deviceCode: string) => Promise<string>;
   setLoginDialogOpen: (open: boolean) => void;
   setError: (err: string | null) => void;
   clearDiff: () => void;
@@ -456,6 +467,30 @@ export const useAppStore = create<AppState>((set, get) => ({
         loading: { ...get().loading, auth: false },
       });
       return false;
+    }
+  },
+
+  startDeviceFlow: async () => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      const code = await backend.StartDeviceFlow();
+      return code;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to start device flow" });
+      return null;
+    }
+  },
+
+  pollDeviceFlow: async (deviceCode) => {
+    const backend = getBackend();
+    if (!backend) return "";
+    try {
+      const token = await backend.PollDeviceFlow(deviceCode);
+      return token;
+    } catch (e: any) {
+      set({ error: e.message || "Device flow polling failed" });
+      return "";
     }
   },
 
