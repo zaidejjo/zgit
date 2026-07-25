@@ -47,46 +47,46 @@ export default function IssuesPage() {
         <div className="space-y-1">
           {issues.map((issue) => (
             <div
-              key={issue.Number}
+              key={issue.number}
               className="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-accent/50 transition-colors"
             >
               <span
                 className={cn(
                   "mt-0.5",
-                  issue.State === "OPEN" ? "text-green-500" : "text-red-500"
+                  issue.state === "OPEN" ? "text-green-500" : "text-red-500"
                 )}
               >
-                {issue.State === "OPEN" ? "●" : "●"}
+                {issue.state === "OPEN" ? "●" : "●"}
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium">
-                  <span className="text-muted-foreground font-mono mr-1">
-                    #{issue.Number}
-                  </span>
-                  {truncate(issue.Title, 80)}
+                    <span className="text-muted-foreground font-mono mr-1">
+                      #{issue.number}
+                    </span>
+                  {truncate(issue.title, 80)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {issue.Author} &middot; {formatTimeAgo(issue.CreatedAt)}
-                  {issue.Comments > 0 && (
+                  {issue.author} &middot; {formatTimeAgo(issue.created_at)}
+                  {issue.comments > 0 && (
                     <>
                       <span className="mx-1">&middot;</span>
-                      {issue.Comments} comments
+                      {issue.comments} comments
                     </>
                   )}
                 </p>
               </div>
               <div className="shrink-0 flex gap-1 items-center flex-wrap">
-                {issue.Labels?.slice(0, 4).map((label) => (
+                {(issue.labels || []).slice(0, 4).map((label) => (
                   <Badge
-                    key={label.Name}
+                    key={label.name}
                     variant="secondary"
                     className="text-xs"
-                    style={label.Color ? {
-                      borderColor: `#${label.Color}`,
-                      backgroundColor: `#${label.Color}20`,
+                    style={label.color ? {
+                      borderColor: `#${label.color}`,
+                      backgroundColor: `#${label.color}20`,
                     } : undefined}
                   >
-                    {label.Name}
+                    {label.name}
                   </Badge>
                 ))}
               </div>

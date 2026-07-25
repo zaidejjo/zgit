@@ -35,9 +35,22 @@ export default function StatusPage() {
     );
   }
 
-  const stagedFiles = status.Files.filter((f) => f.X !== " " && f.X !== "?" && f.X !== "!");
-  const unstagedFiles = status.Files.filter((f) => f.Y !== " " && f.X !== " " && f.X !== "?" && f.X !== "!");
-  const untrackedFiles = status.Files.filter((f) => f.X === "?" || f.X === "!");
+  // StatusType enum values from Go models:
+  // 0=Untracked, 1=Added, 2=Modified, 3=Deleted, 4=Renamed,
+  // 5=Copied, 6=UpdatedButUnmerged, 7=Unmodified, 8=Ignored
+  const STATUS_UNTRACKED = 0;
+  const STATUS_UNMODIFIED = 7;
+  const STATUS_IGNORED = 8;
+
+  const stagedFiles = (status.files || []).filter(
+    (f) => f.staged !== STATUS_UNMODIFIED && f.staged !== STATUS_UNTRACKED
+  );
+  const unstagedFiles = (status.files || []).filter(
+    (f) => f.unstaged !== STATUS_UNMODIFIED
+  );
+  const untrackedFiles = (status.files || []).filter(
+    (f) => f.staged === STATUS_UNTRACKED
+  );
 
   return (
     <div className="flex gap-4 h-full">
@@ -48,15 +61,15 @@ export default function StatusPage() {
             <h2 className="text-xl font-bold">
               Status
             </h2>
-            {status.Branch && (
+            {status.branch && (
               <Badge variant="outline" className="font-mono">
-                {status.Branch}
+                {status.branch}
               </Badge>
             )}
-            {!status.IsClean && (
+            {!status.is_clean && (
               <Badge variant="warning">
-                {status.Ahead > 0 ? `+${status.Ahead}` : ""}
-                {status.Behind > 0 ? ` -${status.Behind}` : ""}
+                {status.ahead > 0 ? `+${status.ahead}` : ""}
+                {status.behind > 0 ? ` -${status.behind}` : ""}
               </Badge>
             )}
           </div>
@@ -70,7 +83,7 @@ export default function StatusPage() {
           </div>
         </div>
 
-        {status.IsClean && (
+        {status.is_clean && (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
               Clean working tree
@@ -87,12 +100,12 @@ export default function StatusPage() {
               </h3>
               {stagedFiles.map((f) => (
                 <FileRow
-                  key={f.Path}
+                  key={f.path}
                   file={f}
                   type="staged"
-                  selected={selectedFile === f.Path}
-                  onClick={() => handleFileClick(f.Path)}
-                  onStage={() => unstageFile(f.Path)}
+                  selected={selectedFile === f.path}
+                  onClick={() => handleFileClick(f.path)}
+                  onStage={() => unstageFile(f.path)}
                 />
               ))}
             </div>
@@ -106,12 +119,12 @@ export default function StatusPage() {
               </h3>
               {unstagedFiles.map((f) => (
                 <FileRow
-                  key={f.Path}
+                  key={f.path}
                   file={f}
                   type="unstaged"
-                  selected={selectedFile === f.Path}
-                  onClick={() => handleFileClick(f.Path)}
-                  onStage={() => stageFile(f.Path)}
+                  selected={selectedFile === f.path}
+                  onClick={() => handleFileClick(f.path)}
+                  onStage={() => stageFile(f.path)}
                 />
               ))}
             </div>
@@ -125,12 +138,12 @@ export default function StatusPage() {
               </h3>
               {untrackedFiles.map((f) => (
                 <FileRow
-                  key={f.Path}
+                  key={f.path}
                   file={f}
                   type="untracked"
-                  selected={selectedFile === f.Path}
-                  onClick={() => handleFileClick(f.Path)}
-                  onStage={() => stageFile(f.Path)}
+                  selected={selectedFile === f.path}
+                  onClick={() => handleFileClick(f.path)}
+                  onStage={() => stageFile(f.path)}
                 />
               ))}
             </div>
@@ -147,10 +160,10 @@ export default function StatusPage() {
             </h3>
             <div className="flex items-center gap-2">
               <span className="text-xs text-green-600">
-                +{diff.TotalAdds}
+                +{diff.total_additions}
               </span>
               <span className="text-xs text-red-600">
-                -{diff.TotalDeletes}
+                -{diff.total_deletions}
               </span>
               <Button variant="ghost" size="sm" onClick={handleCloseDiff}>
                 ✕
@@ -159,7 +172,7 @@ export default function StatusPage() {
           </div>
           <ScrollArea className="h-[calc(100vh-12rem)]">
             <pre className="text-xs font-mono leading-relaxed">
-              {diff.Files.map((f, idx) => (
+              {(diff.files || []).map((f, idx) => (
                 <DiffBlock key={idx} file={f} />
               ))}
             </pre>
@@ -171,7 +184,7 @@ export default function StatusPage() {
 }
 
 interface FileRowProps {
-  file: { Path: string; X: string; Y: string };
+  file: { path: string; staged: number; unstaged: number };
   type: "staged" | "unstaged" | "untracked";
   selected: boolean;
   onClick: () => void;
@@ -210,7 +223,7 @@ function FileRow({ file, type, selected, onClick, onStage }: FileRowProps) {
       >
         {label}
       </span>
-      <span className="flex-1 truncate">{file.Path}</span>
+      <span className="flex-1 truncate">{file.path}</span>
       <Button
         variant="ghost"
         size="sm"
@@ -226,8 +239,8 @@ function FileRow({ file, type, selected, onClick, onStage }: FileRowProps) {
   );
 }
 
-function DiffBlock({ file }: { file: { NewPath: string; UnifiedDiff: string; Additions: number; Deletions: number } }) {
-  if (!file.UnifiedDiff) {
+function DiffBlock({ file }: { file: { new_path?: string; unified_diff?: string; additions: number; deletions: number } }) {
+  if (!file.unified_diff) {
     return (
       <div className="py-4 text-muted-foreground italic">
         No diff content available
@@ -238,13 +251,13 @@ function DiffBlock({ file }: { file: { NewPath: string; UnifiedDiff: string; Add
   return (
     <div className="mb-4">
       <div className="flex gap-2 text-xs mb-1">
-        <span className="text-green-500">+{file.Additions}</span>
-        <span className="text-red-500">-{file.Deletions}</span>
-        <span className="text-muted-foreground">{file.NewPath}</span>
+        <span className="text-green-500">+{file.additions}</span>
+        <span className="text-red-500">-{file.deletions}</span>
+        <span className="text-muted-foreground">{file.new_path || ""}</span>
       </div>
       <div className="bg-muted/30 rounded p-2 overflow-x-auto">
         <code className="text-xs">
-          {file.UnifiedDiff.split("\n").map((line, i) => {
+          {file.unified_diff.split("\n").map((line, i) => {
             let lineClass = "";
             if (line.startsWith("+") && !line.startsWith("+++")) lineClass = "text-green-500 bg-green-500/10";
             else if (line.startsWith("-") && !line.startsWith("---")) lineClass = "text-red-500 bg-red-500/10";

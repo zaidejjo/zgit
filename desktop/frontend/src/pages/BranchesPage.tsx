@@ -25,8 +25,8 @@ export default function BranchesPage() {
     );
   }
 
-  const localBranches = branches.filter((b) => !b.Name.startsWith("remotes/"));
-  const remoteBranches = branches.filter((b) => b.Name.startsWith("remotes/"));
+  const localBranches = branches.filter((b) => !b.name.startsWith("remotes/"));
+  const remoteBranches = branches.filter((b) => b.name.startsWith("remotes/"));
 
   const handleCreate = async () => {
     if (!newBranchName.trim()) return;
@@ -70,39 +70,39 @@ export default function BranchesPage() {
           </h3>
           {localBranches.map((branch) => (
             <div
-              key={branch.Name}
+              key={branch.name}
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
-                branch.Current
+                branch.is_head
                   ? "bg-primary/10 border border-primary/20"
                   : "hover:bg-accent/50 cursor-pointer"
               )}
-              onClick={() => !branch.Current && checkoutBranch(branch.Name)}
+              onClick={() => !branch.is_head && checkoutBranch(branch.name)}
             >
-              <span className={branch.Current ? "text-primary" : "text-muted-foreground"}>
-                {branch.Current ? "●" : "○"}
-              </span>
-              <span className="flex-1 font-medium font-mono text-sm">{branch.Name}</span>
-              {branch.Current && (
+                <span className={branch.is_head ? "text-primary" : "text-muted-foreground"}>
+                  {branch.is_head ? "●" : "○"}
+                </span>
+              <span className="flex-1 font-medium font-mono text-sm">{branch.name}</span>
+              {branch.is_head && (
                 <Badge variant="secondary" className="text-xs">Current</Badge>
               )}
-              {branch.Upstream && (
-                <span className="text-xs text-muted-foreground">{branch.Upstream}</span>
+              {branch.upstream && (
+                <span className="text-xs text-muted-foreground">{branch.upstream}</span>
               )}
-              {(branch.Ahead > 0 || branch.Behind > 0) && (
+              {((branch.ahead ?? 0) > 0 || (branch.behind ?? 0) > 0) && (
                 <span className="text-xs text-muted-foreground">
-                  {branch.Ahead > 0 && <span className="text-green-500">+{branch.Ahead}</span>}
-                  {branch.Behind > 0 && <span className="text-red-500"> -{branch.Behind}</span>}
+                  {(branch.ahead ?? 0) > 0 && <span className="text-green-500">+{branch.ahead}</span>}
+                  {(branch.behind ?? 0) > 0 && <span className="text-red-500"> -{branch.behind}</span>}
                 </span>
               )}
-              {!branch.Current && (
+              {!branch.is_head && (
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-6 px-2 text-xs opacity-0 hover:opacity-100"
                   onClick={(e) => {
                     e.stopPropagation();
-                    deleteBranch(branch.Name, false);
+                    deleteBranch(branch.name, false);
                   }}
                 >
                   Delete
@@ -122,11 +122,11 @@ export default function BranchesPage() {
             </h3>
             {remoteBranches.map((branch) => (
               <div
-                key={branch.Name}
+              key={branch.name}
                 className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent/50 transition-colors"
               >
                 <span className="text-muted-foreground">◯</span>
-                <span className="flex-1 font-mono text-sm">{branch.Name}</span>
+                <span className="flex-1 font-mono text-sm">{branch.name}</span>
               </div>
             ))}
           </div>

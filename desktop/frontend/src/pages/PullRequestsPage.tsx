@@ -47,38 +47,38 @@ export default function PullRequestsPage() {
         <div className="space-y-1">
           {pullRequests.map((pr) => (
             <div
-              key={pr.Number}
+              key={pr.number}
               className="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-accent/50 transition-colors"
             >
               <span
                 className={cn(
                   "mt-0.5 text-lg",
-                  pr.State === "OPEN" && !pr.IsDraft && "text-green-500",
-                  pr.State === "MERGED" && "text-purple-500",
-                  pr.State === "CLOSED" && "text-red-500",
-                  pr.IsDraft && "text-yellow-500"
+                    pr.state === "OPEN" && !pr.is_draft && "text-green-500",
+                    pr.state === "MERGED" && "text-purple-500",
+                    pr.state === "CLOSED" && "text-red-500",
+                    pr.is_draft && "text-yellow-500"
                 )}
               >
-                {pr.IsDraft ? "◇" : "◆"}
+                {pr.is_draft ? "◇" : "◆"}
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium">
-                  <span className="text-muted-foreground font-mono mr-1">
-                    #{pr.Number}
-                  </span>
-                  {truncate(pr.Title, 80)}
-                  {pr.IsDraft && (
+                    <span className="text-muted-foreground font-mono mr-1">
+                      #{pr.number}
+                    </span>
+                  {truncate(pr.title, 80)}
+                  {pr.is_draft && (
                     <Badge variant="warning" className="ml-2 text-xs">DRAFT</Badge>
                   )}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {pr.Author} &middot; {formatTimeAgo(pr.CreatedAt)}
+                  {pr.author} &middot; {formatTimeAgo(pr.created_at)}
                   <span className="mx-1">&middot;</span>
-                  {pr.HeadRef} &rarr; {pr.BaseRef}
+                  {pr.head_ref} &rarr; {pr.base_ref}
                 </p>
               </div>
               <div className="shrink-0 flex gap-1 items-center">
-                {pr.Labels?.slice(0, 3).map((label) => (
+                {(pr.labels || []).slice(0, 3).map((label) => (
                   <Badge key={label} variant="secondary" className="text-xs">
                     {label}
                   </Badge>
