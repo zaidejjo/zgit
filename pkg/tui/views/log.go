@@ -107,8 +107,10 @@ func formatTime(t time.Time) string {
 		return fmt.Sprintf("%dh ago", int(d.Hours()))
 	case d < 30*24*time.Hour:
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	case d < 365*24*time.Hour:
+		return fmt.Sprintf("%dmo ago", int(d.Hours()/(24*30)))
 	default:
-		return t.Format("Jan _2")
+		return fmt.Sprintf("%dy ago", int(d.Hours()/(24*365)))
 	}
 }
 

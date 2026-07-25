@@ -39,6 +39,8 @@ func (h HelpModel) View(width int) string {
 				{"1", "Status view"},
 				{"2", "Log view"},
 				{"3", "Branches view"},
+				{"4", "PRs view"},
+				{"5", "Issues view"},
 			},
 		},
 		{
@@ -49,15 +51,25 @@ func (h HelpModel) View(width int) string {
 				{"a", "Stage all"},
 				{"A", "Unstage all"},
 				{"d", "Discard changes"},
+				{"enter", "View diff (on file)"},
+				{"c", "Open commit dialog"},
 			},
 		},
 		{
 			title: "Branch Operations",
 			keys: []helpEntry{
-				{"c", "Checkout branch"},
+				{"c / enter", "Checkout branch"},
 				{"n", "New branch"},
 				{"x", "Delete branch"},
 				{"m", "Merge branch"},
+			},
+		},
+		{
+			title: "Commit Dialog",
+			keys: []helpEntry{
+				{"enter", "Next field / Confirm"},
+				{"Ctrl+D", "Finish description"},
+				{"Esc", "Cancel / Close"},
 			},
 		},
 		{

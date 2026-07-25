@@ -228,28 +228,76 @@ func (n *NativeExec) Diff(ctx context.Context, opts DiffOptions) (*models.Diff, 
 }
 
 func (n *NativeExec) DiffFiles(ctx context.Context, opts DiffOptions) ([]models.FileChange, error) {
-	args := []string{"diff", "--numstat"}
+	// Build common args for both numstat and unified diff
+	commonArgs := []string{"diff"}
 	if opts.Cached {
-		args = append(args, "--cached")
+		commonArgs = append(commonArgs, "--cached")
 	}
-	if opts.Context > 0 && opts.Context != 3 {
-		args = append(args, fmt.Sprintf("-U%d", opts.Context))
+	contextLines := 3
+	if opts.Context > 0 {
+		contextLines = opts.Context
 	}
 	if opts.A != "" {
-		args = append(args, opts.A)
+		commonArgs = append(commonArgs, opts.A)
 	}
 	if opts.B != "" {
-		args = append(args, opts.B)
+		commonArgs = append(commonArgs, opts.B)
 	}
-	if opts.Pathspec != "" {
-		args = append(args, "--", opts.Pathspec)
-	}
+	pathspec := opts.Pathspec
 
-	data, err := n.run(ctx, args...)
+	// Get numstat for adds/deletes
+	numstatArgs := append(commonArgs, "--numstat")
+	if pathspec != "" {
+		numstatArgs = append(numstatArgs, "--", pathspec)
+	}
+	data, err := n.run(ctx, numstatArgs...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseDiffNumstat(data)
+	files, err := ParseDiffNumstat(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// If unified diff requested, get the full patch text
+	if opts.Unified {
+		unifiedArgs := append(commonArgs, fmt.Sprintf("-U%d", contextLines))
+		if pathspec != "" {
+			unifiedArgs = append(unifiedArgs, "--", pathspec)
+		}
+		unifiedData, err := n.run(ctx, unifiedArgs...)
+		if err != nil {
+			return files, nil // return partial; non-fatal
+		}
+		unifiedLines := strings.Split(string(unifiedData), "\n")
+
+		// Assign unified diff text to each file in order
+		diffBlocks := splitUnifiedDiffByFile(unifiedLines)
+		for i := range files {
+			if i < len(diffBlocks) {
+				files[i].UnifiedDiff = strings.Join(diffBlocks[i], "\n")
+			}
+		}
+	}
+
+	return files, nil
+}
+
+// splitUnifiedDiffByFile splits unified diff output into per-file blocks.
+func splitUnifiedDiffByFile(lines []string) [][]string {
+	var blocks [][]string
+	var current []string
+	for _, line := range lines {
+		if strings.HasPrefix(line, "diff --git") && len(current) > 0 {
+			blocks = append(blocks, current)
+			current = nil
+		}
+		current = append(current, line)
+	}
+	if len(current) > 0 {
+		blocks = append(blocks, current)
+	}
+	return blocks
 }
 
 func (n *NativeExec) Show(ctx context.Context, ref string) (*models.Diff, error) {
