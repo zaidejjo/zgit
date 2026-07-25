@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useLocation } from "@tanstack/react-router";
 import { useAppStore } from "@/store/app";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import LoginDialog from "@/components/LoginDialog";
 
 const tabs = [
   { id: "status", label: "Status", icon: "◉" },
@@ -13,8 +14,10 @@ const tabs = [
 ] as const;
 
 export default function AppLayout() {
-  const { activeTab, setActiveTab, error, setError, darkMode, toggleDarkMode, fetchStatus, checkGitHubAuth } =
-    useAppStore();
+  const {
+    activeTab, setActiveTab, error, setError, darkMode, toggleDarkMode,
+    fetchStatus, checkGitHubAuth, ghAuthenticated, ghUser, setLoginDialogOpen,
+  } = useAppStore();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -67,7 +70,33 @@ export default function AppLayout() {
               </button>
             ))}
           </div>
+
           <div className="flex items-center gap-2">
+            {/* GitHub profile */}
+            {ghAuthenticated && ghUser ? (
+              <div className="flex items-center gap-2 text-sm">
+                <img
+                  src={ghUser.avatar_url}
+                  alt={ghUser.login}
+                  className="w-6 h-6 rounded-full"
+                />
+                <span className="text-muted-foreground hidden sm:inline">
+                  {ghUser.login}
+                </span>
+              </div>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setLoginDialogOpen(true)}
+              >
+                Sign In
+              </Button>
+            )}
+
+            <div className="w-px h-5 bg-border" />
+
             <Button
               variant="ghost"
               size="sm"
@@ -97,6 +126,9 @@ export default function AppLayout() {
       <main className="p-4">
         <Outlet />
       </main>
+
+      {/* Login dialog */}
+      <LoginDialog />
     </div>
   );
 }

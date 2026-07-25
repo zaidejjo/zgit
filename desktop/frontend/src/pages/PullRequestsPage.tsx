@@ -6,12 +6,28 @@ import { formatTimeAgo, truncate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
 export default function PullRequestsPage() {
-  const { pullRequests, loading, error, fetchPullRequests } = useAppStore();
+  const { pullRequests, loading, error, ghAuthenticated, setLoginDialogOpen, fetchPullRequests } = useAppStore();
 
   useEffect(() => {
     fetchPullRequests();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Not authenticated
+  if (!ghAuthenticated) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-muted-foreground gap-3">
+        <span className="text-3xl">◆</span>
+        <p>Sign in to GitHub to view pull requests</p>
+        <button
+          className="text-sm text-primary underline underline-offset-2 hover:text-primary/80"
+          onClick={() => setLoginDialogOpen(true)}
+        >
+          Open Settings
+        </button>
+      </div>
+    );
+  }
 
   if (loading.prs && pullRequests.length === 0) {
     return (
@@ -35,7 +51,10 @@ export default function PullRequestsPage() {
   if (pullRequests.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground">
-        No open pull requests
+        <div className="text-center">
+          <p className="text-lg">No pull requests found</p>
+          <p className="text-xs mt-1">All PRs are closed or this repository has no open PRs.</p>
+        </div>
       </div>
     );
   }

@@ -35,6 +35,7 @@ func (a *App) Run(assets embed.FS) error {
 		MinWidth:  800,
 		MinHeight: 600,
 		Assets:    assets,
+		OnStartup: a.startup,
 		Bind: []any{
 			a,
 		},
@@ -180,6 +181,11 @@ func (a *App) IsGitHubAuthenticated() bool {
 	return a.engine.IsGitHubAuthenticated()
 }
 
+// AuthenticateGitHub sets a GitHub PAT and initializes the client.
+func (a *App) AuthenticateGitHub(token string) error {
+	return a.engine.AuthenticateGitHub(token)
+}
+
 // GetGitHubUser returns the authenticated GitHub user.
 func (a *App) GetGitHubUser() (*models.User, error) {
 	if !a.engine.IsGitHubAuthenticated() {
@@ -190,45 +196,79 @@ func (a *App) GetGitHubUser() (*models.User, error) {
 	return a.engine.GitHub.GetAuthenticatedUser(ctx)
 }
 
+// getGitHubClient returns the GitHub client or an error if not authenticated.
+func (a *App) getGitHubClient() (github.GitHubClient, error) {
+	if !a.engine.IsGitHubAuthenticated() {
+		return nil, fmt.Errorf("GitHub not authenticated — set a token in Settings")
+	}
+	return a.engine.GitHub, nil
+}
+
 // GetPullRequests lists open pull requests.
 func (a *App) GetPullRequests() ([]*models.PullRequestSummary, error) {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return []*models.PullRequestSummary{}, nil // empty, not error
+	}
 	owner, repo, err := a.guessRepo()
 	if err != nil {
-		return nil, err
+		return []*models.PullRequestSummary{}, nil
 	}
 	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
 	defer cancel()
-	return a.engine.GitHub.ListPullRequests(ctx, owner, repo, github.PRFilter{
+	prs, err := gh.ListPullRequests(ctx, owner, repo, github.PRFilter{
 		State: "open",
 		Sort:  "updated",
 		Limit: 50,
 	})
+	if err != nil {
+		return []*models.PullRequestSummary{}, nil
+	}
+	if prs == nil {
+		return []*models.PullRequestSummary{}, nil
+	}
+	return prs, nil
 }
 
 // GetIssues lists open issues.
 func (a *App) GetIssues() ([]*models.Issue, error) {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return []*models.Issue{}, nil
+	}
 	owner, repo, err := a.guessRepo()
 	if err != nil {
-		return nil, err
+		return []*models.Issue{}, nil
 	}
 	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
 	defer cancel()
-	return a.engine.GitHub.ListIssues(ctx, owner, repo, github.IssuesFilter{
+	issues, err := gh.ListIssues(ctx, owner, repo, github.IssuesFilter{
 		State: "open",
 		Sort:  "updated",
 		Limit: 50,
 	})
+	if err != nil {
+		return []*models.Issue{}, nil
+	}
+	if issues == nil {
+		return []*models.Issue{}, nil
+	}
+	return issues, nil
 }
 
 // GetRepository returns repo info from GitHub.
 func (a *App) GetRepository() (*models.Repo, error) {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return nil, err
+	}
 	owner, repo, err := a.guessRepo()
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
-	return a.engine.GitHub.GetRepository(ctx, owner, repo)
+	return gh.GetRepository(ctx, owner, repo)
 }
 
 // GetCurrentRepoPath returns the current repo path.

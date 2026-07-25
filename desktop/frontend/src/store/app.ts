@@ -150,6 +150,7 @@ declare global {
           GetRepository(): Promise<Repo>;
           GetCurrentRepoPath(): Promise<string>;
           GetGitHubUser(): Promise<GitHubUser>;
+          AuthenticateGitHub(token: string): Promise<void>;
         };
       };
     };
@@ -178,6 +179,7 @@ interface AppState {
   error: string | null;
   activeTab: string;
   darkMode: boolean;
+  loginDialogOpen: boolean;
 
   // Actions
   setActiveTab: (tab: string) => void;
@@ -198,6 +200,8 @@ interface AppState {
   fetchIssues: () => Promise<void>;
   fetchRepository: () => Promise<void>;
   checkGitHubAuth: () => Promise<void>;
+  authenticateGitHub: (token: string) => Promise<boolean>;
+  setLoginDialogOpen: (open: boolean) => void;
   setError: (err: string | null) => void;
   clearDiff: () => void;
 }
@@ -226,6 +230,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   error: null,
   activeTab: "status",
   darkMode: true,
+  loginDialogOpen: false,
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
@@ -422,11 +427,39 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (authed) {
         const user = await backend.GetGitHubUser();
         set({ ghUser: user });
+        get().fetchPullRequests().catch(() => {});
+        get().fetchIssues().catch(() => {});
       }
     } catch (_) {
       set({ ghAuthenticated: false });
     }
   },
+
+  authenticateGitHub: async (token) => {
+    const backend = getBackend();
+    if (!backend) return false;
+    set((s) => ({ loading: { ...s.loading, auth: true }, error: null }));
+    try {
+      await backend.AuthenticateGitHub(token);
+      set({ ghAuthenticated: true, loginDialogOpen: false, loading: { ...get().loading, auth: false } });
+      // Refresh user + data
+      try {
+        const user = await backend.GetGitHubUser();
+        set({ ghUser: user });
+      } catch (_) { /* user fetch non-critical */ }
+      get().fetchPullRequests().catch(() => {});
+      get().fetchIssues().catch(() => {});
+      return true;
+    } catch (e: any) {
+      set({
+        error: e.message || "Authentication failed",
+        loading: { ...get().loading, auth: false },
+      });
+      return false;
+    }
+  },
+
+  setLoginDialogOpen: (open) => set({ loginDialogOpen: open }),
 
   setError: (err) => set({ error: err }),
   clearDiff: () => set({ diff: null }),
