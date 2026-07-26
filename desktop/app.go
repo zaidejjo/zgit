@@ -386,11 +386,25 @@ func (a *App) DeleteBranch(name string, force bool) error {
 	return a.engine.Git.BranchDelete(ctx, name, force)
 }
 
+// GitRenameBranch renames a local branch.
+func (a *App) GitRenameBranch(oldName, newName string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.BranchRename(ctx, oldName, newName)
+}
+
 // CurrentBranch returns the current branch name.
 func (a *App) CurrentBranch() (string, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.CurrentBranch(ctx)
+}
+
+// GitMerge merges the given branch into the current branch.
+func (a *App) GitMerge(branch string) (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
+	defer cancel()
+	return a.engine.Git.Merge(ctx, branch)
 }
 
 // --- GitHub operations ---
@@ -725,6 +739,58 @@ func (a *App) GetWorkflowJobLogs(jobID int64) (string, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
 	defer cancel()
 	return gh.GetWorkflowJobLogs(ctx, owner, repo, jobID)
+}
+
+// GetPullRequestDetail fetches full PR detail with commits, reviews, checks.
+func (a *App) GetPullRequestDetail(number int) (*models.PullRequestDetail, error) {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return nil, err
+	}
+	owner, repo, err := a.guessRepo()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return gh.GetPullRequest(ctx, owner, repo, number)
+}
+
+// CreatePullRequest creates a new pull request on GitHub.
+func (a *App) CreatePullRequest(title, body, head, base string, draft bool) (*models.PullRequestSummary, error) {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return nil, err
+	}
+	owner, repo, err := a.guessRepo()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return gh.CreatePullRequest(ctx, owner, repo, github.PRRequest{
+		Title: title,
+		Body:  body,
+		Head:  head,
+		Base:  base,
+		Draft: draft,
+	})
+}
+
+// MergePullRequest merges a pull request with the given method.
+// method: "merge", "squash", "rebase"
+func (a *App) MergePullRequest(number int, method string) error {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return err
+	}
+	owner, repo, err := a.guessRepo()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return gh.MergePullRequest(ctx, owner, repo, number, method)
 }
 
 // guessRepo extracts owner/repo from git remotes.

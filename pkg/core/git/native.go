@@ -370,6 +370,21 @@ func (n *NativeExec) CreateBranchAndCheckout(ctx context.Context, name string) e
 	return err
 }
 
+// --- Merge ---
+
+func (n *NativeExec) Merge(ctx context.Context, branch string) (string, error) {
+	out, err := n.run(ctx, "merge", "--no-ff", "--no-stat", branch)
+	if err != nil {
+		// Try without --no-ff in case of failure (fast-forward-only repos)
+		out2, err2 := n.run(ctx, "merge", "--no-stat", branch)
+		if err2 != nil {
+			return "", fmt.Errorf("merge failed: %w\n%s", err, strings.TrimSpace(string(out)))
+		}
+		return strings.TrimSpace(string(out2)), nil
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // --- Staging ---
 
 func (n *NativeExec) Add(ctx context.Context, opts AddOptions, files ...string) error {

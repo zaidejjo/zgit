@@ -45,6 +45,24 @@ export namespace models {
 	        this.latest_msg = source["latest_msg"];
 	    }
 	}
+	export class CheckRun {
+	    name: string;
+	    state: string;
+	    conclusion: string;
+	    details_url?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CheckRun(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.state = source["state"];
+	        this.conclusion = source["conclusion"];
+	        this.details_url = source["details_url"];
+	    }
+	}
 	export class Commit {
 	    hash: string;
 	    author: string;
@@ -317,6 +335,127 @@ export namespace models {
 		}
 	}
 	
+	export class Review {
+	    id: number;
+	    author: string;
+	    state: string;
+	    body: string;
+	    // Go type: time
+	    submitted_at: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Review(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.author = source["author"];
+	        this.state = source["state"];
+	        this.body = source["body"];
+	        this.submitted_at = this.convertValues(source["submitted_at"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PullRequestDetail {
+	    number: number;
+	    title: string;
+	    state: string;
+	    author: string;
+	    // Go type: time
+	    created_at: any;
+	    // Go type: time
+	    updated_at: any;
+	    is_draft: boolean;
+	    mergeable: string;
+	    head_ref: string;
+	    base_ref: string;
+	    status_emoji: string;
+	    review_state: string;
+	    labels?: string[];
+	    body: string;
+	    // Go type: time
+	    closed_at?: any;
+	    // Go type: time
+	    merged_at?: any;
+	    merged_by?: string;
+	    additions: number;
+	    deletions: number;
+	    changed_files: number;
+	    commits?: Commit[];
+	    reviews?: Review[];
+	    check_runs?: CheckRun[];
+	    files?: FileChange[];
+	    comments: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PullRequestDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.number = source["number"];
+	        this.title = source["title"];
+	        this.state = source["state"];
+	        this.author = source["author"];
+	        this.created_at = this.convertValues(source["created_at"], null);
+	        this.updated_at = this.convertValues(source["updated_at"], null);
+	        this.is_draft = source["is_draft"];
+	        this.mergeable = source["mergeable"];
+	        this.head_ref = source["head_ref"];
+	        this.base_ref = source["base_ref"];
+	        this.status_emoji = source["status_emoji"];
+	        this.review_state = source["review_state"];
+	        this.labels = source["labels"];
+	        this.body = source["body"];
+	        this.closed_at = this.convertValues(source["closed_at"], null);
+	        this.merged_at = this.convertValues(source["merged_at"], null);
+	        this.merged_by = source["merged_by"];
+	        this.additions = source["additions"];
+	        this.deletions = source["deletions"];
+	        this.changed_files = source["changed_files"];
+	        this.commits = this.convertValues(source["commits"], Commit);
+	        this.reviews = this.convertValues(source["reviews"], Review);
+	        this.check_runs = this.convertValues(source["check_runs"], CheckRun);
+	        this.files = this.convertValues(source["files"], FileChange);
+	        this.comments = source["comments"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class PullRequestSummary {
 	    number: number;
 	    title: string;
@@ -437,6 +576,7 @@ export namespace models {
 		    return a;
 		}
 	}
+	
 	export class Stash {
 	    index: number;
 	    message: string;

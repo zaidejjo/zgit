@@ -140,6 +140,9 @@ type GitAdapter interface {
 	StashApply(ctx context.Context, index int) error
 	StashDrop(ctx context.Context, index int) error
 
+	// Merge
+	Merge(ctx context.Context, branch string) (string, error)
+
 	// Misc
 	MergeBase(ctx context.Context, a, b string) (string, error)
 	RefExists(ctx context.Context, ref string) (bool, error)

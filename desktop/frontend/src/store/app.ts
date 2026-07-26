@@ -73,7 +73,49 @@ export interface PRSummary {
   mergeable: string;
   head_ref: string;
   base_ref: string;
+  status_emoji?: string;
+  review_state?: string;
   labels?: string[];
+}
+
+export interface Review {
+  id: number;
+  author: string;
+  state: string;
+  body: string;
+  submitted_at: string;
+}
+
+export interface CheckRun {
+  name: string;
+  state: string;
+  conclusion: string;
+  details_url?: string;
+}
+
+export interface PullRequestDetail {
+  number: number;
+  title: string;
+  state: string;
+  author: string;
+  created_at: string;
+  updated_at: string;
+  is_draft: boolean;
+  mergeable: string;
+  head_ref: string;
+  base_ref: string;
+  labels?: string[];
+  body: string;
+  closed_at?: string;
+  merged_at?: string;
+  merged_by?: string;
+  additions: number;
+  deletions: number;
+  changed_files: number;
+  commits?: Commit[];
+  reviews?: Review[];
+  check_runs?: CheckRun[];
+  comments: number;
 }
 
 export interface Issue {
@@ -180,6 +222,7 @@ declare global {
           GetStatus(): Promise<Status>;
           GetLog(count: number): Promise<Commit[]>;
           GetBranches(): Promise<Branch[]>;
+          GitRenameBranch(oldName: string, newName: string): Promise<void>;
           GetDiff(pathspec: string): Promise<Diff>;
           StageFile(file: string): Promise<void>;
           UnstageFile(file: string): Promise<void>;
@@ -190,6 +233,7 @@ declare global {
           CreateBranch(name: string): Promise<void>;
           DeleteBranch(name: string, force: boolean): Promise<void>;
           CurrentBranch(): Promise<string>;
+          GitMerge(branch: string): Promise<string>;
           IsGitHubAuthenticated(): Promise<boolean>;
           GetPullRequests(): Promise<PRSummary[]>;
           GetIssues(): Promise<Issue[]>;
@@ -225,6 +269,10 @@ declare global {
           // Sprint 6: Discard
           DiscardFile(file: string): Promise<void>;
           DiscardAllFiles(): Promise<void>;
+          // PR management
+          GetPullRequestDetail(number: number): Promise<PullRequestDetail>;
+          CreatePullRequest(title: string, body: string, head: string, base: string, draft: boolean): Promise<PRSummary>;
+          MergePullRequest(number: number, method: string): Promise<void>;
         };
       };
     };
@@ -256,6 +304,9 @@ interface AppState {
   repoPath: string;
   recentRepos: string[];
 
+  // PR detail
+  selectedPRDetail: PullRequestDetail | null;
+
   // UI state
   loading: Record<string, boolean>;
   error: string | null;
@@ -280,7 +331,13 @@ interface AppState {
   checkoutBranch: (name: string) => Promise<void>;
   createBranch: (name: string) => Promise<void>;
   deleteBranch: (name: string, force?: boolean) => Promise<void>;
+  renameBranch: (oldName: string, newName: string) => Promise<void>;
+  gitMerge: (branch: string) => Promise<string | null>;
   fetchPullRequests: () => Promise<void>;
+  fetchPRDetail: (number: number) => Promise<void>;
+  clearPRDetail: () => void;
+  createPullRequest: (title: string, body: string, head: string, base: string, draft?: boolean) => Promise<PRSummary | null>;
+  mergePullRequest: (number: number, method: string) => Promise<boolean>;
   fetchIssues: () => Promise<void>;
   fetchRepository: () => Promise<void>;
   checkGitHubAuth: () => Promise<void>;
@@ -335,6 +392,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   branches: [],
   diff: null,
   currentBranch: "",
+  selectedPRDetail: null,
   ghAuthenticated: false,
   ghUser: null,
   pullRequests: [],
@@ -521,6 +579,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  renameBranch: async (oldName, newName) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.GitRenameBranch(oldName, newName);
+      await get().fetchBranches();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to rename branch` });
+    }
+  },
+
+  gitMerge: async (branch) => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      const result = await backend.GitMerge(branch);
+      await get().refreshAll();
+      return result;
+    } catch (e: any) {
+      set({ error: e.message || `Failed to merge ${branch}` });
+      return null;
+    }
+  },
+
   fetchPullRequests: async () => {
     const backend = getBackend();
     if (!backend) return;
@@ -530,6 +612,47 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ pullRequests: prs, loading: { ...get().loading, prs: false } });
     } catch (e: any) {
       set({ error: e.message || "Failed to fetch PRs", loading: { ...get().loading, prs: false } });
+    }
+  },
+
+  fetchPRDetail: async (number) => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, prDetail: true }, error: null }));
+    try {
+      const detail = await backend.GetPullRequestDetail(number);
+      set({ selectedPRDetail: detail, loading: { ...get().loading, prDetail: false } });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch PR detail", loading: { ...get().loading, prDetail: false } });
+    }
+  },
+
+  clearPRDetail: () => set({ selectedPRDetail: null }),
+
+  createPullRequest: async (title, body, head, base, draft = false) => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      const pr = await backend.CreatePullRequest(title, body, head, base, draft);
+      await get().fetchPullRequests();
+      return pr;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to create PR" });
+      return null;
+    }
+  },
+
+  mergePullRequest: async (number, method) => {
+    const backend = getBackend();
+    if (!backend) return false;
+    try {
+      await backend.MergePullRequest(number, method);
+      await get().fetchPullRequests();
+      set({ selectedPRDetail: null });
+      return true;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to merge PR" });
+      return false;
     }
   },
 

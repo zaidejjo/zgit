@@ -22,6 +22,10 @@ export function CreateBranch(arg1) {
   return window['go']['main']['App']['CreateBranch'](arg1);
 }
 
+export function CreatePullRequest(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['CreatePullRequest'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function CurrentBranch() {
   return window['go']['main']['App']['CurrentBranch']();
 }
@@ -66,6 +70,10 @@ export function GetLog(arg1) {
   return window['go']['main']['App']['GetLog'](arg1);
 }
 
+export function GetPullRequestDetail(arg1) {
+  return window['go']['main']['App']['GetPullRequestDetail'](arg1);
+}
+
 export function GetPullRequests() {
   return window['go']['main']['App']['GetPullRequests']();
 }
@@ -94,6 +102,10 @@ export function GitFetch() {
   return window['go']['main']['App']['GitFetch']();
 }
 
+export function GitMerge(arg1) {
+  return window['go']['main']['App']['GitMerge'](arg1);
+}
+
 export function GitPull(arg1) {
   return window['go']['main']['App']['GitPull'](arg1);
 }
@@ -104,6 +116,10 @@ export function GitPush() {
 
 export function GitPushForce() {
   return window['go']['main']['App']['GitPushForce']();
+}
+
+export function GitRenameBranch(arg1, arg2) {
+  return window['go']['main']['App']['GitRenameBranch'](arg1, arg2);
 }
 
 export function IsGitHubAuthenticated() {
@@ -120,6 +136,10 @@ export function ListWorkflowJobs(arg1) {
 
 export function ListWorkflowRuns() {
   return window['go']['main']['App']['ListWorkflowRuns']();
+}
+
+export function MergePullRequest(arg1, arg2) {
+  return window['go']['main']['App']['MergePullRequest'](arg1, arg2);
 }
 
 export function OpenRepo(arg1) {

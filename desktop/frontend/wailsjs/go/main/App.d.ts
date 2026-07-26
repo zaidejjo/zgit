@@ -13,6 +13,8 @@ export function Commit(arg1:string,arg2:string):Promise<string>;
 
 export function CreateBranch(arg1:string):Promise<void>;
 
+export function CreatePullRequest(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<models.PullRequestSummary>;
+
 export function CurrentBranch():Promise<string>;
 
 export function DeleteBranch(arg1:string,arg2:boolean):Promise<void>;
@@ -35,6 +37,8 @@ export function GetIssues():Promise<Array<models.Issue>>;
 
 export function GetLog(arg1:number):Promise<Array<models.Commit>>;
 
+export function GetPullRequestDetail(arg1:number):Promise<models.PullRequestDetail>;
+
 export function GetPullRequests():Promise<Array<models.PullRequestSummary>>;
 
 export function GetRepoName():Promise<string>;
@@ -49,11 +53,15 @@ export function GetWorkflowJobLogs(arg1:number):Promise<string>;
 
 export function GitFetch():Promise<void>;
 
+export function GitMerge(arg1:string):Promise<string>;
+
 export function GitPull(arg1:boolean):Promise<void>;
 
 export function GitPush():Promise<void>;
 
 export function GitPushForce():Promise<void>;
+
+export function GitRenameBranch(arg1:string,arg2:string):Promise<void>;
 
 export function IsGitHubAuthenticated():Promise<boolean>;
 
@@ -62,6 +70,8 @@ export function ListRecentRepos():Promise<Array<string>>;
 export function ListWorkflowJobs(arg1:number):Promise<Array<models.Job>>;
 
 export function ListWorkflowRuns():Promise<Array<models.WorkflowRun>>;
+
+export function MergePullRequest(arg1:number,arg2:string):Promise<void>;
 
 export function OpenRepo(arg1:string):Promise<void>;
 
