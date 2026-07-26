@@ -14,12 +14,20 @@ export function CheckoutBranch(arg1) {
   return window['go']['main']['App']['CheckoutBranch'](arg1);
 }
 
+export function CloseIssue(arg1) {
+  return window['go']['main']['App']['CloseIssue'](arg1);
+}
+
 export function Commit(arg1, arg2) {
   return window['go']['main']['App']['Commit'](arg1, arg2);
 }
 
 export function CreateBranch(arg1) {
   return window['go']['main']['App']['CreateBranch'](arg1);
+}
+
+export function CreateIssue(arg1, arg2) {
+  return window['go']['main']['App']['CreateIssue'](arg1, arg2);
 }
 
 export function CreatePullRequest(arg1, arg2, arg3, arg4, arg5) {
@@ -60,6 +68,10 @@ export function GetFileDiff(arg1) {
 
 export function GetGitHubUser() {
   return window['go']['main']['App']['GetGitHubUser']();
+}
+
+export function GetIssueDetail(arg1) {
+  return window['go']['main']['App']['GetIssueDetail'](arg1);
 }
 
 export function GetIssues() {

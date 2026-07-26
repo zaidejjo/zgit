@@ -133,6 +133,15 @@ export interface Issue {
   is_pull_request: boolean;
 }
 
+export interface IssueComment {
+  id: number;
+  author: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  is_minimized: boolean;
+}
+
 export interface Repo {
   path: string;
   is_bare: boolean;
@@ -273,6 +282,10 @@ declare global {
           GetPullRequestDetail(number: number): Promise<PullRequestDetail>;
           CreatePullRequest(title: string, body: string, head: string, base: string, draft: boolean): Promise<PRSummary>;
           MergePullRequest(number: number, method: string): Promise<void>;
+          // Issue management
+          GetIssueDetail(number: number): Promise<Issue>;
+          CreateIssue(title: string, body: string): Promise<Issue>;
+          CloseIssue(number: number): Promise<void>;
         };
       };
     };
@@ -306,6 +319,8 @@ interface AppState {
 
   // PR detail
   selectedPRDetail: PullRequestDetail | null;
+  // Issue detail
+  selectedIssueDetail: Issue | null;
 
   // UI state
   loading: Record<string, boolean>;
@@ -338,6 +353,10 @@ interface AppState {
   clearPRDetail: () => void;
   createPullRequest: (title: string, body: string, head: string, base: string, draft?: boolean) => Promise<PRSummary | null>;
   mergePullRequest: (number: number, method: string) => Promise<boolean>;
+  fetchIssueDetail: (number: number) => Promise<void>;
+  clearIssueDetail: () => void;
+  createIssue: (title: string, body: string) => Promise<Issue | null>;
+  closeIssue: (number: number) => Promise<boolean>;
   fetchIssues: () => Promise<void>;
   fetchRepository: () => Promise<void>;
   checkGitHubAuth: () => Promise<void>;
@@ -393,6 +412,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   diff: null,
   currentBranch: "",
   selectedPRDetail: null,
+  selectedIssueDetail: null,
   ghAuthenticated: false,
   ghUser: null,
   pullRequests: [],
@@ -665,6 +685,47 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ issues, loading: { ...get().loading, issues: false } });
     } catch (e: any) {
       set({ error: e.message || "Failed to fetch issues", loading: { ...get().loading, issues: false } });
+    }
+  },
+
+  fetchIssueDetail: async (number) => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, issueDetail: true }, error: null }));
+    try {
+      const detail = await backend.GetIssueDetail(number);
+      set({ selectedIssueDetail: detail, loading: { ...get().loading, issueDetail: false } });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch issue detail", loading: { ...get().loading, issueDetail: false } });
+    }
+  },
+
+  clearIssueDetail: () => set({ selectedIssueDetail: null }),
+
+  createIssue: async (title, body) => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      const issue = await backend.CreateIssue(title, body);
+      await get().fetchIssues();
+      return issue;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to create issue" });
+      return null;
+    }
+  },
+
+  closeIssue: async (number) => {
+    const backend = getBackend();
+    if (!backend) return false;
+    try {
+      await backend.CloseIssue(number);
+      await get().fetchIssues();
+      set({ selectedIssueDetail: null });
+      return true;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to close issue" });
+      return false;
     }
   },
 

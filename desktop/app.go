@@ -536,6 +536,54 @@ func (a *App) GetIssues() ([]*models.Issue, error) {
 	return issues, nil
 }
 
+// GetIssueDetail fetches a single issue with its comments.
+func (a *App) GetIssueDetail(number int) (*models.Issue, error) {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return nil, err
+	}
+	owner, repo, err := a.guessRepo()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return gh.GetIssue(ctx, owner, repo, number)
+}
+
+// CreateIssue opens a new issue on GitHub.
+func (a *App) CreateIssue(title, body string) (*models.Issue, error) {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return nil, err
+	}
+	owner, repo, err := a.guessRepo()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return gh.CreateIssue(ctx, owner, repo, github.IssueRequest{
+		Title: title,
+		Body:  body,
+	})
+}
+
+// CloseIssue closes an issue on GitHub.
+func (a *App) CloseIssue(number int) error {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return err
+	}
+	owner, repo, err := a.guessRepo()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return gh.CloseIssue(ctx, owner, repo, number)
+}
+
 // GetRepository returns repo info from GitHub.
 func (a *App) GetRepository() (*models.Repo, error) {
 	gh, err := a.getGitHubClient()

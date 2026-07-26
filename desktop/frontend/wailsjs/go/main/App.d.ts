@@ -9,9 +9,13 @@ export function CancelWorkflowRun(arg1:number):Promise<void>;
 
 export function CheckoutBranch(arg1:string):Promise<void>;
 
+export function CloseIssue(arg1:number):Promise<void>;
+
 export function Commit(arg1:string,arg2:string):Promise<string>;
 
 export function CreateBranch(arg1:string):Promise<void>;
+
+export function CreateIssue(arg1:string,arg2:string):Promise<models.Issue>;
 
 export function CreatePullRequest(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<models.PullRequestSummary>;
 
@@ -32,6 +36,8 @@ export function GetDiff(arg1:string):Promise<models.Diff>;
 export function GetFileDiff(arg1:string):Promise<models.Diff>;
 
 export function GetGitHubUser():Promise<models.User>;
+
+export function GetIssueDetail(arg1:number):Promise<models.Issue>;
 
 export function GetIssues():Promise<Array<models.Issue>>;
 
