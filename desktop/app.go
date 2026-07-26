@@ -241,6 +241,14 @@ func (a *App) StageFile(file string) error {
 	return a.engine.Git.Add(ctx, git.AddOptions{}, file)
 }
 
+// StagePatch applies a patch hunk to the index for line-level staging.
+// patch is a unified-diff hunk text.
+func (a *App) StagePatch(patch string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.ApplyPatch(ctx, patch, true)
+}
+
 // UnstageFile unstages a file.
 func (a *App) UnstageFile(file string) error {
 	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)

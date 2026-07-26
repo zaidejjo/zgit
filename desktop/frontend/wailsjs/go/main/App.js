@@ -186,6 +186,10 @@ export function StageFile(arg1) {
   return window['go']['main']['App']['StageFile'](arg1);
 }
 
+export function StagePatch(arg1) {
+  return window['go']['main']['App']['StagePatch'](arg1);
+}
+
 export function StartDeviceFlow() {
   return window['go']['main']['App']['StartDeviceFlow']();
 }

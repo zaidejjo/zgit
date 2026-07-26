@@ -282,6 +282,8 @@ declare global {
           GetPullRequestDetail(number: number): Promise<PullRequestDetail>;
           CreatePullRequest(title: string, body: string, head: string, base: string, draft: boolean): Promise<PRSummary>;
           MergePullRequest(number: number, method: string): Promise<void>;
+          // Line-level staging
+          StagePatch(patch: string): Promise<void>;
           // Issue management
           GetIssueDetail(number: number): Promise<Issue>;
           CreateIssue(title: string, body: string): Promise<Issue>;
@@ -390,6 +392,9 @@ interface AppState {
   stashPop: (index: number) => Promise<void>;
   stashApply: (index: number) => Promise<void>;
   stashDrop: (index: number) => Promise<void>;
+
+  // Diff viewer: hunk staging
+  stagePatch: (patch: string) => Promise<void>;
 
   // Sprint 6: Discard
   discardFile: (file: string) => Promise<void>;
@@ -508,6 +513,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       await get().fetchStatus();
     } catch (e: any) {
       set({ error: e.message || "Failed to unstage file" });
+    }
+  },
+
+  stagePatch: async (patch) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.StagePatch(patch);
+      await get().fetchStatus();
+      // Refresh the diff to reflect staged changes
+      await get().fetchDiff();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to stage hunk" });
     }
   },
 

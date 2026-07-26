@@ -95,6 +95,8 @@ export function StageAll():Promise<void>;
 
 export function StageFile(arg1:string):Promise<void>;
 
+export function StagePatch(arg1:string):Promise<void>;
+
 export function StartDeviceFlow():Promise<models.DeviceFlowCode>;
 
 export function StashApply(arg1:number):Promise<void>;

@@ -467,6 +467,31 @@ func (n *NativeExec) RemoteList(ctx context.Context) ([]*models.Remote, error) {
 	return ParseRemotes(data)
 }
 
+// ApplyPatch applies a unified diff patch to the working tree or index.
+// If cached is true, it applies --cached (stages the patch).
+func (n *NativeExec) ApplyPatch(ctx context.Context, patch string, cached bool) error {
+	n.mu.RLock()
+	repoPath := n.repoPath
+	n.mu.RUnlock()
+
+	if repoPath == "" {
+		return fmt.Errorf("no repository open: call Open() first")
+	}
+
+	args := []string{"apply", "--unidiff-zero"}
+	if cached {
+		args = append(args, "--cached")
+	}
+	cmd := exec.CommandContext(ctx, n.gitPath, args...)
+	cmd.Dir = repoPath
+	cmd.Stdin = strings.NewReader(patch)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("apply patch: %w\n%s", err, string(out))
+	}
+	return nil
+}
+
 func (n *NativeExec) RemoteAdd(ctx context.Context, name, url string) error {
 	_, err := n.run(ctx, "remote", "add", name, url)
 	return err

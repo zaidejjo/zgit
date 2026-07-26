@@ -3,6 +3,7 @@ import {
   Download, Upload, Undo2, Archive, RotateCcw, Play, X,
   GitCommitHorizontal, SquarePen, AlignLeft, CheckCheck,
   AlertTriangle, ChevronDown, ListChecks, FileText,
+  RefreshCw,
 } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +16,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import DiffViewer from "@/components/DiffViewer";
 
 const CONVENTIONAL_PREFIXES = [
   { value: "feat", label: "feat", desc: "New feature", color: "text-green-500" },
@@ -500,26 +502,30 @@ export default function StatusPage() {
 
           {/* Diff panel */}
           {selectedFile && diff && (
-            <div className="flex-1 min-h-0 border rounded-lg p-3">
-              <div className="flex items-center justify-between mb-2">
+            <div className="flex-1 min-h-0 border rounded-lg flex flex-col">
+              <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/20 shrink-0">
                 <h3 className="text-sm font-semibold font-mono truncate flex items-center gap-1.5">
                   <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   {selectedFile}
                 </h3>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs text-green-600">+{diff.total_additions}</span>
-                  <span className="text-xs text-red-600">-{diff.total_deletions}</span>
+                  <span className="text-xs text-green-600 font-medium">+{diff.total_additions}</span>
+                  <span className="text-xs text-red-600 font-medium">-{diff.total_deletions}</span>
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
+                    onClick={() => fetchDiff(selectedFile)} title="Refresh diff">
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </Button>
                   <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={handleCloseDiff}>
                     <X className="w-3.5 h-3.5" />
                   </Button>
                 </div>
               </div>
-              <ScrollArea className="h-[calc(100vh-28rem)]">
-                <pre className="text-xs font-mono leading-relaxed">
+              <ScrollArea className="flex-1">
+                <div className="p-2">
                   {(diff.files || []).map((f, idx) => (
-                    <DiffBlock key={idx} file={f} />
+                    <DiffViewer key={idx} file={f} />
                   ))}
-                </pre>
+                </div>
               </ScrollArea>
             </div>
           )}
@@ -666,41 +672,4 @@ function FileRow({ file, type, selected, checked, onToggleCheck, onClick, onStag
   );
 }
 
-/* ─── Diff Block ─── */
 
-function DiffBlock({ file }: { file: { new_path?: string; unified_diff?: string; additions: number; deletions: number } }) {
-  if (!file.unified_diff) {
-    return (
-      <div className="py-4 text-muted-foreground italic">
-        No diff content available
-      </div>
-    );
-  }
-
-  return (
-    <div className="mb-4">
-      <div className="flex gap-2 text-xs mb-1">
-        <span className="text-green-500">+{file.additions}</span>
-        <span className="text-red-500">-{file.deletions}</span>
-        <span className="text-muted-foreground">{file.new_path || ""}</span>
-      </div>
-      <div className="bg-muted/30 rounded p-2 overflow-x-auto">
-        <code className="text-xs">
-          {file.unified_diff.split("\n").map((line, i) => {
-            let lineClass = "";
-            if (line.startsWith("+") && !line.startsWith("+++")) lineClass = "text-green-500 bg-green-500/10";
-            else if (line.startsWith("-") && !line.startsWith("---")) lineClass = "text-red-500 bg-red-500/10";
-            else if (line.startsWith("@")) lineClass = "text-blue-500";
-            else if (line.startsWith("diff") || line.startsWith("---") || line.startsWith("+++")) lineClass = "text-muted-foreground";
-
-            return (
-              <div key={i} className={cn("whitespace-pre", lineClass)}>
-                {line}
-              </div>
-            );
-          })}
-        </code>
-      </div>
-    </div>
-  );
-}

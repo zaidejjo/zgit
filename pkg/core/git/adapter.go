@@ -119,6 +119,7 @@ type GitAdapter interface {
 	Reset(ctx context.Context, files ...string) error
 	Restore(ctx context.Context, files ...string) error
 	RestoreStaged(ctx context.Context, files ...string) error
+	ApplyPatch(ctx context.Context, patch string, cached bool) error
 
 	// Committing
 	Commit(ctx context.Context, opts CommitOptions) error
