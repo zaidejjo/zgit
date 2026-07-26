@@ -70,7 +70,8 @@ type CommitOptions struct {
 	AllowEmpty bool
 	Amend      bool
 	Signoff    bool
-	Message    string
+	Message    string // subject line
+	Body       string // extended description (passed as separate -m)
 }
 
 // GitError wraps errors from native git execution.

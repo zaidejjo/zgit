@@ -1,10 +1,11 @@
-import { createRouter, createRootRoute, createRoute } from "@tanstack/react-router";
+import { createRouter, createRootRoute, createRoute, createHashHistory } from "@tanstack/react-router";
 import AppLayout from "./AppLayout";
 import StatusPage from "./pages/StatusPage";
 import LogPage from "./pages/LogPage";
 import BranchesPage from "./pages/BranchesPage";
 import PullRequestsPage from "./pages/PullRequestsPage";
 import IssuesPage from "./pages/IssuesPage";
+import ActionsPage from "./pages/ActionsPage";
 
 const rootRoute = createRootRoute({
   component: AppLayout,
@@ -40,14 +41,24 @@ const issuesRoute = createRoute({
   component: IssuesPage,
 });
 
+const actionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/actions",
+  component: ActionsPage,
+});
+
 const routeTree = rootRoute.addChildren([
   statusRoute,
   logRoute,
   branchesRoute,
   pullRequestsRoute,
   issuesRoute,
+  actionsRoute,
 ]);
 
-const router = createRouter({ routeTree });
+// Use hash history — works in all URL schemes (file://, wails://, etc.)
+const history = createHashHistory();
+
+const router = createRouter({ routeTree, history });
 
 export default router;

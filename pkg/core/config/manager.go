@@ -13,9 +13,10 @@ const configFileName = "config.yaml"
 
 // Config holds all zgit configuration values.
 type Config struct {
-	GitHub GitHubConfig `mapstructure:"github"`
-	Repo   RepoConfig   `mapstructure:"repo"`
-	Theme  string       `mapstructure:"theme"`
+	GitHub      GitHubConfig `mapstructure:"github"`
+	Repo        RepoConfig   `mapstructure:"repo"`
+	RecentRepos []string     `mapstructure:"recent_repos"`
+	Theme       string       `mapstructure:"theme"`
 }
 
 // GitHubConfig stores GitHub authentication and preferences.
@@ -100,6 +101,35 @@ func (m *Manager) Set(key string, value interface{}) {
 // GetString returns a string config value.
 func (m *Manager) GetString(key string) string {
 	return m.v.GetString(key)
+}
+
+// GetRecentRepos returns the list of recently opened repositories.
+func (m *Manager) GetRecentRepos() []string {
+	return m.v.GetStringSlice("recent_repos")
+}
+
+// AddRecentRepo adds a path to the recent repos list (max 20, deduped).
+func (m *Manager) AddRecentRepo(path string) {
+	repos := m.GetRecentRepos()
+	// Remove existing entry (dedupe)
+	filtered := make([]string, 0, len(repos))
+	for _, r := range repos {
+		if r != path {
+			filtered = append(filtered, r)
+		}
+	}
+	// Prepend
+	filtered = append([]string{path}, filtered...)
+	// Trim to 20
+	if len(filtered) > 20 {
+		filtered = filtered[:20]
+	}
+	m.v.Set("recent_repos", filtered)
+}
+
+// ClearRecentRepos removes all recent repos.
+func (m *Manager) ClearRecentRepos() {
+	m.v.Set("recent_repos", []string{})
 }
 
 // ConfigPath returns the config directory path.

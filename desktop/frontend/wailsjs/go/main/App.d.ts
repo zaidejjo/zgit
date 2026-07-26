@@ -5,15 +5,21 @@ import {embed} from '../models';
 
 export function AuthenticateGitHub(arg1:string):Promise<void>;
 
+export function CancelWorkflowRun(arg1:number):Promise<void>;
+
 export function CheckoutBranch(arg1:string):Promise<void>;
 
-export function Commit(arg1:string):Promise<string>;
+export function Commit(arg1:string,arg2:string):Promise<string>;
 
 export function CreateBranch(arg1:string):Promise<void>;
 
 export function CurrentBranch():Promise<string>;
 
 export function DeleteBranch(arg1:string,arg2:boolean):Promise<void>;
+
+export function DiscardAllFiles():Promise<void>;
+
+export function DiscardFile(arg1:string):Promise<void>;
 
 export function GetBranches():Promise<Array<models.Branch>>;
 
@@ -31,17 +37,59 @@ export function GetLog(arg1:number):Promise<Array<models.Commit>>;
 
 export function GetPullRequests():Promise<Array<models.PullRequestSummary>>;
 
+export function GetRepoName():Promise<string>;
+
+export function GetRepoPath():Promise<string>;
+
 export function GetRepository():Promise<models.Repo>;
 
 export function GetStatus():Promise<models.Status>;
 
+export function GetWorkflowJobLogs(arg1:number):Promise<string>;
+
+export function GitFetch():Promise<void>;
+
+export function GitPull(arg1:boolean):Promise<void>;
+
+export function GitPush():Promise<void>;
+
+export function GitPushForce():Promise<void>;
+
 export function IsGitHubAuthenticated():Promise<boolean>;
+
+export function ListRecentRepos():Promise<Array<string>>;
+
+export function ListWorkflowJobs(arg1:number):Promise<Array<models.Job>>;
+
+export function ListWorkflowRuns():Promise<Array<models.WorkflowRun>>;
+
+export function OpenRepo(arg1:string):Promise<void>;
+
+export function PickDirectory():Promise<string>;
+
+export function PollDeviceFlow(arg1:string):Promise<string>;
+
+export function ReRunWorkflow(arg1:number):Promise<void>;
+
+export function ResolveGitRoot(arg1:string):Promise<string>;
 
 export function Run(arg1:embed.FS):Promise<void>;
 
 export function StageAll():Promise<void>;
 
 export function StageFile(arg1:string):Promise<void>;
+
+export function StartDeviceFlow():Promise<models.DeviceFlowCode>;
+
+export function StashApply(arg1:number):Promise<void>;
+
+export function StashDrop(arg1:number):Promise<void>;
+
+export function StashList():Promise<Array<models.Stash>>;
+
+export function StashPop(arg1:number):Promise<void>;
+
+export function StashPush(arg1:string):Promise<void>;
 
 export function UnstageAll():Promise<void>;
 

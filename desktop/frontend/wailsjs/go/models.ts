@@ -86,6 +86,24 @@ export namespace models {
 		    return a;
 		}
 	}
+	export class DeviceFlowCode {
+	    device_code: string;
+	    user_code: string;
+	    verification_uri: string;
+	    interval: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DeviceFlowCode(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.device_code = source["device_code"];
+	        this.user_code = source["user_code"];
+	        this.verification_uri = source["verification_uri"];
+	        this.interval = source["interval"];
+	    }
+	}
 	export class FileChange {
 	    type: number;
 	    old_path?: string;
@@ -234,6 +252,70 @@ export namespace models {
 		    return a;
 		}
 	}
+	export class Step {
+	    name: string;
+	    status: string;
+	    conclusion?: string;
+	    number: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Step(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.status = source["status"];
+	        this.conclusion = source["conclusion"];
+	        this.number = source["number"];
+	    }
+	}
+	export class Job {
+	    id: number;
+	    name: string;
+	    status: string;
+	    conclusion?: string;
+	    // Go type: time
+	    started_at: any;
+	    // Go type: time
+	    completed_at?: any;
+	    runner_name?: string;
+	    steps?: Step[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Job(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.status = source["status"];
+	        this.conclusion = source["conclusion"];
+	        this.started_at = this.convertValues(source["started_at"], null);
+	        this.completed_at = this.convertValues(source["completed_at"], null);
+	        this.runner_name = source["runner_name"];
+	        this.steps = this.convertValues(source["steps"], Step);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 	export class PullRequestSummary {
 	    number: number;
@@ -355,6 +437,43 @@ export namespace models {
 		    return a;
 		}
 	}
+	export class Stash {
+	    index: number;
+	    message: string;
+	    hash: string;
+	    // Go type: time
+	    time: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Stash(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.index = source["index"];
+	        this.message = source["message"];
+	        this.hash = source["hash"];
+	        this.time = this.convertValues(source["time"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Status {
 	    branch: string;
 	    upstream?: string;
@@ -411,6 +530,7 @@ export namespace models {
 		    return a;
 		}
 	}
+	
 	export class User {
 	    login: string;
 	    name?: string;
@@ -440,6 +560,58 @@ export namespace models {
 	        this.following = source["following"];
 	        this.public_repos = source["public_repos"];
 	    }
+	}
+	export class WorkflowRun {
+	    id: number;
+	    workflow_name: string;
+	    event: string;
+	    status: string;
+	    conclusion?: string;
+	    branch: string;
+	    head_sha: string;
+	    run_number: number;
+	    // Go type: time
+	    created_at: any;
+	    // Go type: time
+	    updated_at: any;
+	    html_url: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkflowRun(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.workflow_name = source["workflow_name"];
+	        this.event = source["event"];
+	        this.status = source["status"];
+	        this.conclusion = source["conclusion"];
+	        this.branch = source["branch"];
+	        this.head_sha = source["head_sha"];
+	        this.run_number = source["run_number"];
+	        this.created_at = this.convertValues(source["created_at"], null);
+	        this.updated_at = this.convertValues(source["updated_at"], null);
+	        this.html_url = source["html_url"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

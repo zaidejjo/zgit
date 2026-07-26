@@ -94,6 +94,7 @@ type GitHubClient interface {
 	ReRunWorkflow(ctx context.Context, owner, repo string, runID int64) error
 	CancelWorkflowRun(ctx context.Context, owner, repo string, runID int64) error
 	ListWorkflowJobs(ctx context.Context, owner, repo string, runID int64) ([]*models.Job, error)
+	GetWorkflowJobLogs(ctx context.Context, owner, repo string, jobID int64) (string, error)
 
 	// Composite queries (GraphQL)
 	GetDashboard(ctx context.Context) (*models.Dashboard, error)

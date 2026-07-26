@@ -4,11 +4,19 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/zaidejjo/zgit/pkg/core"
 	"github.com/zaidejjo/zgit/pkg/core/git"
 	"github.com/zaidejjo/zgit/pkg/core/github"
@@ -18,8 +26,11 @@ import (
 // App is the main application struct for Wails.
 // Its exported methods are automatically exposed to the frontend as Go bindings.
 type App struct {
-	engine *core.Engine
-	ctx    context.Context
+	engine      *core.Engine
+	ctx         context.Context
+	watcher     *fsnotify.Watcher
+	watcherMu   sync.Mutex
+	watcherDone chan struct{}
 }
 
 // NewApp creates a new App with the given engine.
@@ -49,6 +60,126 @@ func (a *App) Run(assets embed.FS) error {
 // startup is called by Wails when the app starts.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.restartFileWatcher()
+}
+
+// getGitDir uses git rev-parse to locate the actual .git directory.
+// Handles worktrees (where .git is a file) and submodules correctly.
+func (a *App) getGitDir() string {
+	repoPath := a.engine.Git.Path()
+	if repoPath == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 5e9)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "rev-parse", "--git-dir")
+	out, err := cmd.Output()
+	if err != nil {
+		log.Printf("fsnotify: git rev-parse --git-dir failed: %v", err)
+		return ""
+	}
+	dir := strings.TrimSpace(string(out))
+	// If relative, make absolute
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(repoPath, dir)
+	}
+	return dir
+}
+
+// stopFileWatcher stops the current file watcher if running.
+func (a *App) stopFileWatcher() {
+	a.watcherMu.Lock()
+	defer a.watcherMu.Unlock()
+	if a.watcher != nil {
+		a.watcher.Close()
+		a.watcher = nil
+	}
+	if a.watcherDone != nil {
+		close(a.watcherDone)
+		a.watcherDone = nil
+	}
+}
+
+// restartFileWatcher stops any existing watcher and starts a new one.
+func (a *App) restartFileWatcher() {
+	a.stopFileWatcher()
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Printf("fsnotify: create watcher: %v", err)
+		return
+	}
+
+	repoPath := a.engine.Git.Path()
+	if repoPath == "" {
+		log.Println("fsnotify: no repo path, watcher disabled")
+		watcher.Close()
+		return
+	}
+
+	// Watch the working tree root
+	if err := watcher.Add(repoPath); err != nil {
+		log.Printf("fsnotify: watch repo %s: %v", repoPath, err)
+		watcher.Close()
+		return
+	}
+
+	// Watch the actual .git directory (handles worktrees)
+	gitDir := a.getGitDir()
+	if gitDir != "" && gitDir != repoPath {
+		if err := watcher.Add(gitDir); err != nil {
+			log.Printf("fsnotify: note: cannot watch %s: %v", gitDir, err)
+		}
+	}
+
+	a.watcherMu.Lock()
+	a.watcher = watcher
+	done := make(chan struct{})
+	a.watcherDone = done
+	a.watcherMu.Unlock()
+
+	// Debounce: coalesce rapid changes into one event
+	var lastEvent time.Time
+	const debounceInterval = 500 * time.Millisecond
+
+	go func() {
+		defer watcher.Close()
+		for {
+			select {
+			case <-done:
+				return
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				if isIgnoredFile(event.Name) {
+					continue
+				}
+				now := time.Now()
+				if now.Sub(lastEvent) < debounceInterval {
+					continue
+				}
+				lastEvent = now
+				runtime.EventsEmit(a.ctx, "fs:status-changed", event.Name)
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Printf("fsnotify: error: %v", err)
+			}
+		}
+	}()
+}
+
+// isIgnoredFile returns true for paths that should not trigger a refresh.
+func isIgnoredFile(path string) bool {
+	ignoredSuffixes := []string{".git/index.lock", ".git/HEAD.lock", ".git/refs/", ".git/objects/", ".git/logs/", "~", ".swp", ".swx"}
+	for _, suffix := range ignoredSuffixes {
+		if len(path) >= len(suffix) && path[len(path)-len(suffix):] == suffix {
+			return true
+		}
+	}
+	return false
 }
 
 // getContext returns the Wails context if available, falling back to Background().
@@ -131,11 +262,11 @@ func (a *App) UnstageAll() error {
 	return a.engine.Git.Reset(ctx)
 }
 
-// Commit creates a new commit.
-func (a *App) Commit(message string) (string, error) {
+// Commit creates a new commit with optional body.
+func (a *App) Commit(message string, body string) (string, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
 	defer cancel()
-	opts := git.CommitOptions{Message: message}
+	opts := git.CommitOptions{Message: message, Body: body}
 	if err := a.engine.Git.Commit(ctx, opts); err != nil {
 		return "", err
 	}
@@ -145,6 +276,93 @@ func (a *App) Commit(message string) (string, error) {
 		return "", nil
 	}
 	return commits[0].Hash, nil
+}
+
+// GitPush pushes the current branch to origin.
+func (a *App) GitPush() error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+	opts := git.PushOptions{
+		Remote:      "origin",
+		SetUpstream: true,
+	}
+	return a.engine.Git.Push(ctx, opts)
+}
+
+// GitPushForce pushes the current branch with --force.
+func (a *App) GitPushForce() error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+	opts := git.PushOptions{
+		Remote:      "origin",
+		SetUpstream: true,
+		Force:       true,
+	}
+	return a.engine.Git.Push(ctx, opts)
+}
+
+// GitFetch fetches from the default remote.
+func (a *App) GitFetch() error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+	return a.engine.Git.Fetch(ctx, "", true)
+}
+
+// GitPull pulls latest changes (with optional rebase).
+func (a *App) GitPull(rebase bool) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+	opts := git.PullOptions{Rebase: rebase}
+	return a.engine.Git.Pull(ctx, opts)
+}
+
+// StashList returns all stashed entries.
+func (a *App) StashList() ([]*models.Stash, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.StashList(ctx)
+}
+
+// StashPush creates a new stash with an optional message.
+func (a *App) StashPush(message string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.StashPush(ctx, git.StashOptions{}, message)
+}
+
+// StashPop pops (applies + drops) the stash at the given index.
+func (a *App) StashPop(index int) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.StashPop(ctx, index)
+}
+
+// StashApply applies the stash at the given index without dropping it.
+func (a *App) StashApply(index int) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.StashApply(ctx, index)
+}
+
+// StashDrop drops the stash at the given index.
+func (a *App) StashDrop(index int) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.StashDrop(ctx, index)
+}
+
+// DiscardFile discards unstaged changes in the given file (git restore).
+func (a *App) DiscardFile(file string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.Restore(ctx, file)
+}
+
+// DiscardAllFiles discards all unstaged changes in the working tree.
+func (a *App) DiscardAllFiles() error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.Restore(ctx, ".")
 }
 
 // CheckoutBranch checks out a branch.
@@ -323,9 +541,190 @@ func (a *App) GetRepository() (*models.Repo, error) {
 func (a *App) GetCurrentRepoPath() string {
 	repo := a.engine.CurrentRepo()
 	if repo != nil {
-		return repo.FullName
+		return repo.Path
 	}
 	return ""
+}
+
+// GetRepoPath returns the filesystem path of the current repository.
+func (a *App) GetRepoPath() string {
+	return a.engine.Git.Path()
+}
+
+// ResolveGitRoot detects the nearest git repository root from the given path.
+// Checks the path itself first, then searches parent directories (up to 5 levels).
+// Returns the resolved git working tree root path.
+func (a *App) ResolveGitRoot(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("empty path")
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve absolute path: %w", err)
+	}
+
+	// Check path and up to 5 parent directories for a .git entry
+	dir := absPath
+	for i := 0; i < 6; i++ {
+		gitPath := filepath.Join(dir, ".git")
+		if fi, statErr := os.Stat(gitPath); statErr == nil {
+			// .git exists — this is a git repo
+			_ = fi // .git can be dir (normal) or file (worktree)
+			return dir, nil
+		}
+		// Try git rev-parse as fallback (handles worktrees, submodules)
+		ctx, cancel := context.WithTimeout(a.getContext(), 3e9)
+		cmd := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--show-toplevel")
+		out, runErr := cmd.Output()
+		cancel()
+		if runErr == nil {
+			root := strings.TrimSpace(string(out))
+			return root, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break // reached filesystem root
+		}
+		dir = parent
+	}
+	return "", fmt.Errorf("no git repository found in or above %s", absPath)
+}
+
+// OpenRepo opens a new repository at the given path.
+// It resolves the git root, opens the repo, saves to recent list,
+// restarts the file watcher, and emits a repo:switched event to the frontend.
+func (a *App) OpenRepo(path string) error {
+	resolved, err := a.ResolveGitRoot(path)
+	if err != nil {
+		return err
+	}
+	if err := a.engine.OpenRepo(resolved); err != nil {
+		return fmt.Errorf("open repo: %w", err)
+	}
+	// Save to recent repos
+	a.engine.Config.AddRecentRepo(resolved)
+	if err := a.engine.Config.Save(); err != nil {
+		log.Printf("warning: save config after AddRecentRepo: %v", err)
+	}
+	// Restart file watcher for the new repo
+	a.restartFileWatcher()
+	// Notify frontend
+	if a.ctx != nil {
+		runtime.EventsEmit(a.ctx, "repo:switched", resolved)
+	}
+	return nil
+}
+
+// ListRecentRepos returns recently opened repository paths.
+func (a *App) ListRecentRepos() []string {
+	return a.engine.Config.GetRecentRepos()
+}
+
+// PickDirectory opens a native directory picker dialog and returns the selected path.
+// Returns empty string if the user cancelled.
+func (a *App) PickDirectory() (string, error) {
+	if a.ctx == nil {
+		return "", fmt.Errorf("app context not ready")
+	}
+	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Git Repository",
+	})
+	if err != nil {
+		return "", fmt.Errorf("directory picker: %w", err)
+	}
+	return dir, nil
+}
+
+// GetRepoName returns a human-readable name for the current repo.
+func (a *App) GetRepoName() string {
+	path := a.engine.Git.Path()
+	if path == "" {
+		return ""
+	}
+	return filepath.Base(path)
+}
+
+// --- Workflow / CI operations ---
+
+// ListWorkflowRuns returns recent workflow runs.
+func (a *App) ListWorkflowRuns() ([]*models.WorkflowRun, error) {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return []*models.WorkflowRun{}, nil
+	}
+	owner, repo, err := a.guessRepo()
+	if err != nil {
+		return []*models.WorkflowRun{}, nil
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	runs, err := gh.ListWorkflowRuns(ctx, owner, repo, github.RunsFilter{
+		Limit: 30,
+	})
+	if err != nil {
+		return []*models.WorkflowRun{}, nil
+	}
+	return runs, nil
+}
+
+// ReRunWorkflow re-runs a workflow run.
+func (a *App) ReRunWorkflow(runID int64) error {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return err
+	}
+	owner, repo, err := a.guessRepo()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return gh.ReRunWorkflow(ctx, owner, repo, runID)
+}
+
+// CancelWorkflowRun cancels a workflow run.
+func (a *App) CancelWorkflowRun(runID int64) error {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return err
+	}
+	owner, repo, err := a.guessRepo()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return gh.CancelWorkflowRun(ctx, owner, repo, runID)
+}
+
+// ListWorkflowJobs returns jobs for a workflow run.
+func (a *App) ListWorkflowJobs(runID int64) ([]*models.Job, error) {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return []*models.Job{}, nil
+	}
+	owner, repo, err := a.guessRepo()
+	if err != nil {
+		return []*models.Job{}, nil
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return gh.ListWorkflowJobs(ctx, owner, repo, runID)
+}
+
+// GetWorkflowJobLogs returns the logs for a specific job.
+func (a *App) GetWorkflowJobLogs(jobID int64) (string, error) {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return "", err
+	}
+	owner, repo, err := a.guessRepo()
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
+	defer cancel()
+	return gh.GetWorkflowJobLogs(ctx, owner, repo, jobID)
 }
 
 // guessRepo extracts owner/repo from git remotes.

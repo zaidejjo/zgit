@@ -139,6 +139,10 @@ func (c *CombinedClient) ListWorkflowJobs(ctx context.Context, owner, repo strin
 	return c.rest.ListWorkflowJobs(ctx, owner, repo, runID)
 }
 
+func (c *CombinedClient) GetWorkflowJobLogs(ctx context.Context, owner, repo string, jobID int64) (string, error) {
+	return c.rest.GetWorkflowJobLogs(ctx, owner, repo, jobID)
+}
+
 // --- Composite (GraphQL) ---
 
 func (c *CombinedClient) GetDashboard(ctx context.Context) (*models.Dashboard, error) {

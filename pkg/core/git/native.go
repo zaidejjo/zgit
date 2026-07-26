@@ -434,6 +434,9 @@ func (n *NativeExec) Commit(ctx context.Context, opts CommitOptions) error {
 	}
 	if opts.Message != "" {
 		args = append(args, "-m", opts.Message)
+		if opts.Body != "" {
+			args = append(args, "-m", opts.Body)
+		}
 	}
 	_, err := n.run(ctx, args...)
 	return err

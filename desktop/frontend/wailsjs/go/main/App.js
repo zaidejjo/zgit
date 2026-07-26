@@ -6,12 +6,16 @@ export function AuthenticateGitHub(arg1) {
   return window['go']['main']['App']['AuthenticateGitHub'](arg1);
 }
 
+export function CancelWorkflowRun(arg1) {
+  return window['go']['main']['App']['CancelWorkflowRun'](arg1);
+}
+
 export function CheckoutBranch(arg1) {
   return window['go']['main']['App']['CheckoutBranch'](arg1);
 }
 
-export function Commit(arg1) {
-  return window['go']['main']['App']['Commit'](arg1);
+export function Commit(arg1, arg2) {
+  return window['go']['main']['App']['Commit'](arg1, arg2);
 }
 
 export function CreateBranch(arg1) {
@@ -24,6 +28,14 @@ export function CurrentBranch() {
 
 export function DeleteBranch(arg1, arg2) {
   return window['go']['main']['App']['DeleteBranch'](arg1, arg2);
+}
+
+export function DiscardAllFiles() {
+  return window['go']['main']['App']['DiscardAllFiles']();
+}
+
+export function DiscardFile(arg1) {
+  return window['go']['main']['App']['DiscardFile'](arg1);
 }
 
 export function GetBranches() {
@@ -58,6 +70,14 @@ export function GetPullRequests() {
   return window['go']['main']['App']['GetPullRequests']();
 }
 
+export function GetRepoName() {
+  return window['go']['main']['App']['GetRepoName']();
+}
+
+export function GetRepoPath() {
+  return window['go']['main']['App']['GetRepoPath']();
+}
+
 export function GetRepository() {
   return window['go']['main']['App']['GetRepository']();
 }
@@ -66,8 +86,60 @@ export function GetStatus() {
   return window['go']['main']['App']['GetStatus']();
 }
 
+export function GetWorkflowJobLogs(arg1) {
+  return window['go']['main']['App']['GetWorkflowJobLogs'](arg1);
+}
+
+export function GitFetch() {
+  return window['go']['main']['App']['GitFetch']();
+}
+
+export function GitPull(arg1) {
+  return window['go']['main']['App']['GitPull'](arg1);
+}
+
+export function GitPush() {
+  return window['go']['main']['App']['GitPush']();
+}
+
+export function GitPushForce() {
+  return window['go']['main']['App']['GitPushForce']();
+}
+
 export function IsGitHubAuthenticated() {
   return window['go']['main']['App']['IsGitHubAuthenticated']();
+}
+
+export function ListRecentRepos() {
+  return window['go']['main']['App']['ListRecentRepos']();
+}
+
+export function ListWorkflowJobs(arg1) {
+  return window['go']['main']['App']['ListWorkflowJobs'](arg1);
+}
+
+export function ListWorkflowRuns() {
+  return window['go']['main']['App']['ListWorkflowRuns']();
+}
+
+export function OpenRepo(arg1) {
+  return window['go']['main']['App']['OpenRepo'](arg1);
+}
+
+export function PickDirectory() {
+  return window['go']['main']['App']['PickDirectory']();
+}
+
+export function PollDeviceFlow(arg1) {
+  return window['go']['main']['App']['PollDeviceFlow'](arg1);
+}
+
+export function ReRunWorkflow(arg1) {
+  return window['go']['main']['App']['ReRunWorkflow'](arg1);
+}
+
+export function ResolveGitRoot(arg1) {
+  return window['go']['main']['App']['ResolveGitRoot'](arg1);
 }
 
 export function Run(arg1) {
@@ -80,6 +152,30 @@ export function StageAll() {
 
 export function StageFile(arg1) {
   return window['go']['main']['App']['StageFile'](arg1);
+}
+
+export function StartDeviceFlow() {
+  return window['go']['main']['App']['StartDeviceFlow']();
+}
+
+export function StashApply(arg1) {
+  return window['go']['main']['App']['StashApply'](arg1);
+}
+
+export function StashDrop(arg1) {
+  return window['go']['main']['App']['StashDrop'](arg1);
+}
+
+export function StashList() {
+  return window['go']['main']['App']['StashList']();
+}
+
+export function StashPop(arg1) {
+  return window['go']['main']['App']['StashPop'](arg1);
+}
+
+export function StashPush(arg1) {
+  return window['go']['main']['App']['StashPush'](arg1);
 }
 
 export function UnstageAll() {

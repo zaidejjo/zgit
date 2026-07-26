@@ -131,6 +131,45 @@ export interface DeviceFlowCode {
   interval: number;
 }
 
+export interface Step {
+  name: string;
+  status: string;
+  conclusion?: string;
+  number: number;
+}
+
+export interface Job {
+  id: number;
+  name: string;
+  status: string;
+  conclusion?: string;
+  started_at: string;
+  completed_at?: string;
+  runner_name?: string;
+  steps?: Step[];
+}
+
+export interface WorkflowRun {
+  id: number;
+  workflow_name: string;
+  event: string;
+  status: string;
+  conclusion?: string;
+  branch: string;
+  head_sha: string;
+  run_number: number;
+  created_at: string;
+  updated_at: string;
+  html_url: string;
+}
+
+export interface StashEntry {
+  index: number;
+  hash: string;
+  message: string;
+  time: string; // ISO timestamp from Go time.Time
+}
+
 // Wails runtime injects window.go.main.App during dev/build.
 // The generated wrappers at wailsjs/go/main/App.js call the same runtime.
 declare global {
@@ -146,7 +185,7 @@ declare global {
           UnstageFile(file: string): Promise<void>;
           StageAll(): Promise<void>;
           UnstageAll(): Promise<void>;
-          Commit(message: string): Promise<string>;
+          Commit(message: string, body: string): Promise<string>;
           CheckoutBranch(name: string): Promise<void>;
           CreateBranch(name: string): Promise<void>;
           DeleteBranch(name: string, force: boolean): Promise<void>;
@@ -160,6 +199,32 @@ declare global {
           AuthenticateGitHub(token: string): Promise<void>;
           StartDeviceFlow(): Promise<DeviceFlowCode>;
           PollDeviceFlow(deviceCode: string): Promise<string>;
+          GitPush(): Promise<void>;
+          GetRepoPath(): Promise<string>;
+          ListWorkflowRuns(): Promise<WorkflowRun[]>;
+          ReRunWorkflow(runID: number): Promise<void>;
+          CancelWorkflowRun(runID: number): Promise<void>;
+          ListWorkflowJobs(runID: number): Promise<Job[]>;
+          GetWorkflowJobLogs(jobID: number): Promise<string>;
+          // Repo management
+          OpenRepo(path: string): Promise<void>;
+          ResolveGitRoot(path: string): Promise<string>;
+          ListRecentRepos(): Promise<string[]>;
+          PickDirectory(): Promise<string>;
+          GetRepoName(): Promise<string>;
+          // Sprint 6: Fetch / Pull / Push force
+          GitFetch(): Promise<void>;
+          GitPull(rebase: boolean): Promise<void>;
+          GitPushForce(): Promise<void>;
+          // Sprint 6: Stash
+          StashList(): Promise<StashEntry[]>;
+          StashPush(message: string): Promise<void>;
+          StashPop(index: number): Promise<void>;
+          StashApply(index: number): Promise<void>;
+          StashDrop(index: number): Promise<void>;
+          // Sprint 6: Discard
+          DiscardFile(file: string): Promise<void>;
+          DiscardAllFiles(): Promise<void>;
         };
       };
     };
@@ -182,6 +247,14 @@ interface AppState {
   pullRequests: PRSummary[];
   issues: Issue[];
   repository: Repo | null;
+  workflowRuns: WorkflowRun[];
+  selectedRunJobs: Job[];
+  selectedJobLogs: string;
+  stashes: StashEntry[];
+
+  // Repo management
+  repoPath: string;
+  recentRepos: string[];
 
   // UI state
   loading: Record<string, boolean>;
@@ -201,7 +274,9 @@ interface AppState {
   unstageFile: (file: string) => Promise<void>;
   stageAll: () => Promise<void>;
   unstageAll: () => Promise<void>;
-  commit: (message: string) => Promise<string | null>;
+  commit: (message: string, body?: string) => Promise<string | null>;
+  gitPush: () => Promise<void>;
+  commitAndPush: (message: string, body?: string) => Promise<string | null>;
   checkoutBranch: (name: string) => Promise<void>;
   createBranch: (name: string) => Promise<void>;
   deleteBranch: (name: string, force?: boolean) => Promise<void>;
@@ -210,11 +285,39 @@ interface AppState {
   fetchRepository: () => Promise<void>;
   checkGitHubAuth: () => Promise<void>;
   authenticateGitHub: (token: string) => Promise<boolean>;
+  fetchWorkflowRuns: () => Promise<void>;
+  reRunWorkflow: (runID: number) => Promise<void>;
+  cancelWorkflowRun: (runID: number) => Promise<void>;
+  fetchWorkflowJobs: (runID: number) => Promise<void>;
+  fetchJobLogs: (jobID: number) => Promise<void>;
+  clearJobLogs: () => void;
   startDeviceFlow: () => Promise<DeviceFlowCode | null>;
   pollDeviceFlow: (deviceCode: string) => Promise<string>;
   setLoginDialogOpen: (open: boolean) => void;
   setError: (err: string | null) => void;
   clearDiff: () => void;
+
+  // Repo management
+  fetchRecentRepos: () => Promise<void>;
+  openRepo: (path: string) => Promise<string | null>;
+  selectAndOpenRepo: () => Promise<string | null>;
+  refreshAll: () => Promise<void>;
+
+  // Sprint 6: Git sync
+  gitFetch: () => Promise<void>;
+  gitPull: (rebase?: boolean) => Promise<void>;
+  gitPushForce: () => Promise<void>;
+
+  // Sprint 6: Stash
+  fetchStashes: () => Promise<void>;
+  stashPush: (message?: string) => Promise<void>;
+  stashPop: (index: number) => Promise<void>;
+  stashApply: (index: number) => Promise<void>;
+  stashDrop: (index: number) => Promise<void>;
+
+  // Sprint 6: Discard
+  discardFile: (file: string) => Promise<void>;
+  discardAllFiles: () => Promise<void>;
 }
 
 const app = window as any;
@@ -237,6 +340,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   pullRequests: [],
   issues: [],
   repository: null,
+  workflowRuns: [],
+  selectedRunJobs: [],
+  selectedJobLogs: "",
+  stashes: [],
+  repoPath: "",
+  recentRepos: [],
   loading: {},
   error: null,
   activeTab: "status",
@@ -346,11 +455,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  commit: async (message) => {
+  commit: async (message, body) => {
     const backend = getBackend();
     if (!backend) return null;
     try {
-      const hash = await backend.Commit(message);
+      const hash = await backend.Commit(message, body || "");
       await get().fetchStatus();
       await get().fetchLog();
       return hash;
@@ -358,6 +467,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ error: e.message || "Failed to commit" });
       return null;
     }
+  },
+
+  gitPush: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.GitPush();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to push" });
+    }
+  },
+
+  commitAndPush: async (message, body) => {
+    const hash = await get().commit(message, body);
+    if (hash) {
+      await get().gitPush();
+    }
+    return hash;
   },
 
   checkoutBranch: async (name) => {
@@ -494,8 +621,257 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  fetchWorkflowRuns: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, workflowRuns: true } }));
+    try {
+      const runs = (await backend.ListWorkflowRuns()) || [];
+      set({ workflowRuns: runs, loading: { ...get().loading, workflowRuns: false } });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch workflow runs", loading: { ...get().loading, workflowRuns: false } });
+    }
+  },
+
+  reRunWorkflow: async (runID) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.ReRunWorkflow(runID);
+      get().fetchWorkflowRuns();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to re-run workflow" });
+    }
+  },
+
+  cancelWorkflowRun: async (runID) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.CancelWorkflowRun(runID);
+      get().fetchWorkflowRuns();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to cancel workflow" });
+    }
+  },
+
+  fetchWorkflowJobs: async (runID) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const jobs = (await backend.ListWorkflowJobs(runID)) || [];
+      set({ selectedRunJobs: jobs, selectedJobLogs: "" });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch jobs" });
+    }
+  },
+
+  fetchJobLogs: async (jobID) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const logs = (await backend.GetWorkflowJobLogs(jobID)) || "";
+      set({ selectedJobLogs: logs });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch job logs" });
+    }
+  },
+
+  clearJobLogs: () => set({ selectedRunJobs: [], selectedJobLogs: "" }),
+
   setLoginDialogOpen: (open) => set({ loginDialogOpen: open }),
 
   setError: (err) => set({ error: err }),
   clearDiff: () => set({ diff: null }),
+
+  // --- Repo management ---
+
+  fetchRecentRepos: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const repos = await backend.ListRecentRepos();
+      set({ recentRepos: repos || [] });
+      const path = await backend.GetRepoPath();
+      set({ repoPath: path || "" });
+    } catch (_) {
+      // Non-critical
+    }
+  },
+
+  openRepo: async (path) => {
+    const backend = getBackend();
+    if (!backend) return null;
+    set((s) => ({ loading: { ...s.loading, repo: true }, error: null }));
+    try {
+      await backend.OpenRepo(path);
+      const repoPath = await backend.GetRepoPath();
+      set({ repoPath, loading: { ...get().loading, repo: false } });
+      // Refresh all data
+      await get().refreshAll();
+      // Refresh recent list
+      get().fetchRecentRepos().catch(() => {});
+      return repoPath;
+    } catch (e: any) {
+      set({
+        error: e.message || "Failed to open repository",
+        loading: { ...get().loading, repo: false },
+      });
+      return null;
+    }
+  },
+
+  selectAndOpenRepo: async () => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      const dir = await backend.PickDirectory();
+      if (!dir) return null; // User cancelled
+      return await get().openRepo(dir);
+    } catch (e: any) {
+      set({ error: e.message || "Failed to pick directory" });
+      return null;
+    }
+  },
+
+  refreshAll: async () => {
+    const s = get();
+    await Promise.allSettled([
+      s.fetchStatus(),
+      s.fetchLog(),
+      s.fetchBranches(),
+      s.fetchPullRequests(),
+      s.fetchIssues(),
+      s.fetchWorkflowRuns(),
+      s.fetchStashes(),
+    ]);
+  },
+
+  // --- Sprint 6: Git sync ---
+
+  gitFetch: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, fetch: true }, error: null }));
+    try {
+      await backend.GitFetch();
+      await get().refreshAll();
+    } catch (e: any) {
+      set({ error: e.message || "Fetch failed", loading: { ...get().loading, fetch: false } });
+      return;
+    }
+    set((s) => ({ loading: { ...s.loading, fetch: false } }));
+  },
+
+  gitPull: async (rebase = false) => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, pull: true }, error: null }));
+    try {
+      await backend.GitPull(rebase);
+      await get().refreshAll();
+    } catch (e: any) {
+      set({ error: e.message || "Pull failed", loading: { ...get().loading, pull: false } });
+      return;
+    }
+    set((s) => ({ loading: { ...s.loading, pull: false } }));
+  },
+
+  gitPushForce: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, push: true }, error: null }));
+    try {
+      await backend.GitPushForce();
+    } catch (e: any) {
+      set({ error: e.message || "Force push failed" });
+    }
+    set((s) => ({ loading: { ...s.loading, push: false } }));
+  },
+
+  // --- Sprint 6: Stash ---
+
+  fetchStashes: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const list = await backend.StashList();
+      set({ stashes: list || [] });
+    } catch (_) {
+      // Non-critical
+    }
+  },
+
+  stashPush: async (message = "") => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.StashPush(message);
+      await get().fetchStashes();
+      await get().fetchStatus();
+    } catch (e: any) {
+      set({ error: e.message || "Stash failed" });
+    }
+  },
+
+  stashPop: async (index) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.StashPop(index);
+      await get().fetchStashes();
+      await get().fetchStatus();
+    } catch (e: any) {
+      set({ error: e.message || "Stash pop failed" });
+    }
+  },
+
+  stashApply: async (index) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.StashApply(index);
+      await get().fetchStashes();
+      await get().fetchStatus();
+    } catch (e: any) {
+      set({ error: e.message || "Stash apply failed" });
+    }
+  },
+
+  stashDrop: async (index) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.StashDrop(index);
+      await get().fetchStashes();
+    } catch (e: any) {
+      set({ error: e.message || "Stash drop failed" });
+    }
+  },
+
+  // --- Sprint 6: Discard ---
+
+  discardFile: async (file) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.DiscardFile(file);
+      await get().fetchStatus();
+      await get().refreshAll();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to discard ${file}` });
+    }
+  },
+
+  discardAllFiles: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.DiscardAllFiles();
+      await get().fetchStatus();
+      await get().refreshAll();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to discard all changes" });
+    }
+  },
 }));

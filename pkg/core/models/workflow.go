@@ -50,4 +50,13 @@ type Job struct {
 	StartedAt   time.Time `json:"started_at"`
 	CompletedAt time.Time `json:"completed_at,omitempty"`
 	RunnerName  string    `json:"runner_name,omitempty"`
+	Steps       []Step    `json:"steps,omitempty"`
+}
+
+// Step represents a single step within a job.
+type Step struct {
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion,omitempty"`
+	Number     int    `json:"number"`
 }

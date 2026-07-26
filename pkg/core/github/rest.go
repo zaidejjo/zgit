@@ -3,6 +3,8 @@ package github
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 
 	"github.com/google/go-github/v61/github"
@@ -377,6 +379,31 @@ func (c *RESTClient) CancelWorkflowRun(ctx context.Context, owner, repo string, 
 	return err
 }
 
+func (c *RESTClient) GetWorkflowJobLogs(ctx context.Context, owner, repo string, jobID int64) (string, error) {
+	url, resp, err := c.client.Actions.GetWorkflowJobLogs(ctx, owner, repo, jobID, 10) // 10MB max
+	if err != nil {
+		return "", fmt.Errorf("get job logs URL for job %d: %w", jobID, err)
+	}
+	defer resp.Body.Close()
+
+	// Fetch the log content from the redirect URL
+	logReq, err := http.NewRequestWithContext(ctx, "GET", url.String(), nil)
+	if err != nil {
+		return "", fmt.Errorf("create log request: %w", err)
+	}
+	logResp, err := http.DefaultClient.Do(logReq)
+	if err != nil {
+		return "", fmt.Errorf("fetch logs: %w", err)
+	}
+	defer logResp.Body.Close()
+
+	data, err := io.ReadAll(logResp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read logs: %w", err)
+	}
+	return string(data), nil
+}
+
 func (c *RESTClient) ListWorkflowJobs(ctx context.Context, owner, repo string, runID int64) ([]*models.Job, error) {
 	opt := &github.ListWorkflowJobsOptions{
 		ListOptions: github.ListOptions{PerPage: 50},
@@ -637,7 +664,7 @@ func convertJob(j *github.WorkflowJob) *models.Job {
 	if j == nil {
 		return nil
 	}
-	return &models.Job{
+	job := &models.Job{
 		ID:          j.GetID(),
 		Name:        j.GetName(),
 		Status:      j.GetStatus(),
@@ -646,6 +673,17 @@ func convertJob(j *github.WorkflowJob) *models.Job {
 		CompletedAt: j.GetCompletedAt().Time,
 		RunnerName:  j.GetRunnerName(),
 	}
+	if j.Steps != nil {
+		for _, s := range j.Steps {
+			job.Steps = append(job.Steps, models.Step{
+				Name:       s.GetName(),
+				Status:     s.GetStatus(),
+				Conclusion: s.GetConclusion(),
+				Number:     int(s.GetNumber()),
+			})
+		}
+	}
+	return job
 }
 
 // guessOwnerFromRemote extracts owner/repo from a remote URL.
