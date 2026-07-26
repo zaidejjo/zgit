@@ -6,6 +6,8 @@ import BranchesPage from "./pages/BranchesPage";
 import PullRequestsPage from "./pages/PullRequestsPage";
 import IssuesPage from "./pages/IssuesPage";
 import ActionsPage from "./pages/ActionsPage";
+import RemotesPage from "./pages/RemotesPage";
+import SettingsPage from "./pages/SettingsPage";
 
 const rootRoute = createRootRoute({
   component: AppLayout,
@@ -47,6 +49,18 @@ const actionsRoute = createRoute({
   component: ActionsPage,
 });
 
+const remotesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/remotes",
+  component: RemotesPage,
+});
+
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings",
+  component: SettingsPage,
+});
+
 const routeTree = rootRoute.addChildren([
   statusRoute,
   logRoute,
@@ -54,6 +68,8 @@ const routeTree = rootRoute.addChildren([
   pullRequestsRoute,
   issuesRoute,
   actionsRoute,
+  remotesRoute,
+  settingsRoute,
 ]);
 
 // Use hash history — works in all URL schemes (file://, wails://, etc.)

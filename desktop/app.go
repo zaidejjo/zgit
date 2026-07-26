@@ -324,6 +324,47 @@ func (a *App) GitPull(rebase bool) error {
 	return a.engine.Git.Pull(ctx, opts)
 }
 
+// GetRemotes returns the list of git remotes.
+func (a *App) GetRemotes() ([]*models.Remote, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.RemoteList(ctx)
+}
+
+// AddRemote adds a new remote.
+func (a *App) AddRemote(name, url string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.RemoteAdd(ctx, name, url)
+}
+
+// RemoveRemote removes a remote.
+func (a *App) RemoveRemote(name string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.RemoteRemove(ctx, name)
+}
+
+// GetAheadCommits returns commits ahead of the remote tracking branch.
+// Uses `git log origin/<branch>..HEAD` to list unpushed commits.
+func (a *App) GetAheadCommits() ([]*models.Commit, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	branch, err := a.engine.Git.CurrentBranch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	opts := git.LogOptions{
+		Count:  100,
+		Branch: fmt.Sprintf("origin/%s..HEAD", branch),
+	}
+	commits, err := a.engine.Git.Log(ctx, opts)
+	if err != nil {
+		return []*models.Commit{}, nil
+	}
+	return commits, nil
+}
+
 // StashList returns all stashed entries.
 func (a *App) StashList() ([]*models.Stash, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)

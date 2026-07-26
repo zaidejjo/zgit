@@ -3,6 +3,8 @@
 import {models} from '../models';
 import {embed} from '../models';
 
+export function AddRemote(arg1:string,arg2:string):Promise<void>;
+
 export function AuthenticateGitHub(arg1:string):Promise<void>;
 
 export function CancelWorkflowRun(arg1:number):Promise<void>;
@@ -27,6 +29,8 @@ export function DiscardAllFiles():Promise<void>;
 
 export function DiscardFile(arg1:string):Promise<void>;
 
+export function GetAheadCommits():Promise<Array<models.Commit>>;
+
 export function GetBranches():Promise<Array<models.Branch>>;
 
 export function GetCurrentRepoPath():Promise<string>;
@@ -46,6 +50,8 @@ export function GetLog(arg1:number):Promise<Array<models.Commit>>;
 export function GetPullRequestDetail(arg1:number):Promise<models.PullRequestDetail>;
 
 export function GetPullRequests():Promise<Array<models.PullRequestSummary>>;
+
+export function GetRemotes():Promise<Array<models.Remote>>;
 
 export function GetRepoName():Promise<string>;
 
@@ -86,6 +92,8 @@ export function PickDirectory():Promise<string>;
 export function PollDeviceFlow(arg1:string):Promise<string>;
 
 export function ReRunWorkflow(arg1:number):Promise<void>;
+
+export function RemoveRemote(arg1:string):Promise<void>;
 
 export function ResolveGitRoot(arg1:string):Promise<string>;
 

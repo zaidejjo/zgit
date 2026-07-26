@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { Outlet, useNavigate, useLocation } from "@tanstack/react-router";
 import {
   GitCommitHorizontal, History, GitBranch, GitPullRequest,
-  CircleDot, Play, FolderOpen, Folder, Sun, Moon, X,
+  CircleDot, Play, Globe, Settings, FolderOpen, Folder, Sun, Moon, X,
 } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import LoginDialog from "@/components/LoginDialog";
+import PushConfirmDialog from "@/components/PushConfirmDialog";
 import { EventsOn } from "../wailsjs/runtime";
 
 const tabs = [
@@ -17,6 +18,8 @@ const tabs = [
   { id: "pull-requests", label: "PRs", Icon: GitPullRequest },
   { id: "issues",   label: "Issues",   Icon: CircleDot },
   { id: "actions",  label: "Actions",  Icon: Play },
+  { id: "remotes",  label: "Remotes",  Icon: Globe },
+  { id: "settings", label: "Settings", Icon: Settings },
 ] as const;
 
 export default function AppLayout() {
@@ -246,6 +249,8 @@ export default function AppLayout() {
 
       {/* Login dialog */}
       <LoginDialog />
+      {/* Push confirmation dialog */}
+      <PushConfirmDialog />
     </div>
   );
 }

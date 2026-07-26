@@ -86,6 +86,13 @@ export interface Review {
   submitted_at: string;
 }
 
+export interface Remote {
+  name: string;
+  url: string;
+  push_url?: string;
+  type: string; // "fetch" or "push"
+}
+
 export interface CheckRun {
   name: string;
   state: string;
@@ -250,6 +257,10 @@ declare global {
           GetCurrentRepoPath(): Promise<string>;
           GetGitHubUser(): Promise<GitHubUser>;
           AuthenticateGitHub(token: string): Promise<void>;
+          GetRemotes(): Promise<Remote[]>;
+          AddRemote(name: string, url: string): Promise<void>;
+          RemoveRemote(name: string): Promise<void>;
+          GetAheadCommits(): Promise<Commit[]>;
           StartDeviceFlow(): Promise<DeviceFlowCode>;
           PollDeviceFlow(deviceCode: string): Promise<string>;
           GitPush(): Promise<void>;
@@ -324,6 +335,14 @@ interface AppState {
   // Issue detail
   selectedIssueDetail: Issue | null;
 
+  // Remote management
+  remotes: Remote[];
+
+  // Push confirmation
+  pendingPush: boolean;
+  pushCommits: Commit[];
+  showPushDialog: boolean;
+
   // UI state
   loading: Record<string, boolean>;
   error: string | null;
@@ -396,6 +415,16 @@ interface AppState {
   // Diff viewer: hunk staging
   stagePatch: (patch: string) => Promise<void>;
 
+  // Remote management
+  fetchRemotes: () => Promise<void>;
+  addRemote: (name: string, url: string) => Promise<void>;
+  removeRemote: (name: string) => Promise<void>;
+
+  // Push confirmation
+  requestPush: () => Promise<void>;
+  confirmPush: () => Promise<void>;
+  cancelPush: () => void;
+
   // Sprint 6: Discard
   discardFile: (file: string) => Promise<void>;
   discardAllFiles: () => Promise<void>;
@@ -418,6 +447,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentBranch: "",
   selectedPRDetail: null,
   selectedIssueDetail: null,
+  remotes: [],
+  pendingPush: false,
+  pushCommits: [],
+  showPushDialog: false,
   ghAuthenticated: false,
   ghUser: null,
   pullRequests: [],
@@ -578,9 +611,67 @@ export const useAppStore = create<AppState>((set, get) => ({
   commitAndPush: async (message, body) => {
     const hash = await get().commit(message, body);
     if (hash) {
-      await get().gitPush();
+      // Show push confirmation dialog
+      await get().requestPush();
     }
     return hash;
+  },
+
+  // Remote management
+  fetchRemotes: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const remotes = await backend.GetRemotes();
+      set({ remotes });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch remotes" });
+    }
+  },
+
+  addRemote: async (name, url) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.AddRemote(name, url);
+      await get().fetchRemotes();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to add remote ${name}` });
+    }
+  },
+
+  removeRemote: async (name) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.RemoveRemote(name);
+      await get().fetchRemotes();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to remove remote ${name}` });
+    }
+  },
+
+  // Push confirmation
+  requestPush: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const commits = await backend.GetAheadCommits();
+      set({ pushCommits: commits, pendingPush: true, showPushDialog: true });
+    } catch (e: any) {
+      // If we can't get ahead commits, just push directly
+      set({ showPushDialog: false });
+      await get().gitPush();
+    }
+  },
+
+  confirmPush: async () => {
+    set({ pendingPush: false, showPushDialog: false });
+    await get().gitPush();
+  },
+
+  cancelPush: () => {
+    set({ pendingPush: false, showPushDialog: false, pushCommits: [] });
   },
 
   checkoutBranch: async (name) => {

@@ -512,6 +512,24 @@ export namespace models {
 		    return a;
 		}
 	}
+	export class Remote {
+	    name: string;
+	    url: string;
+	    push_url?: string;
+	    type: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Remote(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.url = source["url"];
+	        this.push_url = source["push_url"];
+	        this.type = source["type"];
+	    }
+	}
 	export class Repo {
 	    path: string;
 	    is_bare: boolean;
