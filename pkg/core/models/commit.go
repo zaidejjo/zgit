@@ -7,6 +7,7 @@ import "time"
 // Commit represents a single Git commit.
 type Commit struct {
 	Hash      string    `json:"hash"`
+	Parents   []string  `json:"parents"` // parent SHAs (for graph topology)
 	Author    string    `json:"author"`
 	Email     string    `json:"email"`
 	Message   string    `json:"message"`

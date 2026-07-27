@@ -27,6 +27,7 @@ export interface Status {
 
 export interface Commit {
   hash: string;
+  parents: string[];
   author: string;
   email: string;
   message: string;
@@ -468,6 +469,8 @@ interface AppState {
   // Git state
   status: Status | null;
   log: Commit[];
+  graphLog: Commit[];
+  graphView: boolean;
   branches: Branch[];
   diff: Diff | null;
   currentBranch: string;
@@ -553,6 +556,8 @@ interface AppState {
   toggleDarkMode: () => void;
   fetchStatus: () => Promise<void>;
   fetchLog: (count?: number) => Promise<void>;
+  fetchGraphLog: (count?: number) => Promise<void>;
+  toggleGraphView: () => void;
   fetchBranches: () => Promise<void>;
   fetchDiff: (pathspec?: string) => Promise<void>;
   stageFile: (file: string) => Promise<void>;
@@ -747,6 +752,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   status: null,
   log: [],
+  graphLog: [],
+  graphView: false,
   branches: [],
   diff: null,
   currentBranch: "",
@@ -834,6 +841,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       set({ error: msg || "Failed to fetch log", loading: { ...get().loading, log: false } });
     }
+  },
+
+  fetchGraphLog: async (count = 500) => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, graphLog: true } }));
+    try {
+      const graphLog = await backend.GetGraphLog(count);
+      set({ graphLog, loading: { ...get().loading, graphLog: false } });
+    } catch (e: any) {
+      const msg = e.message || "";
+      if (msg.includes("does not have any commits yet") || msg.includes("does not have any commits")) {
+        set({ graphLog: [], loading: { ...get().loading, graphLog: false } });
+        return;
+      }
+      set({ error: msg || "Failed to fetch graph log", loading: { ...get().loading, graphLog: false } });
+    }
+  },
+
+  toggleGraphView: () => {
+    set((s) => ({ graphView: !s.graphView }));
   },
 
   fetchBranches: async () => {
@@ -1346,6 +1374,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         repoPath,
         status: null,
         log: [],
+        graphLog: [],
+        graphView: false,
         branches: [],
         diff: null,
         currentBranch: "",
@@ -1395,6 +1425,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await Promise.allSettled([
       s.fetchStatus(),
       s.fetchLog(),
+      s.fetchGraphLog(),
       s.fetchBranches(),
       s.fetchPullRequests(),
       s.fetchIssues(),

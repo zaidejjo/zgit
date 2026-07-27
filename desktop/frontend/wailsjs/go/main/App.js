@@ -154,6 +154,10 @@ export function GetGitHubUser() {
   return window['go']['main']['App']['GetGitHubUser']();
 }
 
+export function GetGraphLog(arg1) {
+  return window['go']['main']['App']['GetGraphLog'](arg1);
+}
+
 export function GetIssueDetail(arg1) {
   return window['go']['main']['App']['GetIssueDetail'](arg1);
 }

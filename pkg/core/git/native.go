@@ -229,6 +229,9 @@ func (n *NativeExec) gitDir(ctx context.Context) string {
 func (n *NativeExec) Log(ctx context.Context, opts LogOptions) ([]*models.Commit, error) {
 	args := []string{"log", "--format=" + logFormat}
 
+	if opts.Graph {
+		args = append(args, "--topo-order")
+	}
 	if opts.Count > 0 {
 		args = append(args, fmt.Sprintf("-%d", opts.Count))
 	}

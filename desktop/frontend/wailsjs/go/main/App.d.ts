@@ -80,6 +80,8 @@ export function GetFileDiff(arg1:string):Promise<models.Diff>;
 
 export function GetGitHubUser():Promise<models.User>;
 
+export function GetGraphLog(arg1:number):Promise<Array<models.Commit>>;
+
 export function GetIssueDetail(arg1:number):Promise<models.Issue>;
 
 export function GetIssues():Promise<Array<models.Issue>>;

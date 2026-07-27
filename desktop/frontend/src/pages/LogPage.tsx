@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   GitCommitHorizontal, Undo2, RotateCcw, AlertTriangle,
   GitBranch, GitMerge, GripVertical, Pencil, Trash2,
-  Layers, ArrowUpDown,
+  Layers, ArrowUpDown, Network,
 } from "lucide-react";
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { cn, formatTimeAgo, truncate } from "@/lib/utils";
 import EmptyState from "@/components/EmptyState";
 import MergeRebaseDialog from "@/components/MergeRebaseDialog";
+import InteractiveGitGraph from "@/components/InteractiveGitGraph";
 
 const RESET_MODES = [
   { value: "soft", label: "--soft", desc: "Keep all changes staged", danger: false },
@@ -41,7 +42,7 @@ const ACTION_COLORS: Record<CommitAction, string> = {
 export default function LogPage() {
   const navigate = useNavigate();
   const {
-    log, loading, fetchLog,
+    log, graphLog, graphView, loading, fetchLog, fetchGraphLog, toggleGraphView,
     cherryPick, revertCommit, resetCommit,
     rebaseMode, rebaseCommits, rebaseOnto,
     enterRebaseMode, exitRebaseMode,
@@ -69,6 +70,7 @@ export default function LogPage() {
 
   useEffect(() => {
     fetchLog();
+    fetchGraphLog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -185,13 +187,27 @@ export default function LogPage() {
               </button>
             </>
           ) : (
-            <button
-              onClick={enterRebaseMode}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-            >
-              <ArrowUpDown className="w-3.5 h-3.5" />
-              Rebase Mode
-            </button>
+            <>
+              <button
+                onClick={toggleGraphView}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors",
+                  graphView
+                    ? "bg-primary text-primary-foreground"
+                    : "border border-border text-muted-foreground hover:bg-muted"
+                )}
+              >
+                <Network className="w-3.5 h-3.5" />
+                Graph
+              </button>
+              <button
+                onClick={enterRebaseMode}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+              >
+                <ArrowUpDown className="w-3.5 h-3.5" />
+                Rebase Mode
+              </button>
+            </>
           )}
         </div>
 
@@ -238,6 +254,9 @@ export default function LogPage() {
                 )}
               </div>
             </SortableContext>
+          ) : graphView ? (
+            /* ── Graph View ── */
+            <InteractiveGitGraph commits={graphLog} loading={loading.graphLog} />
           ) : (
             /* ── Normal Mode: Commit Log with DnD Branch Badges ── */
             <div className="space-y-1">

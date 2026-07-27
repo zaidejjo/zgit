@@ -281,6 +281,7 @@ export namespace models {
 	}
 	export class Commit {
 	    hash: string;
+	    parents: string[];
 	    author: string;
 	    email: string;
 	    message: string;
@@ -295,6 +296,7 @@ export namespace models {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.hash = source["hash"];
+	        this.parents = source["parents"];
 	        this.author = source["author"];
 	        this.email = source["email"];
 	        this.message = source["message"];
