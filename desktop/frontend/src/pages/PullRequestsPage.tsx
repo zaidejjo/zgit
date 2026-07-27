@@ -3,7 +3,7 @@ import {
   GitPullRequest, GitPullRequestDraft, GitMerge, GitBranch, Plus, X,
   CheckCheck, MessageSquare, ArrowUpWideNarrow, ArrowDownWideNarrow,
   FileText, SquarePen, ExternalLink, ArrowRight, Check, ListChecks,
-  AlertTriangle, LoaderCircle, ChevronDown,
+  AlertTriangle, LoaderCircle, ChevronDown, Sparkles,
 } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import type { PRSummary, PullRequestDetail } from "@/store/app";
@@ -23,9 +23,10 @@ import { cn } from "@/lib/utils";
 export default function PullRequestsPage() {
   const {
     pullRequests, branches, currentBranch, selectedPRDetail,
-    loading, error, ghAuthenticated,
+    loading, error, ghAuthenticated, aiGenerating, aiConfig,
     setLoginDialogOpen, fetchPullRequests, fetchPRDetail, clearPRDetail,
     createPullRequest, mergePullRequest, fetchBranches,
+    generatePRDescription, fetchAIConfig,
   } = useAppStore();
 
   // Selection
@@ -47,8 +48,8 @@ export default function PullRequestsPage() {
 
   useEffect(() => {
     fetchPullRequests();
-    // Fetch branches for create dialog branch pickers
     fetchBranches();
+    fetchAIConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -66,6 +67,19 @@ export default function PullRequestsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPRNum]);
+
+  const handleGeneratePR = async () => {
+    const result = await generatePRDescription(prHead, prBase);
+    if (!result) return;
+    // Parse: expected format "PR Title: ...\n\n## Summary\n..."
+    const titleMatch = result.match(/^PR Title:\s*(.+)/m);
+    const title = titleMatch ? titleMatch[1].trim() : "";
+    // Body = everything after the first blank line (or everything after title line)
+    const bodyStart = result.indexOf("\n\n");
+    const body = bodyStart >= 0 ? result.slice(bodyStart + 2).trim() : result;
+    if (title) setPrTitle(title);
+    if (body) setPrBody(body);
+  };
 
   const handleCreate = async () => {
     if (!prTitle.trim() || !prHead || !prBase) return;
@@ -216,6 +230,21 @@ export default function PullRequestsPage() {
                     value={prBody}
                     onChange={(e) => setPrBody(e.target.value)}
                   />
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleGeneratePR}
+                      disabled={aiGenerating || !aiConfig?.provider}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      title={aiConfig?.provider ? "Generate PR description with AI" : "Configure AI in Settings first"}
+                    >
+                      {aiGenerating ? (
+                        <span className="block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Sparkles className="w-3.5 h-3.5" />
+                      )}
+                      Generate PR Description
+                    </button>
+                  </div>
                 </div>
 
                 {/* Draft toggle */}

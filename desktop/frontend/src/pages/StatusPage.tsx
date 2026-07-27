@@ -335,10 +335,10 @@ export default function StatusPage() {
           {/* Commit section — always visible */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <GitCommitHorizontal className="w-4 h-4" />
-                Commit to{" "}
-                <span className="font-mono text-primary">{status.branch}</span>
+              <CardTitle className="text-sm flex items-center gap-2 min-w-0 w-full">
+                <GitCommitHorizontal className="w-4 h-4 shrink-0" />
+                <span className="text-muted-foreground shrink-0">Commit to</span>
+                <span className="font-mono text-primary truncate min-w-0">{status.branch}</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -423,19 +423,21 @@ export default function StatusPage() {
               </div>
 
               {/* Commit action buttons */}
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {/* Primary: Commit to branch */}
                 <Tooltip open={!canCommit ? undefined : false}>
                   <TooltipTrigger asChild>
-                    <span tabIndex={0} className="flex-1">
+                    <span tabIndex={0} className="flex-1 min-w-[180px]">
                       <Button
                         size="sm"
                         className="w-full"
                         disabled={!canCommit || committing}
                         onClick={() => handleCommitClick(false)}
                       >
-                        <CheckCheck className="w-4 h-4 mr-1.5" />
-                        {committing ? "Committing..." : `Commit to ${status.branch}`}
+                        <CheckCheck className="w-4 h-4 mr-1.5 shrink-0" />
+                        <span className="truncate">
+                          {committing ? "Committing..." : `Commit to ${status.branch}`}
+                        </span>
                       </Button>
                     </span>
                   </TooltipTrigger>
@@ -449,7 +451,7 @@ export default function StatusPage() {
                 </Tooltip>
 
                 {/* Secondary: Commit & Push with force push dropdown */}
-                <div className="flex">
+                <div className="flex shrink-0">
                   <Button
                     variant="secondary"
                     size="sm"
@@ -457,8 +459,8 @@ export default function StatusPage() {
                     disabled={!canCommit || committing}
                     onClick={() => handleCommitClick(true)}
                   >
-                    <Upload className="w-4 h-4 mr-1.5" />
-                    {committing ? "Committing..." : "Commit & Push"}
+                    <Upload className="w-4 h-4 mr-1.5 shrink-0" />
+                    <span className="truncate">{committing ? "Committing..." : "Commit & Push"}</span>
                   </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

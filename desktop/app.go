@@ -581,36 +581,29 @@ func (a *App) SetAIConfig(provider, apiKey, model, endpoint string) error {
 
 // GenerateCommitMessage reads the staged diff and returns an AI-generated conventional commit message.
 func (a *App) GenerateCommitMessage() (string, error) {
-	// 1. Get staged diff
 	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
 	defer cancel()
 
-	diffOpts := git.DiffOptions{Cached: true, Unified: true}
-	diff, err := a.engine.Git.Diff(ctx, diffOpts)
+	// Get staged diff with token-optimized summarization
+	diff, err := a.engine.Git.Diff(ctx, git.DiffOptions{Cached: true, Unified: true})
 	if err != nil {
 		return "", fmt.Errorf("get staged diff: %w", err)
 	}
-
-	// Build diff text from files
-	var diffText string
-	for _, f := range diff.Files {
-		if f.UnifiedDiff != "" {
-			diffText += f.UnifiedDiff + "\n"
-		}
-	}
-
-	if strings.TrimSpace(diffText) == "" {
+	if diff == nil || len(diff.Files) == 0 {
 		return "", fmt.Errorf("no staged changes — stage files before generating a commit message")
 	}
 
-	// 2. Get AI config
-	aiCfg := ai.Config{
-		Provider: ai.ProviderKind(a.engine.Config.GetString("ai.provider")),
-		APIKey:   a.engine.Config.GetString("ai.api_key"),
-		Model:    a.engine.Config.GetString("ai.model"),
-		Endpoint: a.engine.Config.GetString("ai.endpoint"),
+	summary := ai.SummarizeDiff(diff)
+	diffText := summary.Summary
+	if strings.TrimSpace(diffText) == "" || diffText == "No changes." {
+		return "", fmt.Errorf("no staged changes — stage files before generating a commit message")
 	}
 
+	// Prefix with file stats to compensate for possible truncation
+	diffText = fmt.Sprintf("Stats: %d files changed (%d lockfile/binary filtered).\n\n%s",
+		summary.ChangedFiles, summary.Filtered, diffText)
+
+	aiCfg := a.aiConfig()
 	if aiCfg.Provider == "" {
 		return "", fmt.Errorf("AI provider not configured — go to Settings to set up AI commit message generation")
 	}
@@ -618,7 +611,6 @@ func (a *App) GenerateCommitMessage() (string, error) {
 		return "", fmt.Errorf("API key not configured — go to Settings to set your API key")
 	}
 
-	// 3. Generate
 	generator, err := ai.NewGenerator(aiCfg)
 	if err != nil {
 		return "", err
@@ -632,6 +624,94 @@ func (a *App) GenerateCommitMessage() (string, error) {
 	return msg, nil
 }
 
+// GeneratePRDescription generates a PR title and description from the diff between head and base branches.
+func (a *App) GeneratePRDescription(head, base string) (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 120e9)
+	defer cancel()
+
+	if head == "" {
+		return "", fmt.Errorf("head branch is required")
+	}
+	if base == "" {
+		base = "main"
+	}
+
+	// Get diff between base and head
+	diff, err := a.engine.Git.Diff(ctx, git.DiffOptions{A: base, B: head, Unified: true})
+	if err != nil {
+		return "", fmt.Errorf("get branch diff: %w", err)
+	}
+	if diff == nil || len(diff.Files) == 0 {
+		return "", fmt.Errorf("no differences between %s and %s", base, head)
+	}
+
+	summary := ai.SummarizeDiff(diff)
+	diffText := summary.Summary
+
+	// Get recent commits for context
+	var logContext string
+	log, logErr := a.engine.Git.Log(ctx, git.LogOptions{Count: 10, Branch: head})
+	if logErr == nil && len(log) > 0 {
+		var sb strings.Builder
+		sb.WriteString("\nRecent commits on " + head + ":\n")
+		for _, c := range log {
+			sb.WriteString("  " + c.Hash[:7] + " " + c.Message + "\n")
+		}
+		logContext = sb.String()
+	}
+
+	diffText = fmt.Sprintf("Stats: %d files changed (%d lockfile/binary filtered).\n%s\n\n%s",
+		summary.ChangedFiles, summary.Filtered, logContext, diffText)
+
+	aiCfg := a.aiConfig()
+	if aiCfg.Provider == "" {
+		return "", fmt.Errorf("AI provider not configured — go to Settings first")
+	}
+	if aiCfg.APIKey == "" {
+		return "", fmt.Errorf("API key not configured — go to Settings to set your API key")
+	}
+
+	generator, err := ai.NewGenerator(aiCfg)
+	if err != nil {
+		return "", err
+	}
+
+	prompt := `You are a PR description generator. Create a pull request title and structured description.
+
+Format:
+PR Title: <concise title following conventional commits>
+
+## Summary
+<2-3 sentence overview of what this PR does>
+
+## Key Changes
+- <change 1>
+- <change 2>
+- <change 3>
+
+## Test Plan
+<suggestions for testing>
+
+Return ONLY the PR title and description. No extra commentary.`
+
+	msg, err := generator.GenerateCommitMessage(ctx, fmt.Sprintf("%s\n\nBranch diff to review:\n\n```\n%s\n```", prompt, diffText), aiCfg)
+	if err != nil {
+		return "", fmt.Errorf("AI generation failed: %w", err)
+	}
+
+	return msg, nil
+}
+
+// aiConfig extracts AI provider config from the engine settings.
+func (a *App) aiConfig() ai.Config {
+	return ai.Config{
+		Provider: ai.ProviderKind(a.engine.Config.GetString("ai.provider")),
+		APIKey:   a.engine.Config.GetString("ai.api_key"),
+		Model:    a.engine.Config.GetString("ai.model"),
+		Endpoint: a.engine.Config.GetString("ai.endpoint"),
+	}
+}
+
 // --- Agentic AI Assistant ---
 
 // AgentStart creates a new agent session with the configured provider.
@@ -639,13 +719,7 @@ func (a *App) AgentStart() error {
 	a.agentMu.Lock()
 	defer a.agentMu.Unlock()
 
-	aiCfg := ai.Config{
-		Provider: ai.ProviderKind(a.engine.Config.GetString("ai.provider")),
-		APIKey:   a.engine.Config.GetString("ai.api_key"),
-		Model:    a.engine.Config.GetString("ai.model"),
-		Endpoint: a.engine.Config.GetString("ai.endpoint"),
-	}
-
+	aiCfg := a.aiConfig()
 	maxTurns := a.engine.Config.GetInt("ai.max_turns")
 	if maxTurns > 0 {
 		aiCfg.MaxTurns = maxTurns
