@@ -525,6 +525,12 @@ func (n *NativeExec) CherryPick(ctx context.Context, sha string) error {
 	return err
 }
 
+// CherryPickNoCommit stages changes from a commit without creating a commit.
+func (n *NativeExec) CherryPickNoCommit(ctx context.Context, sha string) error {
+	_, err := n.run(ctx, "cherry-pick", "--no-commit", sha)
+	return err
+}
+
 func (n *NativeExec) Revert(ctx context.Context, sha string) error {
 	_, err := n.run(ctx, "revert", "--no-edit", sha)
 	return err

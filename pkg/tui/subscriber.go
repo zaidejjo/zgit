@@ -121,7 +121,7 @@ func (s *Subscriber) fetchLog() {
 	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
 	defer cancel()
 
-	commits, err := s.git.Log(ctx, git.LogOptions{Count: 50})
+	commits, err := s.git.Log(ctx, git.LogOptions{Count: 100, Graph: true, All: true})
 	if err != nil {
 		s.send(1, logEvent{err: err})
 		return

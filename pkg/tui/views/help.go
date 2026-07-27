@@ -61,6 +61,14 @@ func (h HelpModel) View(width int) string {
 			},
 		},
 		{
+			title: "Log Operations (Log panel)",
+			keys: []helpEntry{
+				{"enter", "View commit diff"},
+				{"C", "Cherry-pick commit (stages, no commit)"},
+				{"r", "Rebase (coming soon)"},
+			},
+		},
+		{
 			title: "Branch Operations (Branches panel)",
 			keys: []helpEntry{
 				{"c / enter", "Checkout branch"},

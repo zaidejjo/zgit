@@ -761,8 +761,65 @@ func (m *Model) handleLogKeys(key string) (tea.Model, tea.Cmd) {
 		if m.log.Cursor < 0 {
 			m.log.Cursor = 0
 		}
+	case "enter":
+		if m.log.Cursor >= 0 && m.log.Cursor < len(m.log.Commits) {
+			m.openCommitDiff(m.log.Commits[m.log.Cursor])
+		}
+	case "C":
+		m.cherryPickCommit()
+	case "r":
+		m.status.Error = "interactive rebase not yet implemented in TUI (use CLI: zgit rebase)"
 	}
 	return m, nil
+}
+
+func (m *Model) cherryPickCommit() {
+	if m.log.Cursor < 0 || m.log.Cursor >= len(m.log.Commits) {
+		return
+	}
+	c := m.log.Commits[m.log.Cursor]
+	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
+	defer cancel()
+
+	if err := m.git.CherryPickNoCommit(ctx, c.Hash); err != nil {
+		m.log.Error = fmt.Sprintf("cherry-pick %s: %v", c.Hash[:7], err)
+		return
+	}
+	m.sub.Refresh()
+}
+
+func (m *Model) openCommitDiff(commit *models.Commit) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
+	defer cancel()
+
+	// Show diff of this commit against its parent
+	parent := commit.Hash + "^"
+	if len(commit.Parents) > 0 {
+		parent = commit.Parents[0]
+	}
+
+	opts := gitpkg.DiffOptions{
+		A:       parent,
+		B:       commit.Hash,
+		Unified: true,
+	}
+	diff, err := m.git.Diff(ctx, opts)
+	if err != nil {
+		m.log.Error = fmt.Sprintf("show %s: %v", commit.Hash[:7], err)
+		return
+	}
+
+	// Build combined diff text from files
+	var fullDiff string
+	totalAdds, totalDels := 0, 0
+	for _, f := range diff.Files {
+		totalAdds += f.Additions
+		totalDels += f.Deletions
+		fullDiff += f.UnifiedDiff + "\n"
+	}
+
+	m.diffViewer.SetDiff(commit.Hash[:7]+": "+commit.Message, fullDiff, totalAdds, totalDels)
+	m.mode = modeDiff
 }
 
 func (m *Model) handleBranchKeys(key string) (tea.Model, tea.Cmd) {

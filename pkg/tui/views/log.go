@@ -11,11 +11,12 @@ import (
 
 // LogModel holds state for the commit log view.
 type LogModel struct {
-	Commits []*models.Commit
-	Cursor  int
-	Offset  int // scroll offset
-	Error   string
-	Height  int // visible height
+	Commits    []*models.Commit
+	Cursor     int
+	Offset     int // scroll offset
+	Error      string
+	Height     int      // visible height
+	treePrefix []string // cached tree graph strings
 }
 
 // NewLogModel creates a default log view model.
@@ -23,13 +24,14 @@ func NewLogModel() LogModel {
 	return LogModel{Height: 20}
 }
 
-// UpdateLog refreshes the commit list.
+// UpdateLog refreshes the commit list and rebuilds tree graph.
 func (m *LogModel) UpdateLog(commits []*models.Commit) {
 	m.Commits = commits
 	m.Error = ""
+	m.treePrefix = RenderTreeGraph(commits)
 }
 
-// View renders the commit log.
+// View renders the commit log with tree graph.
 func (m LogModel) View(width int) string {
 	if m.Error != "" {
 		return styles.ErrorStyle.Render("Error: " + m.Error)
@@ -45,6 +47,7 @@ func (m LogModel) View(width int) string {
 	m.ensureCursorVisible()
 
 	visible := m.Commits
+	treePrefix := m.treePrefix
 	if len(visible) > m.Height {
 		end := m.Offset + m.Height
 		if end > len(visible) {
@@ -55,31 +58,47 @@ func (m LogModel) View(width int) string {
 			}
 		}
 		visible = visible[m.Offset:end]
+		if treePrefix != nil && m.Offset < len(treePrefix) {
+			treeEnd := m.Offset + len(visible)
+			if treeEnd > len(treePrefix) {
+				treeEnd = len(treePrefix)
+			}
+			treePrefix = treePrefix[m.Offset:treeEnd]
+		} else {
+			treePrefix = nil
+		}
 	}
 
 	for i, c := range visible {
 		globalIdx := m.Offset + i
+
+		// Build tree prefix for this row
+		treeStr := ""
+		if treePrefix != nil && i < len(treePrefix) {
+			treeStr = treePrefix[i]
+		}
+
+		// Compact: hash(7) + message (no author/date on separate line to save space)
 		hash := c.Hash
 		if len(hash) > 7 {
 			hash = hash[:7]
 		}
 
+		// Available width after tree prefix
+		treeWidth := len(treeStr)
+		availWidth := width - treeWidth - 1
+		if availWidth < 10 {
+			availWidth = 10
+		}
+
+		msg := truncateStr(c.Message, availWidth-9)
+		timeStr := formatTimeCompact(c.Timestamp)
+		line := fmt.Sprintf("%s %s %s %s", treeStr, hash, msg, timeStr)
+
 		if globalIdx == m.Cursor {
-			b.WriteString(styles.ListItemActiveStyle.Render(
-				fmt.Sprintf(" %s %s", hash, truncateStr(c.Message, width-20)),
-			))
-			b.WriteString("\n")
-			b.WriteString(styles.ListItemActiveStyle.Render(
-				fmt.Sprintf("   %s  %s", c.Author, formatTime(c.Timestamp)),
-			))
+			b.WriteString(styles.ListItemSelectedStyle.Render(line))
 		} else {
-			b.WriteString(styles.ListItemStyle.Render(
-				fmt.Sprintf(" %s %s", hash, truncateStr(c.Message, width-10)),
-			))
-			b.WriteString("\n")
-			b.WriteString(styles.SubtitleStyle.Render(
-				fmt.Sprintf("   %s  %s", c.Author, formatTime(c.Timestamp)),
-			))
+			b.WriteString(styles.ListItemStyle.Render(line))
 		}
 		b.WriteString("\n")
 	}
@@ -96,6 +115,23 @@ func (m *LogModel) ensureCursorVisible() {
 	}
 }
 
+func formatTimeCompact(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	default:
+		return fmt.Sprintf("%dmo", int(d.Hours()/(24*30)))
+	}
+}
+
+// formatTime is used by all view files in this package.
 func formatTime(t time.Time) string {
 	d := time.Since(t)
 	switch {

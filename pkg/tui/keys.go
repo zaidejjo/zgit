@@ -44,6 +44,10 @@ type KeyMap struct {
 	CommitPush key.Binding
 	Amend      key.Binding
 
+	// Log operations
+	CherryPick  key.Binding
+	RebaseStart key.Binding
+
 	// Global
 	Help    key.Binding
 	Refresh key.Binding
@@ -92,6 +96,10 @@ func DefaultKeyMap() KeyMap {
 		CommitPush: key.NewBinding(key.WithKeys("P"), key.WithHelp("P", "commit & push")),
 		Amend:      key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "amend")),
 
+		// Log operations
+		CherryPick:  key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "cherry-pick (no commit)")),
+		RebaseStart: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "rebase")),
+
 		// Global
 		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		Refresh: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
@@ -108,6 +116,7 @@ func (k KeyMap) FullHelp() []key.Binding {
 		k.Enter, k.Escape, k.Space,
 		k.Stage, k.Unstage, k.StageAll, k.UnstageAll, k.Discard,
 		k.Commit, k.CommitPush, k.Amend,
+		k.CherryPick, k.RebaseStart,
 		k.Checkout, k.BranchNew, k.BranchDel, k.BranchMerge,
 		k.Refresh, k.Help, k.Quit,
 	}
