@@ -6,6 +6,34 @@ export function AddRemote(arg1, arg2) {
   return window['go']['main']['App']['AddRemote'](arg1, arg2);
 }
 
+export function AgentApproveProposal(arg1) {
+  return window['go']['main']['App']['AgentApproveProposal'](arg1);
+}
+
+export function AgentChat(arg1) {
+  return window['go']['main']['App']['AgentChat'](arg1);
+}
+
+export function AgentGetHistory() {
+  return window['go']['main']['App']['AgentGetHistory']();
+}
+
+export function AgentGetProposals() {
+  return window['go']['main']['App']['AgentGetProposals']();
+}
+
+export function AgentRejectProposal(arg1, arg2) {
+  return window['go']['main']['App']['AgentRejectProposal'](arg1, arg2);
+}
+
+export function AgentReset() {
+  return window['go']['main']['App']['AgentReset']();
+}
+
+export function AgentStart() {
+  return window['go']['main']['App']['AgentStart']();
+}
+
 export function AuthenticateGitHub(arg1) {
   return window['go']['main']['App']['AuthenticateGitHub'](arg1);
 }

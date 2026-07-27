@@ -391,6 +391,46 @@ declare global {
   }
 }
 
+// --- AI Agent types ---
+
+export interface AgentToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export interface AgentMessage {
+  role: string;           // "user" | "assistant" | "tool" | "system"
+  content?: string;
+  tool_call_id?: string;
+  tool_calls?: AgentToolCall[];
+}
+
+export interface AgentActionProposal {
+  id: string;
+  type: string;
+  description: string;
+  reasoning: string;
+  diff_preview?: string;
+  status: "pending" | "approved" | "rejected" | "executed" | "failed";
+  created_at: string;
+  params?: Record<string, any>;
+}
+
+export interface AgentResponse {
+  message: string;
+  proposals?: AgentActionProposal[];
+  finished: boolean;
+}
+
+export interface ProposalResult {
+  proposal_id: string;
+  status: string;
+  success: boolean;
+  output?: string;
+  error?: string;
+}
+
 // App state store
 interface AppState {
   // Git state
@@ -447,6 +487,14 @@ interface AppState {
   // AI Commit Message
   aiConfig: AIConfig | null;
   aiGenerating: boolean;
+
+  // Agentic AI Assistant
+  aiPanelOpen: boolean;
+  aiSessionActive: boolean;
+  aiMessages: AgentMessage[];
+  aiProposals: AgentActionProposal[];
+  aiThinking: boolean;
+  aiError: string | null;
 
   // Reflog / Undo
   reflog: ReflogEntry[];
@@ -579,6 +627,14 @@ interface AppState {
   setAIConfigAction: (provider: string, apiKey: string, model: string, endpoint?: string) => Promise<void>;
   generateCommitMessage: () => Promise<string | null>;
 
+  // Agentic AI Assistant
+  toggleAIPanel: () => void;
+  startAgentSession: () => Promise<boolean>;
+  sendAgentMessage: (message: string) => Promise<void>;
+  approveProposal: (proposalID: string) => Promise<void>;
+  rejectProposal: (proposalID: string, feedback?: string) => Promise<void>;
+  resetAgentSession: () => Promise<void>;
+
   // Reflog / Undo
   fetchReflog: (count?: number) => Promise<void>;
   undoLastAction: () => Promise<void>;
@@ -662,6 +718,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   mergeRebaseDialog: null,
   aiConfig: null,
   aiGenerating: false,
+  aiPanelOpen: false,
+  aiSessionActive: false,
+  aiMessages: [],
+  aiProposals: [],
+  aiThinking: false,
+  aiError: null,
   reflog: [],
   undoDescription: null,
   pendingPush: false,
@@ -1725,6 +1787,165 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ aiGenerating: false });
       return null;
     }
+  },
+
+  // --- Agentic AI Assistant ---
+
+  toggleAIPanel: () => {
+    const next = !get().aiPanelOpen;
+    set({ aiPanelOpen: next });
+    // Auto-start session when opening panel
+    if (next && !get().aiSessionActive) {
+      get().startAgentSession();
+    }
+  },
+
+  startAgentSession: async () => {
+    const backend = getBackend();
+    if (!backend) return false;
+    try {
+      await backend.AgentStart();
+      set({
+        aiSessionActive: true,
+        aiMessages: [],
+        aiProposals: [],
+        aiThinking: false,
+        aiError: null,
+      });
+      return true;
+    } catch (e: any) {
+      set({ aiError: e.message || "Failed to start agent session", aiSessionActive: false });
+      return false;
+    }
+  },
+
+  sendAgentMessage: async (message: string) => {
+    const backend = getBackend();
+    if (!backend) return;
+    const msg: AgentMessage = { role: "user", content: message };
+    set((s) => ({ aiMessages: [...s.aiMessages, msg], aiThinking: true, aiError: null }));
+    try {
+      const resp: AgentResponse = await backend.AgentChat(message);
+      const assistantMsg: AgentMessage = {
+        role: "assistant",
+        content: resp.message || "",
+      };
+      set((s) => ({
+        aiMessages: [...s.aiMessages, assistantMsg],
+        aiProposals: resp.proposals || [],
+        aiThinking: false,
+      }));
+    } catch (e: any) {
+      set({ aiError: e.message || "Agent error", aiThinking: false });
+    }
+  },
+
+  approveProposal: async (proposalID: string) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      set((s) => ({
+        aiProposals: s.aiProposals.map((p) =>
+          p.id === proposalID ? { ...p, status: "approved" as const } : p
+        ),
+      }));
+      const result: ProposalResult = await backend.AgentApproveProposal(proposalID);
+
+      // Add result to chat
+      const resultMsg: AgentMessage = {
+        role: "tool",
+        tool_call_id: proposalID,
+        content: result.success
+          ? `✅ ${result.output || "Action completed successfully"}`
+          : `❌ ${result.error || "Action failed"}`,
+      };
+      set((s) => ({ aiMessages: [...s.aiMessages, resultMsg] }));
+
+      if (result.success) {
+        set((s) => ({
+          aiProposals: s.aiProposals.map((p) =>
+            p.id === proposalID ? { ...p, status: "executed" as const } : p
+          ),
+        }));
+        // Continue agent loop: send empty message to let agent check context
+        set({ aiThinking: true });
+        try {
+          const followUp: AgentResponse = await backend.AgentChat("_continue");
+          const followMsg: AgentMessage = {
+            role: "assistant",
+            content: followUp.message || "",
+          };
+          set((s) => ({
+            aiMessages: [...s.aiMessages, followMsg],
+            aiProposals: followUp.proposals || [],
+            aiThinking: false,
+          }));
+        } catch {
+          set({ aiThinking: false });
+        }
+      } else {
+        set((s) => ({
+          aiProposals: s.aiProposals.map((p) =>
+            p.id === proposalID ? { ...p, status: "failed" as const } : p
+          ),
+        }));
+      }
+    } catch (e: any) {
+      set({ aiError: e.message || "Failed to execute proposal" });
+    }
+  },
+
+  rejectProposal: async (proposalID: string, feedback?: string) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.AgentRejectProposal(proposalID, feedback || "");
+      set((s) => ({
+        aiProposals: s.aiProposals.map((p) =>
+          p.id === proposalID ? { ...p, status: "rejected" as const } : p
+        ),
+      }));
+
+      // If feedback provided, send it to agent for alternative suggestion
+      if (feedback) {
+        const feedbackMsg: AgentMessage = { role: "user", content: feedback };
+        set((s) => ({ aiMessages: [...s.aiMessages, feedbackMsg], aiThinking: true }));
+        try {
+          const resp: AgentResponse = await backend.AgentChat(feedback);
+          const assistantMsg: AgentMessage = {
+            role: "assistant",
+            content: resp.message || "",
+          };
+          set((s) => ({
+            aiMessages: [...s.aiMessages, assistantMsg],
+            aiProposals: resp.proposals || [],
+            aiThinking: false,
+          }));
+        } catch (e: any) {
+          set({ aiError: e.message || "Agent error", aiThinking: false });
+        }
+      }
+    } catch (e: any) {
+      set({ aiError: e.message || "Failed to reject proposal" });
+    }
+  },
+
+  resetAgentSession: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.AgentReset();
+    } catch {
+      // ignore
+    }
+    set({
+      aiSessionActive: false,
+      aiMessages: [],
+      aiProposals: [],
+      aiThinking: false,
+      aiError: null,
+      aiPanelOpen: false,
+    });
   },
 
   // Reflog / Undo

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Outlet, useNavigate, useLocation } from "@tanstack/react-router";
 import {
   GitCommitHorizontal, History, GitBranch, GitPullRequest,
-  CircleDot, Play, Globe, Tag, Settings, FolderOpen, Folder, Sun, Moon, X,
+  CircleDot, Play, Globe, Tag, Settings, FolderOpen, Folder, Sun, Moon, X, Sparkles,
 } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import LoginDialog from "@/components/LoginDialog";
 import PushConfirmDialog from "@/components/PushConfirmDialog";
 import UndoBanner from "@/components/UndoBanner";
+import AIAssistantPanel from "@/components/AIAssistantPanel";
 import { EventsOn } from "../wailsjs/runtime";
 
 const tabs = [
@@ -29,6 +30,7 @@ export default function AppLayout() {
     activeTab, setActiveTab, error, setError, darkMode, toggleDarkMode,
     fetchStatus, checkGitHubAuth, ghAuthenticated, ghUser, setLoginDialogOpen,
     repoPath, recentRepos, openRepo, selectAndOpenRepo, fetchRecentRepos, refreshAll,
+    toggleAIPanel, aiPanelOpen,
   } = useAppStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -70,6 +72,18 @@ export default function AppLayout() {
     return () => unwatch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keyboard shortcut: Ctrl+Shift+A to toggle AI panel
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === "A") {
+        e.preventDefault();
+        toggleAIPanel();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [toggleAIPanel]);
 
   // Close repo dropdown on outside click
   useEffect(() => {
@@ -217,6 +231,18 @@ export default function AppLayout() {
               </Button>
             )}
 
+            {/* AI Assistant trigger */}
+            <Button
+              variant={aiPanelOpen ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2 gap-1.5"
+              onClick={toggleAIPanel}
+              title="AI Assistant (Ctrl+Shift+A)"
+            >
+              <Sparkles className={cn("w-3.5 h-3.5", aiPanelOpen ? "text-primary" : "")} />
+              <span className="text-xs hidden sm:inline">AI</span>
+            </Button>
+
             <div className="w-px h-5 bg-border" />
 
             <Button
@@ -256,6 +282,8 @@ export default function AppLayout() {
       <LoginDialog />
       {/* Push confirmation dialog */}
       <PushConfirmDialog />
+      {/* AI Assistant Panel */}
+      <AIAssistantPanel />
     </div>
   );
 }
