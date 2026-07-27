@@ -384,6 +384,28 @@ declare global {
           GetAIConfig(): Promise<AIConfig>;
           SetAIConfig(provider: string, apiKey: string, model: string, endpoint: string): Promise<void>;
           GenerateCommitMessage(): Promise<string>;
+          // Agentic AI
+          AgentStart(): Promise<void>;
+          AgentChat(message: string): Promise<AgentResponse>;
+          AgentApproveProposal(proposalID: string): Promise<ProposalResult>;
+          AgentRejectProposal(proposalID: string, feedback: string): Promise<void>;
+          AgentReset(): Promise<void>;
+          AgentGetProposals(): Promise<AgentActionProposal[]>;
+          AgentGetHistory(): Promise<AgentMessage[]>;
+          AgentCancel(): Promise<void>;
+          // Ask mode
+          AskChat(message: string): Promise<string>;
+          AskChatStream(message: string): Promise<void>;
+          AskChatCancel(): Promise<void>;
+          // Sessions
+          SessionCreate(name: string, mode: string): Promise<ChatSession>;
+          SessionList(): Promise<ChatSession[]>;
+          SessionRename(id: string, name: string): Promise<void>;
+          SessionDelete(id: string): Promise<void>;
+          SessionSwitch(id: string): Promise<ChatSession>;
+          SessionGetMessages(id: string): Promise<AgentMessage[]>;
+          SessionClearMessages(id: string): Promise<void>;
+          SessionActiveID(): Promise<string>;
         };
       };
     };
@@ -429,6 +451,16 @@ export interface ProposalResult {
   success: boolean;
   output?: string;
   error?: string;
+}
+
+// Chat session (used for both Ask and Agent mode)
+export interface ChatSession {
+  id: string;
+  name: string;
+  mode: "ask" | "agent";
+  message_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
 // App state store
@@ -488,13 +520,17 @@ interface AppState {
   aiConfig: AIConfig | null;
   aiGenerating: boolean;
 
-  // Agentic AI Assistant
+  // Agentic AI Assistant (shared for Ask + Agent modes)
   aiPanelOpen: boolean;
   aiSessionActive: boolean;
   aiMessages: AgentMessage[];
   aiProposals: AgentActionProposal[];
   aiThinking: boolean;
   aiError: string | null;
+  aiMode: "ask" | "agent";
+  aiSessions: ChatSession[];
+  aiActiveSessionId: string | null;
+  aiFullscreen: boolean;
 
   // Reflog / Undo
   reflog: ReflogEntry[];
@@ -627,13 +663,25 @@ interface AppState {
   setAIConfigAction: (provider: string, apiKey: string, model: string, endpoint?: string) => Promise<void>;
   generateCommitMessage: () => Promise<string | null>;
 
-  // Agentic AI Assistant
+  // Agentic AI Assistant — Dual Mode
   toggleAIPanel: () => void;
+  setAIMode: (mode: "ask" | "agent") => void;
   startAgentSession: () => Promise<boolean>;
   sendAgentMessage: (message: string) => Promise<void>;
+  sendAskMessage: (message: string) => Promise<void>;
+  askChatCancel: () => void;
   approveProposal: (proposalID: string) => Promise<void>;
   rejectProposal: (proposalID: string, feedback?: string) => Promise<void>;
   resetAgentSession: () => Promise<void>;
+  toggleAIFullscreen: () => void;
+  // Session management
+  fetchSessions: () => Promise<void>;
+  createSession: (name: string, mode: "ask" | "agent") => Promise<void>;
+  renameSession: (id: string, name: string) => Promise<void>;
+  deleteSession: (id: string) => Promise<void>;
+  switchSession: (id: string) => Promise<void>;
+  loadSessionMessages: (id: string) => Promise<void>;
+  clearSessionMessages: (id: string) => Promise<void>;
 
   // Reflog / Undo
   fetchReflog: (count?: number) => Promise<void>;
@@ -724,6 +772,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   aiProposals: [],
   aiThinking: false,
   aiError: null,
+  aiMode: "ask",
+  aiSessions: [],
+  aiActiveSessionId: null,
+  aiFullscreen: false,
   reflog: [],
   undoDescription: null,
   pendingPush: false,
@@ -1789,15 +1841,36 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  // --- Agentic AI Assistant ---
+  // --- Agentic AI Assistant — Dual Mode ---
+
+  setAIMode: (mode) => {
+    const prev = get().aiMode;
+    set({ aiMode: mode });
+    // Switching to Agent: auto-start session
+    if (mode === "agent" && prev !== "agent") {
+      if (!get().aiSessionActive) {
+        get().startAgentSession();
+      }
+    }
+    // Switching to Ask: cancel any agent session, clear proposals
+    if (mode === "ask" && prev !== "ask") {
+      set({ aiProposals: [] });
+    }
+  },
 
   toggleAIPanel: () => {
     const next = !get().aiPanelOpen;
-    set({ aiPanelOpen: next });
-    // Auto-start session when opening panel
+    set({ aiPanelOpen: next, aiFullscreen: false });
+    // Auto-start based on current mode
     if (next && !get().aiSessionActive) {
-      get().startAgentSession();
+      if (get().aiMode === "agent") {
+        get().startAgentSession();
+      }
     }
+  },
+
+  toggleAIFullscreen: () => {
+    set((s) => ({ aiFullscreen: !s.aiFullscreen }));
   },
 
   startAgentSession: async () => {
@@ -1805,13 +1878,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!backend) return false;
     try {
       await backend.AgentStart();
+      // Create or ensure an agent session
+      const sessions = await backend.SessionList();
+      const existingAgent = sessions.find((s: ChatSession) => s.mode === "agent");
+      if (!existingAgent) {
+        const session = await backend.SessionCreate("Agent Session", "agent");
+        set({ aiActiveSessionId: session.id });
+      } else {
+        set({ aiActiveSessionId: existingAgent.id });
+      }
       set({
         aiSessionActive: true,
         aiMessages: [],
         aiProposals: [],
         aiThinking: false,
         aiError: null,
+        aiMode: "agent",
       });
+      // Refresh session list
+      get().fetchSessions();
       return true;
     } catch (e: any) {
       set({ aiError: e.message || "Failed to start agent session", aiSessionActive: false });
@@ -1838,6 +1923,35 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e: any) {
       set({ aiError: e.message || "Agent error", aiThinking: false });
     }
+  },
+
+  sendAskMessage: async (message: string) => {
+    const backend = getBackend();
+    if (!backend) return;
+    const msg: AgentMessage = { role: "user", content: message };
+    set((s) => ({ aiMessages: [...s.aiMessages, msg], aiThinking: true, aiError: null, aiSessionActive: true }));
+    try {
+      const responseText: string = await backend.AskChat(message);
+      const assistantMsg: AgentMessage = {
+        role: "assistant",
+        content: responseText || "",
+      };
+      set((s) => ({
+        aiMessages: [...s.aiMessages, assistantMsg],
+        aiThinking: false,
+      }));
+      // Refresh sessions to get updated message count
+      get().fetchSessions();
+    } catch (e: any) {
+      set({ aiError: e.message || "Ask error", aiThinking: false });
+    }
+  },
+
+  askChatCancel: () => {
+    const backend = getBackend();
+    if (!backend) return;
+    backend.AskChatCancel().catch(() => {});
+    set({ aiThinking: false });
   },
 
   approveProposal: async (proposalID: string) => {
@@ -1945,7 +2059,109 @@ export const useAppStore = create<AppState>((set, get) => ({
       aiThinking: false,
       aiError: null,
       aiPanelOpen: false,
+      aiFullscreen: false,
     });
+  },
+
+  // --- Session Management ---
+
+  fetchSessions: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const sessions: ChatSession[] = await backend.SessionList();
+      set({ aiSessions: sessions });
+      // Update active session ID if not set
+      const activeID: string = await backend.SessionActiveID();
+      set({ aiActiveSessionId: activeID || null });
+    } catch {
+      // Silent
+    }
+  },
+
+  createSession: async (name, mode) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const session: ChatSession = await backend.SessionCreate(name, mode);
+      set({
+        aiActiveSessionId: session.id,
+        aiMessages: [],
+        aiProposals: [],
+        aiSessionActive: true,
+      });
+      get().fetchSessions();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to create session" });
+    }
+  },
+
+  renameSession: async (id, name) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.SessionRename(id, name);
+      get().fetchSessions();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to rename session" });
+    }
+  },
+
+  deleteSession: async (id) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.SessionDelete(id);
+      const state = get();
+      if (state.aiActiveSessionId === id) {
+        set({ aiActiveSessionId: null, aiMessages: [], aiProposals: [], aiSessionActive: false });
+      }
+      get().fetchSessions();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to delete session" });
+    }
+  },
+
+  switchSession: async (id) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const session: ChatSession = await backend.SessionSwitch(id);
+      const messages: AgentMessage[] = await backend.SessionGetMessages(id);
+      set({
+        aiActiveSessionId: session.id,
+        aiMode: session.mode as "ask" | "agent",
+        aiMessages: messages,
+        aiProposals: [],
+        aiSessionActive: true,
+        aiThinking: false,
+        aiError: null,
+      });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to switch session" });
+    }
+  },
+
+  loadSessionMessages: async (id) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const messages: AgentMessage[] = await backend.SessionGetMessages(id);
+      set({ aiMessages: messages });
+    } catch {
+      // Silent
+    }
+  },
+
+  clearSessionMessages: async (id) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.SessionClearMessages(id);
+      set({ aiMessages: [] });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to clear session" });
+    }
   },
 
   // Reflog / Undo

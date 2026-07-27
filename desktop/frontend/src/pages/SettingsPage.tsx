@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import ModelSelectorPopover from "@/components/ModelSelectorPopover";
 
 const CONFIG_KEYS = [
   { key: "user.name", label: "User Name", placeholder: "Your Name" },
@@ -217,40 +218,25 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Model — free text input + quick picks */}
+          {/* Model selector */}
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground font-medium">Model</label>
-            <Input
-              className="h-8 text-xs flex-1 font-mono"
-              value={aiModel}
-              onChange={(e) => setAiModel(e.target.value)}
-              placeholder={
-                aiProvider
-                  ? `e.g. ${(AI_PROVIDERS.find((p) => p.value === aiProvider)?.models[0] || "gpt-4o-mini")}`
-                  : "Select a provider first"
-              }
-              disabled={!aiProvider}
-            />
-            {aiProvider && (
-              <div className="flex flex-wrap gap-1 mt-1">
-                {(AI_PROVIDERS.find((p) => p.value === aiProvider)?.models || []).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setAiModel(m)}
-                    className={cn(
-                      "text-[10px] px-2 py-0.5 rounded-full border font-mono transition-colors",
-                      aiModel === m
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground/60 hover:border-primary/50 hover:text-foreground"
-                    )}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <Input
+                className="h-8 text-xs flex-1 font-mono"
+                value={aiModel}
+                onChange={(e) => setAiModel(e.target.value)}
+                placeholder={
+                  aiProvider
+                    ? `e.g. ${(AI_PROVIDERS.find((p) => p.value === aiProvider)?.models[0] || "gpt-4o-mini")}`
+                    : "Select a provider first"
+                }
+                disabled={!aiProvider}
+              />
+              <ModelSelectorPopover variant="settings" />
+            </div>
             <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-              Type any model name or pick a recommended one above
+              Enter any model name or use the picker for recommendations
             </p>
           </div>
 

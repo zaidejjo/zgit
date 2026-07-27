@@ -10,6 +10,27 @@ import (
 	gitpkg "github.com/zaidejjo/zgit/pkg/core/git"
 )
 
+// dangerousActions lists git operations that ALWAYS require user approval,
+// even when AutoMode is enabled. These actions can cause data loss or
+// irreversible repository changes.
+var dangerousActions = map[string]bool{
+	"push":          true,
+	"merge":         true,
+	"checkout":      true,
+	"revert_commit": true,
+	"reset_commit":  true,
+	"delete_branch": true,
+	"discard_all":   true,
+	"discard_file":  true,
+	"tag_delete":    true,
+}
+
+// isDangerousAction returns true if the action type is considered
+// destructive enough to always require explicit user approval.
+func isDangerousAction(actionType string) bool {
+	return dangerousActions[actionType]
+}
+
 // Agent orchestrates multi-turn AI conversations with tool calling.
 // All repo-modifying actions flow through AgentActionProposal for user confirmation.
 type Agent struct {
@@ -330,6 +351,13 @@ func (a *Agent) executeAction(ctx context.Context, proposal *AgentActionProposal
 	actionType := proposal.Type
 	params := proposal.Params
 
+	// Safety guard: dangerous actions must go through proposal approval.
+	// This is defense-in-depth — the Chat loop should never reach here
+	// without an approved proposal for dangerous actions.
+	if isDangerousAction(actionType) && proposal.Status != ProposalApproved {
+		return "", fmt.Errorf("safety block: %s requires explicit approval (proposal status: %s)", actionType, proposal.Status)
+	}
+
 	switch actionType {
 	case "create_branch":
 		name, _ := params["name"].(string)
@@ -621,8 +649,9 @@ ACTION TYPES and their required params:
 - conflict_resolve: {"file_path": "path/to/file.go", "block_index": -1, "preferred_side": "ours"}
 
 CRITICAL SAFETY RULES:
-- NEVER execute destructive actions without user approval (always use suggest_git_command).
+- DANGEROUS ACTIONS (push, merge, checkout, revert_commit, reset_commit, delete_branch, discard_all, discard_file, tag_delete) ALWAYS require explicit user approval. Never auto-execute these.
 - NEVER propose force push unless the user explicitly asks.
 - NEVER propose reset --hard unless the user explicitly asks.
-- Always explain what the command will do before proposing it.`
+- Always explain what the command will do before proposing it.
+- Use the most precise action type. For example, use discard_file instead of discard_all if only one file needs reverting.`
 }

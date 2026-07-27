@@ -1,53 +1,38 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Sparkles, Send, RefreshCw, Bot, PanelRightClose, Loader2, ChevronDown,
+  Send, RefreshCw, Bot, PanelRightClose, Loader2, Maximize2, Minimize2, Square,
 } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import ChatMessage from "@/components/ChatMessage";
 import ProposalCard from "@/components/ProposalCard";
+import ModeToggle from "@/components/ModeToggle";
+import SessionSidebar from "@/components/SessionSidebar";
+import ModelSelectorPopover from "@/components/ModelSelectorPopover";
 
-// Quick-pick models for the in-header selector
-const QUICK_MODELS: { label: string; model: string }[] = [
-  { label: "GPT-4o mini", model: "gpt-4o-mini" },
-  { label: "GPT-4o", model: "gpt-4o" },
-  { label: "Claude 3.5 Sonnet", model: "anthropic/claude-3.5-sonnet" },
-  { label: "Claude Sonnet 4", model: "claude-sonnet-4-20250514" },
-  { label: "DeepSeek Chat", model: "deepseek-chat" },
-  { label: "DeepSeek R1", model: "deepseek/deepseek-r1" },
-  { label: "Gemini Flash", model: "google/gemini-2.0-flash-exp" },
-  { label: "DeepSeek V4", model: "deepseek/deepseek-v4-flash:free" },
-];
+const SLASH_HINTS = ["/help", "/context", "/clear", "/model", "/review"];
 
 export default function AIAssistantPanel() {
   const {
     aiPanelOpen, toggleAIPanel,
     aiSessionActive, aiMessages, aiProposals, aiThinking, aiError,
-    sendAgentMessage, approveProposal, rejectProposal, resetAgentSession,
-    aiConfig, fetchAIConfig, setAIConfigAction,
+    aiMode, aiFullscreen,
+    sendAgentMessage, sendAskMessage, askChatCancel,
+    approveProposal, rejectProposal, resetAgentSession,
+    toggleAIFullscreen,
+    fetchAIConfig,
   } = useAppStore();
 
   const [input, setInput] = useState("");
-  const [modelOpen, setModelOpen] = useState(false);
-  const [editModel, setEditModel] = useState("");
+  const [showSlashHints, setShowSlashHints] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const modelRef = useRef<HTMLDivElement>(null);
-
-  const currentModel = aiConfig?.model || "";
 
   // Refresh config on mount
   useEffect(() => {
     fetchAIConfig();
   }, [fetchAIConfig]);
-
-  // Sync editModel when dropdown opens
-  useEffect(() => {
-    if (modelOpen) {
-      setEditModel(currentModel);
-    }
-  }, [modelOpen, currentModel]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -61,23 +46,16 @@ export default function AIAssistantPanel() {
     }
   }, [aiPanelOpen]);
 
-  // Close model dropdown on outside click
-  useEffect(() => {
-    if (!modelOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (modelRef.current && !modelRef.current.contains(e.target as Node)) {
-        setModelOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [modelOpen]);
-
   const handleSend = async () => {
     const msg = input.trim();
     if (!msg || aiThinking) return;
     setInput("");
-    await sendAgentMessage(msg);
+    setShowSlashHints(false);
+    if (aiMode === "agent") {
+      await sendAgentMessage(msg);
+    } else {
+      await sendAskMessage(msg);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -86,43 +64,57 @@ export default function AIAssistantPanel() {
       handleSend();
     }
     if (e.key === "Escape") {
-      toggleAIPanel();
+      if (aiFullscreen) {
+        toggleAIFullscreen();
+      } else {
+        toggleAIPanel();
+      }
+    }
+    // Slash command detection
+    if (e.key === "/" && input === "") {
+      setShowSlashHints(true);
     }
   };
 
-  const handleModelChange = async (model: string) => {
-    setEditModel(model);
-    setModelOpen(false);
-    if (model && aiConfig) {
-      await setAIConfigAction(
-        aiConfig.provider,
-        aiConfig.api_key,
-        model,
-        aiConfig.endpoint || "",
-      );
+  const handleSlashCommand = (cmd: string) => {
+    setShowSlashHints(false);
+    switch (cmd) {
+      case "/help":
+        setInput("What commands are available?");
+        break;
+      case "/context":
+        setInput("Show me the current repository context");
+        break;
+      case "/clear":
+        resetAgentSession();
+        return;
+      case "/review":
+        setInput("Review the current branch changes");
+        break;
+      default:
+        break;
     }
+    // Auto-send
+    setTimeout(() => {
+      const msg = input;
+      if (msg.trim()) handleSend();
+    }, 50);
   };
 
-  const handleModelInputKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleModelChange(editModel);
-    }
-    if (e.key === "Escape") {
-      setModelOpen(false);
-    }
-  };
-
-  // Filter out system messages
+  // Filter out system messages for display count
   const visibleMessageCount = aiMessages.filter((m) => m.role !== "system").length;
   const pendingProposals = aiProposals.filter((p) => p.status === "pending");
 
-  const providerName = aiConfig?.provider || "";
+  const inputPlaceholder = aiThinking
+    ? "Waiting for response..."
+    : aiMode === "agent"
+      ? "Ask AI agent to help with Git..."
+      : "Ask a question about the repo...";
 
   return (
     <>
-      {/* Overlay */}
-      {aiPanelOpen && (
+      {/* Overlay (only in panel mode, not fullscreen) */}
+      {aiPanelOpen && !aiFullscreen && (
         <div
           className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]"
           onClick={toggleAIPanel}
@@ -132,79 +124,54 @@ export default function AIAssistantPanel() {
       {/* Panel */}
       <div
         className={cn(
-          "fixed top-0 right-0 z-50 h-full w-[440px] max-w-[100vw] bg-background border-l border-border shadow-2xl flex flex-col transition-transform duration-300 ease-in-out",
+          aiFullscreen
+            ? "fixed inset-0 z-50 bg-background flex flex-col"
+            : "fixed top-0 right-0 z-50 h-full w-[520px] max-w-[100vw] bg-background border-l border-border shadow-2xl flex flex-col transition-transform duration-300 ease-in-out",
           aiPanelOpen ? "translate-x-0" : "translate-x-full"
         )}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 h-12 border-b border-border shrink-0">
+        {/* ===== Header ===== */}
+        <div className="flex items-center justify-between px-3 h-12 border-b border-border shrink-0">
           <div className="flex items-center gap-2 min-w-0">
-            <Sparkles className="w-4 h-4 text-primary shrink-0" />
-            <span className="text-sm font-semibold shrink-0">AI</span>
+            {/* Mode toggle (Ask / Agent) */}
+            <ModeToggle />
 
-            {/* Inline model selector */}
+            {/* Model selector */}
             {aiSessionActive && (
-              <div className="relative" ref={modelRef}>
-                <button
-                  onClick={() => setModelOpen(!modelOpen)}
-                  className="flex items-center gap-1 text-[11px] font-mono px-1.5 py-0.5 rounded bg-muted/60 border border-border/50 hover:bg-muted transition-colors max-w-[180px]"
-                  title={`Model: ${currentModel || "not set"}`}
-                >
-                  <span className="truncate">{currentModel || "model"}</span>
-                  <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
-                </button>
-
-                {modelOpen && (
-                  <div className="absolute left-0 top-full mt-1 z-50 w-72 rounded-lg border bg-popover shadow-lg p-2">
-                    {/* Text input for custom model */}
-                    <input
-                      type="text"
-                      value={editModel}
-                      onChange={(e) => setEditModel(e.target.value)}
-                      onKeyDown={handleModelInputKeyDown}
-                      className="w-full h-8 px-2 text-xs font-mono rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring mb-2"
-                      placeholder={providerName ? `e.g. ${providerName}/model-name` : "Type any model..."}
-                      autoFocus
-                    />
-
-                    {/* Quick-pick chips */}
-                    <div className="flex flex-wrap gap-1 mb-1.5">
-                      {QUICK_MODELS.map((qm) => (
-                        <button
-                          key={qm.model}
-                          onClick={() => handleModelChange(qm.model)}
-                          className={cn(
-                            "text-[10px] px-2 py-0.5 rounded-full border font-mono transition-colors",
-                            editModel === qm.model
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border text-muted-foreground/60 hover:border-primary/50 hover:text-foreground"
-                          )}
-                        >
-                          {qm.label}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[9px] text-muted-foreground/40 mt-1">
-                      Press Enter to confirm • Esc to close
-                    </p>
-                  </div>
-                )}
-              </div>
+              <ModelSelectorPopover align="left" variant="header" />
             )}
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
             {aiSessionActive && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0"
-                onClick={resetAgentSession}
-                title="Reset session"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-              </Button>
+              <>
+                {/* Reset session */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={resetAgentSession}
+                  title="Reset session"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </Button>
+              </>
             )}
+            {/* Fullscreen toggle */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={toggleAIFullscreen}
+              title={aiFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen focus (Ctrl+Shift+F)"}
+            >
+              {aiFullscreen ? (
+                <Minimize2 className="w-3.5 h-3.5" />
+              ) : (
+                <Maximize2 className="w-3.5 h-3.5" />
+              )}
+            </Button>
+            {/* Close */}
             <Button
               variant="ghost"
               size="sm"
@@ -217,108 +184,186 @@ export default function AIAssistantPanel() {
           </div>
         </div>
 
+        {/* ===== Body: Sidebar + Content ===== */}
         {!aiSessionActive ? (
           /* Session start screen */
           <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
             <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
               <Bot className="w-6 h-6 text-primary" />
             </div>
-            <h3 className="text-base font-semibold mb-1">AI Agent Assistant</h3>
+            <h3 className="text-base font-semibold mb-1">
+              {aiMode === "agent" ? "AI Agent Assistant" : "AI Assistant"}
+            </h3>
             <p className="text-sm text-muted-foreground max-w-xs mb-3">
-              Autonomous Git assistant powered by{" "}
-              {(() => {
-                const cfg = useAppStore.getState().aiConfig;
-                const model = cfg?.model ? ` (${cfg.model})` : "";
-                return (cfg?.provider || "AI") + model;
-              })()}
-              . Inspects repo state, proposes actions, and waits for your approval.
+              {aiMode === "agent"
+                ? "Autonomous Git assistant. Inspects repo state, proposes actions, and waits for your approval."
+                : "Ask questions about your repository, Git concepts, or get help with code."}
             </p>
             <p className="text-xs text-muted-foreground/60 mb-6 max-w-xs">
               Configure model and provider in Settings
             </p>
-            <p className="text-[10px] text-muted-foreground/40">
-              Ctrl+Shift+A to toggle • Esc to close
+            {aiMode === "agent" && (
+              <Button size="sm" onClick={() => useAppStore.getState().startAgentSession()}>
+                <Bot className="w-4 h-4 mr-1.5" />
+                Start Agent Session
+              </Button>
+            )}
+            <p className="text-[10px] text-muted-foreground/40 mt-6">
+              Ctrl+Shift+A to toggle • {aiMode === "agent" ? "Agent" : "Ask"} mode
             </p>
           </div>
         ) : (
-          <>
-            {/* Messages area */}
-            <div className="flex-1 overflow-y-auto py-3 space-y-1">
-              {visibleMessageCount === 0 && !aiThinking && (
-                <div className="flex flex-col items-center justify-center h-full text-center px-6">
-                  <Bot className="w-8 h-8 text-muted-foreground/30 mb-3" />
-                  <p className="text-sm text-muted-foreground/60">
-                    Ask me to help with Git operations, review changes, or resolve conflicts.
-                  </p>
-                </div>
-              )}
+          <div className="flex flex-1 min-h-0">
+            {/* Session sidebar */}
+            <SessionSidebar />
 
-              {aiMessages.map((msg, i) => (
-                <div key={i}>
-                  <ChatMessage message={msg} />
-                  {/* Show proposals after the assistant message they belong to */}
-                  {msg.role === "assistant" && pendingProposals.length > 0 && (
-                    <div className="px-4 pb-2 space-y-2">
-                      {pendingProposals.map((prop) => (
-                        <ProposalCard
-                          key={prop.id}
-                          proposal={prop}
-                          onApprove={approveProposal}
-                          onReject={rejectProposal}
-                          disabled={aiThinking}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+            {/* Main content area */}
+            <div className="flex-1 flex flex-col min-w-0">
+              {/* Messages area */}
+              <div className="flex-1 overflow-y-auto py-3 space-y-1">
+                {visibleMessageCount === 0 && !aiThinking && (
+                  <div className="flex flex-col items-center justify-center h-full text-center px-6">
+                    <Bot className="w-8 h-8 text-muted-foreground/30 mb-3" />
+                    <p className="text-sm text-muted-foreground/60">
+                      {aiMode === "agent"
+                        ? "Ask me to help with Git operations, review changes, or resolve conflicts."
+                        : "Ask me anything about this repository or Git."}
+                    </p>
+                  </div>
+                )}
 
-              {/* Thinking indicator */}
-              {aiThinking && (
-                <div className="flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Thinking...</span>
-                </div>
-              )}
+                {aiMessages.map((msg, i) => {
+                  const isLastMsg = i === aiMessages.length - 1;
+                  const isLastAssistantMsg = msg.role === "assistant" && aiMessages.slice(i + 1).every(m => m.role !== "assistant");
+                  return (
+                  <div key={i}>
+                    <ChatMessage
+                      message={msg}
+                      index={i}
+                      isLast={isLastAssistantMsg && isLastMsg}
+                      onEdit={(idx, text) => {
+                        // Replace user message and re-send
+                        const msgs = [...useAppStore.getState().aiMessages];
+                        msgs[idx] = { ...msgs[idx], content: text };
+                        useAppStore.setState({ aiMessages: msgs });
+                        if (useAppStore.getState().aiMode === "agent") {
+                          useAppStore.getState().sendAgentMessage(text);
+                        } else {
+                          useAppStore.getState().sendAskMessage(text);
+                        }
+                      }}
+                      onRegenerate={(idx) => {
+                        // Re-send the last user message
+                        const lastUser = [...useAppStore.getState().aiMessages]
+                          .reverse()
+                          .find(m => m.role === "user");
+                        if (lastUser?.content) {
+                          if (useAppStore.getState().aiMode === "agent") {
+                            useAppStore.getState().sendAgentMessage(lastUser.content);
+                          } else {
+                            useAppStore.getState().sendAskMessage(lastUser.content);
+                          }
+                        }
+                      }}
+                    />
+                    {/* Show proposals after the assistant message they belong to (agent mode only) */}
+                    {aiMode === "agent" && msg.role === "assistant" && pendingProposals.length > 0 && (
+                      <div className="px-4 pb-2 space-y-2">
+                        {pendingProposals.map((prop) => (
+                          <ProposalCard
+                            key={prop.id}
+                            proposal={prop}
+                            onApprove={approveProposal}
+                            onReject={rejectProposal}
+                            disabled={aiThinking}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  );
+                })}
 
-              <div ref={messagesEndRef} />
-            </div>
+                {/* Thinking indicator */}
+                {aiThinking && (
+                  <div className="flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>{aiMode === "agent" ? "Thinking & analyzing..." : "Thinking..."}</span>
+                  </div>
+                )}
 
-            {/* Error banner */}
-            {aiError && (
-              <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
-                <p className="text-xs text-destructive-foreground">{aiError}</p>
+                <div ref={messagesEndRef} />
               </div>
-            )}
 
-            {/* Input area */}
-            <div className="border-t border-border p-3 shrink-0">
-              <div className="flex items-center gap-2">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  className="flex-1 h-9 px-3 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                  placeholder={aiThinking ? "Waiting for response..." : "Ask the AI agent..."}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  disabled={aiThinking}
-                />
-                <Button
-                  size="sm"
-                  className="h-9 w-9 p-0 shrink-0"
-                  onClick={handleSend}
-                  disabled={!input.trim() || aiThinking}
-                >
+              {/* Error banner */}
+              {aiError && (
+                <div className="px-4 py-2 bg-destructive/10 border-t border-destructive/20">
+                  <p className="text-xs text-destructive-foreground">{aiError}</p>
+                </div>
+              )}
+
+              {/* Input area */}
+              <div className="border-t border-border p-3 shrink-0">
+                {/* Slash command hints */}
+                {showSlashHints && input === "" && (
+                  <div className="mb-2 rounded-lg border border-border bg-popover shadow-sm overflow-hidden">
+                    {SLASH_HINTS.map((cmd) => (
+                      <button
+                        key={cmd}
+                        onClick={() => handleSlashCommand(cmd)}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-muted transition-colors"
+                      >
+                        <code className="text-primary font-mono">{cmd}</code>
+                        <span className="text-muted-foreground">
+                          {cmd === "/help" && "Show available commands"}
+                          {cmd === "/context" && "Show repo context"}
+                          {cmd === "/clear" && "Clear conversation"}
+                          {cmd === "/model" && "Switch AI model"}
+                          {cmd === "/review" && "Review branch diff"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    className="flex-1 h-9 px-3 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                    placeholder={inputPlaceholder}
+                    value={input}
+                    onChange={(e) => {
+                      setInput(e.target.value);
+                      if (e.target.value === "") setShowSlashHints(false);
+                    }}
+                    onKeyDown={handleKeyDown}
+                    disabled={aiThinking}
+                  />
                   {aiThinking ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-9 px-2 shrink-0"
+                      onClick={aiMode === "ask" ? askChatCancel : undefined}
+                      title="Cancel"
+                    >
+                      <Square className="w-3.5 h-3.5" />
+                    </Button>
                   ) : (
-                    <Send className="w-4 h-4" />
+                    <Button
+                      size="sm"
+                      className="h-9 w-9 p-0 shrink-0"
+                      onClick={handleSend}
+                      disabled={!input.trim()}
+                    >
+                      <Send className="w-4 h-4" />
+                    </Button>
                   )}
-                </Button>
+                </div>
               </div>
             </div>
-          </>
+          </div>
         )}
       </div>
     </>

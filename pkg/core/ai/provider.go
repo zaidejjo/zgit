@@ -65,6 +65,28 @@ func NewGenerator(cfg Config) (Generator, error) {
 	}
 }
 
+// AskProvider supports simple Q&A without tool calling.
+// Used for "Ask" mode — read-only context queries.
+type AskProvider interface {
+	// Ask sends messages without tools and returns the assistant response.
+	Ask(ctx context.Context, messages []Message) (Message, error)
+
+	// AskStream streams tokens via onToken callback and returns the full response.
+	AskStream(ctx context.Context, messages []Message, onToken func(string)) (Message, error)
+}
+
+// NewAskProvider creates the appropriate AskProvider based on config.
+func NewAskProvider(cfg Config) (AskProvider, error) {
+	switch cfg.Provider {
+	case ProviderOpenAI, ProviderDeepSeek, ProviderOpenRouter, ProviderCustom:
+		return NewOpenAI(cfg), nil
+	case ProviderAnthropic:
+		return NewAnthropic(cfg), nil
+	default:
+		return nil, fmt.Errorf("unsupported AI provider: %s", cfg.Provider)
+	}
+}
+
 // buildSystemPrompt returns the system prompt for generating conventional commits.
 func buildSystemPrompt() string {
 	return `You are a git commit message generator. Generate a concise, accurate commit message following the Conventional Commits format:

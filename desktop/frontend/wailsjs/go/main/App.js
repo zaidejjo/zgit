@@ -10,6 +10,10 @@ export function AgentApproveProposal(arg1) {
   return window['go']['main']['App']['AgentApproveProposal'](arg1);
 }
 
+export function AgentCancel() {
+  return window['go']['main']['App']['AgentCancel']();
+}
+
 export function AgentChat(arg1) {
   return window['go']['main']['App']['AgentChat'](arg1);
 }
@@ -32,6 +36,18 @@ export function AgentReset() {
 
 export function AgentStart() {
   return window['go']['main']['App']['AgentStart']();
+}
+
+export function AskChat(arg1) {
+  return window['go']['main']['App']['AskChat'](arg1);
+}
+
+export function AskChatCancel() {
+  return window['go']['main']['App']['AskChatCancel']();
+}
+
+export function AskChatStream(arg1) {
+  return window['go']['main']['App']['AskChatStream'](arg1);
 }
 
 export function AuthenticateGitHub(arg1) {
@@ -272,6 +288,38 @@ export function RevertCommit(arg1) {
 
 export function Run(arg1) {
   return window['go']['main']['App']['Run'](arg1);
+}
+
+export function SessionActiveID() {
+  return window['go']['main']['App']['SessionActiveID']();
+}
+
+export function SessionClearMessages(arg1) {
+  return window['go']['main']['App']['SessionClearMessages'](arg1);
+}
+
+export function SessionCreate(arg1, arg2) {
+  return window['go']['main']['App']['SessionCreate'](arg1, arg2);
+}
+
+export function SessionDelete(arg1) {
+  return window['go']['main']['App']['SessionDelete'](arg1);
+}
+
+export function SessionGetMessages(arg1) {
+  return window['go']['main']['App']['SessionGetMessages'](arg1);
+}
+
+export function SessionList() {
+  return window['go']['main']['App']['SessionList']();
+}
+
+export function SessionRename(arg1, arg2) {
+  return window['go']['main']['App']['SessionRename'](arg1, arg2);
+}
+
+export function SessionSwitch(arg1) {
+  return window['go']['main']['App']['SessionSwitch'](arg1);
 }
 
 export function SetAIConfig(arg1, arg2, arg3, arg4) {

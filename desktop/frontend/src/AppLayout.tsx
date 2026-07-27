@@ -73,17 +73,26 @@ export default function AppLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keyboard shortcut: Ctrl+Shift+A to toggle AI panel
+  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === "A") {
         e.preventDefault();
+        // If on /ai route, go back to main instead of toggling panel
+        if (location.pathname === "/ai") {
+          navigate({ to: "/" });
+          return;
+        }
         toggleAIPanel();
+      }
+      if (e.ctrlKey && e.shiftKey && e.key === "F") {
+        e.preventDefault();
+        navigate({ to: "/ai" });
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [toggleAIPanel]);
+  }, [toggleAIPanel, navigate, location.pathname]);
 
   // Close repo dropdown on outside click
   useEffect(() => {
@@ -282,8 +291,8 @@ export default function AppLayout() {
       <LoginDialog />
       {/* Push confirmation dialog */}
       <PushConfirmDialog />
-      {/* AI Assistant Panel */}
-      <AIAssistantPanel />
+      {/* AI Assistant Panel (hidden on fullscreen /ai route) */}
+      {location.pathname !== "/ai" && <AIAssistantPanel />}
     </div>
   );
 }

@@ -8,6 +8,8 @@ export function AddRemote(arg1:string,arg2:string):Promise<void>;
 
 export function AgentApproveProposal(arg1:string):Promise<ai.ProposalResult>;
 
+export function AgentCancel():Promise<void>;
+
 export function AgentChat(arg1:string):Promise<ai.AgentResponse>;
 
 export function AgentGetHistory():Promise<Array<ai.Message>>;
@@ -19,6 +21,12 @@ export function AgentRejectProposal(arg1:string,arg2:string):Promise<void>;
 export function AgentReset():Promise<void>;
 
 export function AgentStart():Promise<void>;
+
+export function AskChat(arg1:string):Promise<string>;
+
+export function AskChatCancel():Promise<void>;
+
+export function AskChatStream(arg1:string):Promise<void>;
 
 export function AuthenticateGitHub(arg1:string):Promise<void>;
 
@@ -139,6 +147,22 @@ export function ResolveGitRoot(arg1:string):Promise<string>;
 export function RevertCommit(arg1:string):Promise<void>;
 
 export function Run(arg1:embed.FS):Promise<void>;
+
+export function SessionActiveID():Promise<string>;
+
+export function SessionClearMessages(arg1:string):Promise<void>;
+
+export function SessionCreate(arg1:string,arg2:string):Promise<ai.SessionSummary>;
+
+export function SessionDelete(arg1:string):Promise<void>;
+
+export function SessionGetMessages(arg1:string):Promise<Array<ai.Message>>;
+
+export function SessionList():Promise<Array<ai.SessionSummary>>;
+
+export function SessionRename(arg1:string,arg2:string):Promise<void>;
+
+export function SessionSwitch(arg1:string):Promise<ai.SessionSummary>;
 
 export function SetAIConfig(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
