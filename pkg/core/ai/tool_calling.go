@@ -76,11 +76,11 @@ type openAIResponseMessage struct {
 func (o *OpenAI) Chat(ctx context.Context, messages []Message, tools []ToolDefinition) (Message, error) {
 	endpoint := o.cfg.Endpoint
 	if endpoint == "" {
-		endpoint = DefaultEndpoints[ProviderOpenAI]
+		endpoint = DefaultEndpoints[o.cfg.Provider]
 	}
 	model := o.cfg.Model
 	if model == "" {
-		model = DefaultModels[ProviderOpenAI]
+		model = DefaultModels[o.cfg.Provider]
 	}
 
 	reqMsg := make([]openAIToolMessage, len(messages))

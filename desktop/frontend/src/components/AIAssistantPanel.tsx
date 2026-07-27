@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Sparkles, X, Send, RefreshCw, Bot, PanelRightClose, Loader2,
+  Sparkles, Send, RefreshCw, Bot, PanelRightClose, Loader2, ChevronDown,
 } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import { Button } from "@/components/ui/button";
@@ -8,16 +8,46 @@ import { cn } from "@/lib/utils";
 import ChatMessage from "@/components/ChatMessage";
 import ProposalCard from "@/components/ProposalCard";
 
+// Quick-pick models for the in-header selector
+const QUICK_MODELS: { label: string; model: string }[] = [
+  { label: "GPT-4o mini", model: "gpt-4o-mini" },
+  { label: "GPT-4o", model: "gpt-4o" },
+  { label: "Claude 3.5 Sonnet", model: "anthropic/claude-3.5-sonnet" },
+  { label: "Claude Sonnet 4", model: "claude-sonnet-4-20250514" },
+  { label: "DeepSeek Chat", model: "deepseek-chat" },
+  { label: "DeepSeek R1", model: "deepseek/deepseek-r1" },
+  { label: "Gemini Flash", model: "google/gemini-2.0-flash-exp" },
+  { label: "DeepSeek V4", model: "deepseek/deepseek-v4-flash:free" },
+];
+
 export default function AIAssistantPanel() {
   const {
     aiPanelOpen, toggleAIPanel,
     aiSessionActive, aiMessages, aiProposals, aiThinking, aiError,
     sendAgentMessage, approveProposal, rejectProposal, resetAgentSession,
+    aiConfig, fetchAIConfig, setAIConfigAction,
   } = useAppStore();
 
   const [input, setInput] = useState("");
+  const [modelOpen, setModelOpen] = useState(false);
+  const [editModel, setEditModel] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const modelRef = useRef<HTMLDivElement>(null);
+
+  const currentModel = aiConfig?.model || "";
+
+  // Refresh config on mount
+  useEffect(() => {
+    fetchAIConfig();
+  }, [fetchAIConfig]);
+
+  // Sync editModel when dropdown opens
+  useEffect(() => {
+    if (modelOpen) {
+      setEditModel(currentModel);
+    }
+  }, [modelOpen, currentModel]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -30,6 +60,18 @@ export default function AIAssistantPanel() {
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [aiPanelOpen]);
+
+  // Close model dropdown on outside click
+  useEffect(() => {
+    if (!modelOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (modelRef.current && !modelRef.current.contains(e.target as Node)) {
+        setModelOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [modelOpen]);
 
   const handleSend = async () => {
     const msg = input.trim();
@@ -48,11 +90,34 @@ export default function AIAssistantPanel() {
     }
   };
 
-  // Filter out system and tool messages for count display
-  const visibleMessageCount = aiMessages.filter((m) => m.role !== "system").length;
+  const handleModelChange = async (model: string) => {
+    setEditModel(model);
+    setModelOpen(false);
+    if (model && aiConfig) {
+      await setAIConfigAction(
+        aiConfig.provider,
+        aiConfig.api_key,
+        model,
+        aiConfig.endpoint || "",
+      );
+    }
+  };
 
-  // Group assistant messages with their subsequent proposals
+  const handleModelInputKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleModelChange(editModel);
+    }
+    if (e.key === "Escape") {
+      setModelOpen(false);
+    }
+  };
+
+  // Filter out system messages
+  const visibleMessageCount = aiMessages.filter((m) => m.role !== "system").length;
   const pendingProposals = aiProposals.filter((p) => p.status === "pending");
+
+  const providerName = aiConfig?.provider || "";
 
   return (
     <>
@@ -73,16 +138,62 @@ export default function AIAssistantPanel() {
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 h-12 border-b border-border shrink-0">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-primary" />
-            <span className="text-sm font-semibold">AI Assistant</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <Sparkles className="w-4 h-4 text-primary shrink-0" />
+            <span className="text-sm font-semibold shrink-0">AI</span>
+
+            {/* Inline model selector */}
             {aiSessionActive && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium uppercase">
-                Agentic
-              </span>
+              <div className="relative" ref={modelRef}>
+                <button
+                  onClick={() => setModelOpen(!modelOpen)}
+                  className="flex items-center gap-1 text-[11px] font-mono px-1.5 py-0.5 rounded bg-muted/60 border border-border/50 hover:bg-muted transition-colors max-w-[180px]"
+                  title={`Model: ${currentModel || "not set"}`}
+                >
+                  <span className="truncate">{currentModel || "model"}</span>
+                  <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
+                </button>
+
+                {modelOpen && (
+                  <div className="absolute left-0 top-full mt-1 z-50 w-72 rounded-lg border bg-popover shadow-lg p-2">
+                    {/* Text input for custom model */}
+                    <input
+                      type="text"
+                      value={editModel}
+                      onChange={(e) => setEditModel(e.target.value)}
+                      onKeyDown={handleModelInputKeyDown}
+                      className="w-full h-8 px-2 text-xs font-mono rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring mb-2"
+                      placeholder={providerName ? `e.g. ${providerName}/model-name` : "Type any model..."}
+                      autoFocus
+                    />
+
+                    {/* Quick-pick chips */}
+                    <div className="flex flex-wrap gap-1 mb-1.5">
+                      {QUICK_MODELS.map((qm) => (
+                        <button
+                          key={qm.model}
+                          onClick={() => handleModelChange(qm.model)}
+                          className={cn(
+                            "text-[10px] px-2 py-0.5 rounded-full border font-mono transition-colors",
+                            editModel === qm.model
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border text-muted-foreground/60 hover:border-primary/50 hover:text-foreground"
+                          )}
+                        >
+                          {qm.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[9px] text-muted-foreground/40 mt-1">
+                      Press Enter to confirm • Esc to close
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
-          <div className="flex items-center gap-1">
+
+          <div className="flex items-center gap-1 shrink-0">
             {aiSessionActive && (
               <Button
                 variant="ghost"
