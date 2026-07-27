@@ -33,6 +33,8 @@ type App struct {
 	watcher     *fsnotify.Watcher
 	watcherMu   sync.Mutex
 	watcherDone chan struct{}
+	agent       *ai.Agent
+	agentMu     sync.Mutex
 }
 
 // NewApp creates a new App with the given engine.
@@ -614,6 +616,130 @@ func (a *App) GenerateCommitMessage() (string, error) {
 	}
 
 	return msg, nil
+}
+
+// --- Agentic AI Assistant ---
+
+// AgentStart creates a new agent session with the configured provider.
+func (a *App) AgentStart() error {
+	a.agentMu.Lock()
+	defer a.agentMu.Unlock()
+
+	aiCfg := ai.Config{
+		Provider: ai.ProviderKind(a.engine.Config.GetString("ai.provider")),
+		APIKey:   a.engine.Config.GetString("ai.api_key"),
+		Model:    a.engine.Config.GetString("ai.model"),
+		Endpoint: a.engine.Config.GetString("ai.endpoint"),
+	}
+
+	maxTurns := a.engine.Config.GetInt("ai.max_turns")
+	if maxTurns > 0 {
+		aiCfg.MaxTurns = maxTurns
+	}
+	aiCfg.AutoMode = a.engine.Config.GetBool("ai.auto_mode")
+
+	if aiCfg.Provider == "" {
+		return fmt.Errorf("AI provider not configured — go to Settings to set up AI")
+	}
+	if aiCfg.APIKey == "" {
+		return fmt.Errorf("API key not configured — go to Settings to set your API key")
+	}
+
+	agent, err := a.engine.NewAgent(aiCfg)
+	if err != nil {
+		return fmt.Errorf("create agent: %w", err)
+	}
+
+	// Register additional tools that need full engine access
+	agent.RegisterTool(ai.NewAutoResolveConflictTool(a.engine.Git))
+	agent.RegisterTool(ai.NewGeneratePRReviewTool(a.engine.Git))
+
+	a.agent = agent
+	return nil
+}
+
+// AgentChat sends a message to the AI agent and returns its response.
+func (a *App) AgentChat(message string) (*ai.AgentResponse, error) {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return nil, fmt.Errorf("no active agent session — call AgentStart first")
+	}
+
+	ctx, cancel := context.WithTimeout(a.getContext(), 180e9)
+	defer cancel()
+
+	return agent.Chat(ctx, message)
+}
+
+// AgentApproveProposal executes an approved proposal.
+func (a *App) AgentApproveProposal(proposalID string) (*ai.ProposalResult, error) {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return nil, fmt.Errorf("no active agent session")
+	}
+
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+
+	return agent.ApproveProposal(ctx, proposalID)
+}
+
+// AgentRejectProposal rejects a proposal with optional feedback.
+func (a *App) AgentRejectProposal(proposalID string, feedback string) error {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return fmt.Errorf("no active agent session")
+	}
+
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+
+	return agent.RejectProposal(ctx, proposalID, feedback)
+}
+
+// AgentReset clears the current agent session.
+func (a *App) AgentReset() error {
+	a.agentMu.Lock()
+	defer a.agentMu.Unlock()
+
+	if a.agent != nil {
+		a.agent.Reset()
+		a.agent = nil
+	}
+	return nil
+}
+
+// AgentGetProposals returns all pending proposals.
+func (a *App) AgentGetProposals() ([]ai.AgentActionProposal, error) {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return nil, nil
+	}
+	return agent.GetPendingProposals(), nil
+}
+
+// AgentGetHistory returns the raw conversation history.
+func (a *App) AgentGetHistory() ([]ai.Message, error) {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return nil, nil
+	}
+	return agent.History(), nil
 }
 
 // --- 3-Way Merge Editor ---
