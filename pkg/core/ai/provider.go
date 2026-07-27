@@ -22,8 +22,12 @@ type Config struct {
 	Provider ProviderKind `json:"provider"`
 	APIKey   string       `json:"api_key"`
 	Model    string       `json:"model"`
-	Endpoint string       `json:"endpoint,omitempty"` // custom endpoint URL
+	Endpoint string       `json:"endpoint,omitempty"`  // custom endpoint URL
+	MaxTurns int          `json:"max_turns,omitempty"` // agent max iterations (default 10)
+	AutoMode bool         `json:"auto_mode,omitempty"` // skip proposals for safe actions
 }
+
+const DefaultMaxTurns = 10
 
 // DefaultModels maps providers to their default model names.
 var DefaultModels = map[ProviderKind]string{
