@@ -51,12 +51,13 @@ type Model struct {
 	msgs chan teaMsg
 
 	// State
-	focusedPanel   int // which panel has cursor focus (0-2)
-	fullScreenView int // -1 = panels, fsPR, fsIssue
-	showHelp       bool
-	mode           int // normal, diff, commit overlay
-	ready          bool
-	quitting       bool
+	focusedPanel    int // which panel has cursor focus (0-2)
+	fullScreenView  int // -1 = panels, fsPR, fsIssue
+	showHelp        bool
+	mode            int // normal, diff, commit overlay
+	ready           bool
+	quitting        bool
+	pushAfterCommit bool // if true, push after commit succeeds
 
 	// Sub-models (views)
 	status   views.StatusModel
@@ -624,10 +625,113 @@ func (m *Model) handleStatusKeys(key string) (tea.Model, tea.Cmd) {
 		if m.status.Status != nil && m.status.Cursor < len(m.status.Status.Files) {
 			m.openFileDiff()
 		}
+	case " ":
+		m.stageToggle()
+	case "s":
+		m.stageFile()
+	case "S":
+		m.unstageFile()
+	case "a":
+		m.stageAll()
+	case "A":
+		m.unstageAll()
+	case "d":
+		m.discardFile()
 	case "c":
+		m.openCommitDialog()
+	case "P":
+		m.pushAfterCommit = true
 		m.openCommitDialog()
 	}
 	return m, nil
+}
+
+// --- File operations ---
+
+func (m *Model) stageToggle() {
+	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
+		return
+	}
+	file := m.status.Status.Files[m.status.Cursor]
+	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
+	defer cancel()
+
+	if file.Staged != models.StatusUnmodified && file.Staged != models.StatusUntracked && file.Unstaged == models.StatusUnmodified {
+		// Only staged → unstage
+		if err := m.git.RestoreStaged(ctx, file.Path); err != nil {
+			m.status.Error = fmt.Sprintf("unstage %s: %v", file.Path, err)
+			return
+		}
+	} else {
+		// Has unstaged or untracked → stage
+		if err := m.git.Add(ctx, gitpkg.AddOptions{}, file.Path); err != nil {
+			m.status.Error = fmt.Sprintf("stage %s: %v", file.Path, err)
+			return
+		}
+	}
+	m.sub.Refresh()
+}
+
+func (m *Model) stageFile() {
+	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
+		return
+	}
+	file := m.status.Status.Files[m.status.Cursor]
+	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
+	defer cancel()
+	if err := m.git.Add(ctx, gitpkg.AddOptions{}, file.Path); err != nil {
+		m.status.Error = fmt.Sprintf("stage %s: %v", file.Path, err)
+		return
+	}
+	m.sub.Refresh()
+}
+
+func (m *Model) unstageFile() {
+	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
+		return
+	}
+	file := m.status.Status.Files[m.status.Cursor]
+	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
+	defer cancel()
+	if err := m.git.RestoreStaged(ctx, file.Path); err != nil {
+		m.status.Error = fmt.Sprintf("unstage %s: %v", file.Path, err)
+		return
+	}
+	m.sub.Refresh()
+}
+
+func (m *Model) discardFile() {
+	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
+		return
+	}
+	file := m.status.Status.Files[m.status.Cursor]
+	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
+	defer cancel()
+	if err := m.git.Restore(ctx, file.Path); err != nil {
+		m.status.Error = fmt.Sprintf("discard %s: %v", file.Path, err)
+		return
+	}
+	m.sub.Refresh()
+}
+
+func (m *Model) stageAll() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30e9)
+	defer cancel()
+	if err := m.git.Add(ctx, gitpkg.AddOptions{All: true}); err != nil {
+		m.status.Error = fmt.Sprintf("stage all: %v", err)
+		return
+	}
+	m.sub.Refresh()
+}
+
+func (m *Model) unstageAll() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30e9)
+	defer cancel()
+	if err := m.git.Reset(ctx); err != nil {
+		m.status.Error = fmt.Sprintf("unstage all: %v", err)
+		return
+	}
+	m.sub.Refresh()
 }
 
 func (m *Model) handleLogKeys(key string) (tea.Model, tea.Cmd) {
@@ -814,7 +918,9 @@ func (m *Model) updateCommit(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Success: true,
 				Message: m.commitDlg.GetMessage(),
 			}
-			go m.executeCommit(m.commitDlg.GetMessage())
+			doPush := m.pushAfterCommit
+			m.pushAfterCommit = false
+			go m.executeCommit(m.commitDlg.GetMessage(), doPush)
 			return m, nil
 		}
 	}
@@ -849,7 +955,7 @@ type commitResultEvent struct {
 	Result views.CommitResultInfo
 }
 
-func (m *Model) executeCommit(msg string) {
+func (m *Model) executeCommit(msg string, doPush bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30e9)
 	defer cancel()
 
@@ -872,6 +978,26 @@ func (m *Model) executeCommit(msg string) {
 	if commits, logErr := m.git.Log(ctx, gitpkg.LogOptions{Count: 1}); logErr == nil && len(commits) > 0 {
 		hash = commits[0].Hash
 	}
+
+	// Push after commit if requested
+	pushErrMsg := ""
+	if doPush {
+		branch := "HEAD"
+		if commits, logErr := m.git.Log(ctx, gitpkg.LogOptions{Count: 1}); logErr == nil && len(commits) > 0 {
+			// Keep the hash we already got
+		}
+		if m.status.Status != nil && m.status.Status.Branch != "" {
+			branch = m.status.Status.Branch
+		}
+		pushOpts := gitpkg.PushOptions{
+			SetUpstream: true,
+			Branch:      branch,
+		}
+		if pErr := m.git.Push(ctx, pushOpts); pErr != nil {
+			pushErrMsg = fmt.Sprintf("commit OK, push failed: %v", pErr)
+		}
+	}
+
 	m.msgs <- teaMsg{
 		view: -1,
 		data: commitResultEvent{
@@ -879,6 +1005,7 @@ func (m *Model) executeCommit(msg string) {
 				Success: true,
 				Hash:    hash,
 				Message: msg,
+				Error:   pushErrMsg,
 			},
 		},
 	}

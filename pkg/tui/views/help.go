@@ -49,13 +49,15 @@ func (h HelpModel) View(width int) string {
 		{
 			title: "File Operations (Status panel)",
 			keys: []helpEntry{
+				{"space", "Stage / Unstage toggle"},
 				{"s", "Stage file"},
 				{"S", "Unstage file"},
 				{"a", "Stage all"},
 				{"A", "Unstage all"},
-				{"d", "Discard changes"},
+				{"d", "Discard file changes"},
 				{"enter", "View diff (on file)"},
 				{"c", "Open commit dialog"},
+				{"P", "Commit & Push"},
 			},
 		},
 		{

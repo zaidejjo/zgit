@@ -40,8 +40,9 @@ type KeyMap struct {
 	BranchMerge key.Binding
 
 	// Commit
-	Commit key.Binding
-	Amend  key.Binding
+	Commit     key.Binding
+	CommitPush key.Binding
+	Amend      key.Binding
 
 	// Global
 	Help    key.Binding
@@ -87,8 +88,9 @@ func DefaultKeyMap() KeyMap {
 		BranchMerge: key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "merge")),
 
 		// Commit
-		Commit: key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "commit")),
-		Amend:  key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "amend")),
+		Commit:     key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "commit")),
+		CommitPush: key.NewBinding(key.WithKeys("P"), key.WithHelp("P", "commit & push")),
+		Amend:      key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "amend")),
 
 		// Global
 		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
@@ -105,7 +107,7 @@ func (k KeyMap) FullHelp() []key.Binding {
 		k.ViewPRs, k.ViewIssues,
 		k.Enter, k.Escape, k.Space,
 		k.Stage, k.Unstage, k.StageAll, k.UnstageAll, k.Discard,
-		k.Commit, k.Amend,
+		k.Commit, k.CommitPush, k.Amend,
 		k.Checkout, k.BranchNew, k.BranchDel, k.BranchMerge,
 		k.Refresh, k.Help, k.Quit,
 	}
