@@ -228,6 +228,64 @@ export interface StashEntry {
   time: string; // ISO timestamp from Go time.Time
 }
 
+export interface RebaseCommitOp {
+  sha: string;
+  action: "pick" | "reword" | "squash" | "fixup" | "drop";
+  new_message?: string;
+}
+
+export interface RebaseResult {
+  success: boolean;
+  message?: string;
+}
+
+export interface AIConfig {
+  provider: string;
+  api_key: string;
+  model: string;
+  endpoint?: string;
+}
+
+export interface ReflogEntry {
+  sequence: number;
+  hash: string;
+  action: string;
+  subject: string;
+  timestamp: string;
+  old_hash?: string;
+  undoable: boolean;
+}
+
+export interface ConflictFile {
+  path: string;
+  ancestor_sha?: string;
+  ours_sha?: string;
+  theirs_sha?: string;
+  block_count: number;
+}
+
+export interface ConflictBlock {
+  index: number;
+  ours: string;
+  theirs: string;
+  ours_start: number;
+  ours_end: number;
+  theirs_start: number;
+  theirs_end: number;
+  resolved?: string;
+  state: "unresolved" | "use-ours" | "use-theirs" | "edited";
+}
+
+export interface MergeConflictDetail {
+  path: string;
+  ours: string;
+  theirs: string;
+  ancestor?: string;
+  raw_content: string;
+  blocks: ConflictBlock[];
+  has_merge: boolean;
+}
+
 // Wails runtime injects window.go.main.App during dev/build.
 // The generated wrappers at wailsjs/go/main/App.js call the same runtime.
 declare global {
@@ -299,6 +357,33 @@ declare global {
           GetIssueDetail(number: number): Promise<Issue>;
           CreateIssue(title: string, body: string): Promise<Issue>;
           CloseIssue(number: number): Promise<void>;
+          // Commit actions
+          CherryPick(sha: string): Promise<void>;
+          RevertCommit(sha: string): Promise<void>;
+          ResetCommit(sha: string, mode: string): Promise<void>;
+          // Tags
+          TagList(): Promise<string[]>;
+          TagCreate(name: string, target: string, message: string): Promise<void>;
+          TagDelete(name: string): Promise<void>;
+          // Config
+          ConfigGet(key: string): Promise<string>;
+          ConfigSet(key: string, value: string, global: boolean): Promise<void>;
+          // Conflict resolution
+          CheckoutOurs(file: string): Promise<void>;
+          CheckoutTheirs(file: string): Promise<void>;
+          // Reflog / Undo
+          GetReflog(count: number): Promise<ReflogEntry[]>;
+          UndoLastAction(): Promise<string>;
+          // 3-Way Merge Editor
+          GetConflictFiles(): Promise<ConflictFile[]>;
+          GetMergeConflictDetail(file: string): Promise<MergeConflictDetail>;
+          StageResolvedFile(file: string, content: string): Promise<void>;
+          // Rebase
+          RebaseSequence(onto: string, commitsJSON: string): Promise<RebaseResult>;
+          // AI Commit Message Generator
+          GetAIConfig(): Promise<AIConfig>;
+          SetAIConfig(provider: string, apiKey: string, model: string, endpoint: string): Promise<void>;
+          GenerateCommitMessage(): Promise<string>;
         };
       };
     };
@@ -337,6 +422,35 @@ interface AppState {
 
   // Remote management
   remotes: Remote[];
+
+  // Tags
+  tags: string[];
+
+  // Git config
+  gitConfig: Record<string, string>;
+
+  // Merge conflict resolution
+  conflictResolutions: Record<string, "ours" | "theirs" | "both">;
+  conflictFiles: ConflictFile[];
+  mergeEditorOpen: boolean;
+  mergeEditorFile: string | null;
+  mergeConflictDetail: MergeConflictDetail | null;
+
+  // Interactive Rebase
+  rebaseMode: boolean;
+  rebaseCommits: RebaseCommitOp[];
+  rebaseOnto: string;
+
+  // DnD Merge/Rebase dialog
+  mergeRebaseDialog: { branch: string; targetHash: string; targetMsg: string } | null;
+
+  // AI Commit Message
+  aiConfig: AIConfig | null;
+  aiGenerating: boolean;
+
+  // Reflog / Undo
+  reflog: ReflogEntry[];
+  undoDescription: string | null;
 
   // Push confirmation
   pendingPush: boolean;
@@ -425,9 +539,96 @@ interface AppState {
   confirmPush: () => Promise<void>;
   cancelPush: () => void;
 
+  // Commit actions
+  cherryPick: (sha: string) => Promise<void>;
+  revertCommit: (sha: string) => Promise<void>;
+  resetCommit: (sha: string, mode: string) => Promise<void>;
+
+  // Tags
+  fetchTags: () => Promise<void>;
+  createTag: (name: string, target: string, message: string) => Promise<void>;
+  deleteTag: (name: string) => Promise<void>;
+
+  // Config
+  fetchGitConfig: () => Promise<void>;
+  setGitConfig: (key: string, value: string, global?: boolean) => Promise<void>;
+
+  // Merge conflict resolution
+  resolveConflict: (file: string, side: "ours" | "theirs") => Promise<void>;
+  fetchConflictFiles: () => Promise<void>;
+  openMergeEditor: (file: string) => Promise<void>;
+  closeMergeEditor: () => void;
+  resolveMergeBlock: (blockIndex: number, state: "use-ours" | "use-theirs" | "edited", content?: string) => void;
+  saveResolvedFile: () => Promise<void>;
+
+  // Interactive Rebase
+  enterRebaseMode: () => void;
+  exitRebaseMode: () => void;
+  reorderCommits: (fromIndex: number, toIndex: number) => void;
+  setCommitAction: (index: number, action: "pick" | "reword" | "squash" | "fixup" | "drop") => void;
+  setCommitMessage: (index: number, message: string) => void;
+  applyRebase: () => Promise<void>;
+  // DnD Dialog
+  showMergeRebaseDialog: (branch: string, targetHash: string, targetMsg: string) => void;
+  closeMergeRebaseDialog: () => void;
+  executeMerge: (branch: string) => Promise<void>;
+  executeRebaseOnto: (branch: string, target: string) => Promise<void>;
+
+  // AI Commit Message
+  fetchAIConfig: () => Promise<void>;
+  setAIConfigAction: (provider: string, apiKey: string, model: string, endpoint?: string) => Promise<void>;
+  generateCommitMessage: () => Promise<string | null>;
+
+  // Reflog / Undo
+  fetchReflog: (count?: number) => Promise<void>;
+  undoLastAction: () => Promise<void>;
+  clearUndoDescription: () => void;
+
   // Sprint 6: Discard
   discardFile: (file: string) => Promise<void>;
   discardAllFiles: () => Promise<void>;
+}
+
+// Reconstruct resolved file content from raw (marker-containing) content + resolved blocks.
+function applyResolvedBlocks(rawContent: string, blocks: ConflictBlock[]): string {
+  const lines = rawContent.split("\n");
+  const result: string[] = [];
+  let i = 0;
+
+  for (const block of blocks) {
+    // Copy lines before this conflict block
+    while (i < lines.length && !lines[i].startsWith("<<<<<<< ")) {
+      result.push(lines[i]);
+      i++;
+    }
+    if (i >= lines.length) break;
+
+    // Skip: <<<<<<< ours-ref
+    i++; // skip <<<<<<< line
+    // Skip: ours lines (until =======)
+    while (i < lines.length && !lines[i].startsWith("=======")) {
+      i++;
+    }
+    if (i < lines.length) i++; // skip =======
+    // Skip: theirs lines (until >>>>>>>)
+    while (i < lines.length && !lines[i].startsWith(">>>>>>> ")) {
+      i++;
+    }
+    if (i < lines.length) i++; // skip >>>>>>> line
+
+    // Insert resolved content
+    if (block.resolved !== undefined && block.resolved !== "") {
+      result.push(block.resolved);
+    }
+  }
+
+  // Copy remaining lines after last block
+  while (i < lines.length) {
+    result.push(lines[i]);
+    i++;
+  }
+
+  return result.join("\n");
 }
 
 const app = window as any;
@@ -448,6 +649,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedPRDetail: null,
   selectedIssueDetail: null,
   remotes: [],
+  tags: [],
+  gitConfig: {},
+  conflictResolutions: {},
+  conflictFiles: [],
+  mergeEditorOpen: false,
+  mergeEditorFile: null,
+  mergeConflictDetail: null,
+  rebaseMode: false,
+  rebaseCommits: [],
+  rebaseOnto: "",
+  mergeRebaseDialog: null,
+  aiConfig: null,
+  aiGenerating: false,
+  reflog: [],
+  undoDescription: null,
   pendingPush: false,
   pushCommits: [],
   showPushDialog: false,
@@ -496,7 +712,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       const log = await backend.GetLog(count);
       set({ log, loading: { ...get().loading, log: false } });
     } catch (e: any) {
-      set({ error: e.message || "Failed to fetch log", loading: { ...get().loading, log: false } });
+      const msg = e.message || "";
+      // Empty repo: git log exits with 128 + "does not have any commits yet"
+      if (msg.includes("does not have any commits yet") || msg.includes("does not have any commits")) {
+        set({ log: [], loading: { ...get().loading, log: false } });
+        return;
+      }
+      set({ error: msg || "Failed to fetch log", loading: { ...get().loading, log: false } });
     }
   },
 
@@ -509,9 +731,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         backend.GetBranches(),
         backend.CurrentBranch(),
       ]);
-      set({ branches, currentBranch, loading: { ...get().loading, branches: false } });
+      set({ branches: branches || [], currentBranch: currentBranch || "", loading: { ...get().loading, branches: false } });
     } catch (e: any) {
-      set({ error: e.message || "Failed to fetch branches", loading: { ...get().loading, branches: false } });
+      const msg = e.message || "";
+      // Empty repo: git branch commands exit with 128 / unborn HEAD
+      if (msg.includes("does not have any commits yet") || msg.includes("not a git repository") || msg.includes("ambiguous argument")) {
+        set({ branches: [], currentBranch: "HEAD", loading: { ...get().loading, branches: false } });
+        return;
+      }
+      set({ error: msg || "Failed to fetch branches", loading: { ...get().loading, branches: false } });
     }
   },
 
@@ -623,7 +851,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!backend) return;
     try {
       const remotes = await backend.GetRemotes();
-      set({ remotes });
+      set({ remotes: remotes || [] });
     } catch (e: any) {
       set({ error: e.message || "Failed to fetch remotes" });
     }
@@ -999,7 +1227,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       await backend.OpenRepo(path);
       const repoPath = await backend.GetRepoPath();
-      set({ repoPath, loading: { ...get().loading, repo: false } });
+      // Clear all repo-scoped state before refresh to prevent stale data from previous repo
+      set({
+        repoPath,
+        status: null,
+        log: [],
+        branches: [],
+        diff: null,
+        currentBranch: "",
+        tags: [],
+        reflog: [],
+        undoDescription: null,
+        conflictFiles: [],
+        mergeEditorOpen: false,
+        mergeEditorFile: null,
+        mergeConflictDetail: null,
+        rebaseMode: false,
+        rebaseCommits: [],
+        stashes: [],
+        remotes: [],
+        error: null,
+        loading: { ...get().loading, repo: false },
+      });
       // Refresh all data
       await get().refreshAll();
       // Refresh recent list
@@ -1037,6 +1286,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       s.fetchIssues(),
       s.fetchWorkflowRuns(),
       s.fetchStashes(),
+      s.fetchConflictFiles(),
     ]);
   },
 
@@ -1166,5 +1416,344 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e: any) {
       set({ error: e.message || "Failed to discard all changes" });
     }
+  },
+
+  // Commit actions
+  cherryPick: async (sha) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.CherryPick(sha);
+      await get().refreshAll();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to cherry-pick ${sha.slice(0,7)}` });
+    }
+  },
+
+  revertCommit: async (sha) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.RevertCommit(sha);
+      await get().refreshAll();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to revert ${sha.slice(0,7)}` });
+    }
+  },
+
+  resetCommit: async (sha, mode) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.ResetCommit(sha, mode);
+      await get().refreshAll();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to reset to ${sha.slice(0,7)}` });
+    }
+  },
+
+  // Tags
+  fetchTags: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const tags = await backend.TagList();
+      set({ tags });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch tags" });
+    }
+  },
+
+  createTag: async (name, target, message) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.TagCreate(name, target, message);
+      await get().fetchTags();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to create tag ${name}` });
+    }
+  },
+
+  deleteTag: async (name) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.TagDelete(name);
+      await get().fetchTags();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to delete tag ${name}` });
+    }
+  },
+
+  // Config
+  fetchGitConfig: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    const keys = ["user.name", "user.email", "core.autocrlf", "core.editor", "init.defaultBranch"];
+    const config: Record<string, string> = {};
+    for (const key of keys) {
+      try {
+        config[key] = await backend.ConfigGet(key);
+      } catch { config[key] = ""; }
+    }
+    set({ gitConfig: config });
+  },
+
+  setGitConfig: async (key, value, global = true) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.ConfigSet(key, value, global);
+      const cfg = { ...get().gitConfig, [key]: value };
+      set({ gitConfig: cfg });
+    } catch (e: any) {
+      set({ error: e.message || `Failed to set config ${key}` });
+    }
+  },
+
+  // Merge conflict resolution
+  resolveConflict: async (file, side) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      if (side === "ours") {
+        await backend.CheckoutOurs(file);
+      } else {
+        await backend.CheckoutTheirs(file);
+      }
+      await get().refreshAll();
+      const resolutions = { ...get().conflictResolutions, [file]: side };
+      set({ conflictResolutions: resolutions });
+    } catch (e: any) {
+      set({ error: e.message || `Failed to resolve conflict in ${file}` });
+    }
+  },
+
+  // 3-Way Merge Editor
+  fetchConflictFiles: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const files: ConflictFile[] = await backend.GetConflictFiles();
+      set({ conflictFiles: files });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch conflict files" });
+    }
+  },
+
+  openMergeEditor: async (file) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const detail: MergeConflictDetail = await backend.GetMergeConflictDetail(file);
+      set({ mergeEditorOpen: true, mergeEditorFile: file, mergeConflictDetail: detail });
+    } catch (e: any) {
+      set({ error: e.message || `Failed to open merge editor for ${file}` });
+    }
+  },
+
+  closeMergeEditor: () => {
+    set({ mergeEditorOpen: false, mergeEditorFile: null, mergeConflictDetail: null });
+  },
+
+  resolveMergeBlock: (blockIndex, state, content) => {
+    const detail = get().mergeConflictDetail;
+    if (!detail) return;
+    const blocks = [...detail.blocks];
+    const block = { ...blocks[blockIndex] };
+    block.state = state;
+
+    if (state === "use-ours") {
+      block.resolved = block.ours;
+    } else if (state === "use-theirs") {
+      block.resolved = block.theirs;
+    } else if (state === "edited" && content !== undefined) {
+      block.resolved = content;
+    }
+
+    blocks[blockIndex] = block;
+    set({ mergeConflictDetail: { ...detail, blocks } });
+  },
+
+  saveResolvedFile: async () => {
+    const backend = getBackend();
+    const detail = get().mergeConflictDetail;
+    const file = get().mergeEditorFile;
+    if (!backend || !detail || !file) return;
+    try {
+      // Reconstruct file: replace each conflict block with its resolved content
+      const content = applyResolvedBlocks(detail.raw_content, detail.blocks);
+      await backend.StageResolvedFile(file, content);
+      set({ mergeEditorOpen: false, mergeEditorFile: null, mergeConflictDetail: null });
+      await get().refreshAll();
+      // Refresh conflict files list
+      await get().fetchConflictFiles();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to save resolved file ${file}` });
+    }
+  },
+
+  // Interactive Rebase
+  enterRebaseMode: () => {
+    const log = get().log;
+    const commits: RebaseCommitOp[] = log.map((c) => ({
+      sha: c.hash,
+      action: "pick" as const,
+    }));
+    set({ rebaseMode: true, rebaseCommits: commits, rebaseOnto: "" });
+  },
+
+  exitRebaseMode: () => {
+    set({ rebaseMode: false, rebaseCommits: [], rebaseOnto: "" });
+  },
+
+  reorderCommits: (fromIndex, toIndex) => {
+    const commits = [...get().rebaseCommits];
+    const [moved] = commits.splice(fromIndex, 1);
+    commits.splice(toIndex, 0, moved);
+    set({ rebaseCommits: commits });
+  },
+
+  setCommitAction: (index, action) => {
+    const commits = [...get().rebaseCommits];
+    commits[index] = { ...commits[index], action };
+    set({ rebaseCommits: commits });
+  },
+
+  setCommitMessage: (index, message) => {
+    const commits = [...get().rebaseCommits];
+    commits[index] = { ...commits[index], new_message: message };
+    set({ rebaseCommits: commits });
+  },
+
+  applyRebase: async () => {
+    const backend = getBackend();
+    const { rebaseCommits, rebaseOnto, currentBranch } = get();
+    if (!backend || rebaseCommits.length === 0) return;
+    try {
+      set((s) => ({ loading: { ...s.loading, rebase: true }, error: null }));
+      // Determine onto: parent of first commit being rebased
+      const onto = rebaseOnto || `${rebaseCommits[0].sha}^`;
+      const commitsJSON = JSON.stringify(rebaseCommits);
+      const result: RebaseResult = await backend.RebaseSequence(onto, commitsJSON);
+      set((s) => ({ loading: { ...s.loading, rebase: false } }));
+      if (result.success) {
+        set({ rebaseMode: false, rebaseCommits: [] });
+        await get().refreshAll();
+        await get().fetchLog(100);
+      } else {
+        set({ error: result.message || "Rebase failed" });
+      }
+    } catch (e: any) {
+      set((s) => ({ loading: { ...s.loading, rebase: false } }));
+      set({ error: e.message || "Rebase failed" });
+    }
+  },
+
+  showMergeRebaseDialog: (branch, targetHash, targetMsg) => {
+    set({ mergeRebaseDialog: { branch, targetHash, targetMsg } });
+  },
+
+  closeMergeRebaseDialog: () => {
+    set({ mergeRebaseDialog: null });
+  },
+
+  executeMerge: async (branch) => {
+    try {
+      await get().gitMerge(branch);
+      set({ mergeRebaseDialog: null });
+    } catch (e: any) {
+      set({ error: e.message || `Merge failed: ${branch}` });
+      set({ mergeRebaseDialog: null });
+    }
+  },
+
+  executeRebaseOnto: async (branch, target) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const commitsJSON = JSON.stringify([{ sha: target, action: "pick" }]);
+      const result: RebaseResult = await backend.RebaseSequence(branch, commitsJSON);
+      if (result.success) {
+        set({ mergeRebaseDialog: null });
+        await get().refreshAll();
+        await get().fetchLog(100);
+      } else {
+        set({ error: result.message || "Rebase failed" });
+        set({ mergeRebaseDialog: null });
+      }
+    } catch (e: any) {
+      set({ error: e.message || `Rebase failed: ${e.message}` });
+      set({ mergeRebaseDialog: null });
+    }
+  },
+
+  // AI Commit Message
+  fetchAIConfig: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const config: AIConfig = await backend.GetAIConfig();
+      set({ aiConfig: config });
+    } catch (e: any) {
+      // Silently fail — AI is optional
+    }
+  },
+
+  setAIConfigAction: async (provider, apiKey, model, endpoint) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.SetAIConfig(provider, apiKey, model, endpoint || "");
+      set({ aiConfig: { provider, api_key: apiKey, model, endpoint } });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to save AI config" });
+    }
+  },
+
+  generateCommitMessage: async () => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      set({ aiGenerating: true });
+      const message: string = await backend.GenerateCommitMessage();
+      set({ aiGenerating: false });
+      return message;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to generate commit message" });
+      set({ aiGenerating: false });
+      return null;
+    }
+  },
+
+  // Reflog / Undo
+  fetchReflog: async (count = 10) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const entries: ReflogEntry[] = await backend.GetReflog(count);
+      set({ reflog: entries });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch reflog" });
+    }
+  },
+
+  undoLastAction: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const description: string = await backend.UndoLastAction();
+      set({ undoDescription: description });
+      await get().refreshAll();
+      // Refresh reflog to show the undo entry
+      await get().fetchReflog(5);
+    } catch (e: any) {
+      set({ error: e.message || "Failed to undo last action" });
+    }
+  },
+
+  clearUndoDescription: () => {
+    set({ undoDescription: null });
   },
 }));

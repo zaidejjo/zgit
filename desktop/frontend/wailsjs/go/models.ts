@@ -17,6 +17,24 @@ export namespace embed {
 
 export namespace models {
 	
+	export class AIConfig {
+	    provider: string;
+	    api_key: string;
+	    model: string;
+	    endpoint?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AIConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.provider = source["provider"];
+	        this.api_key = source["api_key"];
+	        this.model = source["model"];
+	        this.endpoint = source["endpoint"];
+	    }
+	}
 	export class Branch {
 	    name: string;
 	    full_ref: string;
@@ -103,6 +121,54 @@ export namespace models {
 		    }
 		    return a;
 		}
+	}
+	export class ConflictBlock {
+	    index: number;
+	    ours: string;
+	    theirs: string;
+	    ours_start: number;
+	    ours_end: number;
+	    theirs_start: number;
+	    theirs_end: number;
+	    resolved?: string;
+	    state: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConflictBlock(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.index = source["index"];
+	        this.ours = source["ours"];
+	        this.theirs = source["theirs"];
+	        this.ours_start = source["ours_start"];
+	        this.ours_end = source["ours_end"];
+	        this.theirs_start = source["theirs_start"];
+	        this.theirs_end = source["theirs_end"];
+	        this.resolved = source["resolved"];
+	        this.state = source["state"];
+	    }
+	}
+	export class ConflictFile {
+	    path: string;
+	    ancestor_sha?: string;
+	    ours_sha?: string;
+	    theirs_sha?: string;
+	    block_count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConflictFile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.ancestor_sha = source["ancestor_sha"];
+	        this.ours_sha = source["ours_sha"];
+	        this.theirs_sha = source["theirs_sha"];
+	        this.block_count = source["block_count"];
+	    }
 	}
 	export class DeviceFlowCode {
 	    device_code: string;
@@ -335,6 +401,48 @@ export namespace models {
 		}
 	}
 	
+	export class MergeConflictDetail {
+	    path: string;
+	    ours: string;
+	    theirs: string;
+	    ancestor?: string;
+	    raw_content: string;
+	    blocks: ConflictBlock[];
+	    has_merge: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MergeConflictDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.ours = source["ours"];
+	        this.theirs = source["theirs"];
+	        this.ancestor = source["ancestor"];
+	        this.raw_content = source["raw_content"];
+	        this.blocks = this.convertValues(source["blocks"], ConflictBlock);
+	        this.has_merge = source["has_merge"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Review {
 	    id: number;
 	    author: string;
@@ -492,6 +600,63 @@ export namespace models {
 	        this.status_emoji = source["status_emoji"];
 	        this.review_state = source["review_state"];
 	        this.labels = source["labels"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RebaseResult {
+	    success: boolean;
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RebaseResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.message = source["message"];
+	    }
+	}
+	export class ReflogEntry {
+	    sequence: number;
+	    hash: string;
+	    action: string;
+	    subject: string;
+	    // Go type: time
+	    timestamp: any;
+	    old_hash?: string;
+	    undoable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReflogEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sequence = source["sequence"];
+	        this.hash = source["hash"];
+	        this.action = source["action"];
+	        this.subject = source["subject"];
+	        this.timestamp = this.convertValues(source["timestamp"], null);
+	        this.old_hash = source["old_hash"];
+	        this.undoable = source["undoable"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

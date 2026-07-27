@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { Outlet, useNavigate, useLocation } from "@tanstack/react-router";
 import {
   GitCommitHorizontal, History, GitBranch, GitPullRequest,
-  CircleDot, Play, Globe, Settings, FolderOpen, Folder, Sun, Moon, X,
+  CircleDot, Play, Globe, Tag, Settings, FolderOpen, Folder, Sun, Moon, X,
 } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import LoginDialog from "@/components/LoginDialog";
 import PushConfirmDialog from "@/components/PushConfirmDialog";
+import UndoBanner from "@/components/UndoBanner";
 import { EventsOn } from "../wailsjs/runtime";
 
 const tabs = [
@@ -19,6 +20,7 @@ const tabs = [
   { id: "issues",   label: "Issues",   Icon: CircleDot },
   { id: "actions",  label: "Actions",  Icon: Play },
   { id: "remotes",  label: "Remotes",  Icon: Globe },
+  { id: "tags",     label: "Tags",     Icon: Tag },
   { id: "settings", label: "Settings", Icon: Settings },
 ] as const;
 
@@ -241,6 +243,9 @@ export default function AppLayout() {
           </button>
         </div>
       )}
+
+      {/* Undo banner */}
+      <UndoBanner />
 
       {/* Main content */}
       <main className="p-4">

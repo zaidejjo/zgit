@@ -144,6 +144,34 @@ type GitAdapter interface {
 	// Merge
 	Merge(ctx context.Context, branch string) (string, error)
 
+	// Rebase
+	RebaseSequence(ctx context.Context, opts models.RebaseSequenceOptions) (*models.RebaseResult, error)
+
+	// Commit operations
+	CherryPick(ctx context.Context, sha string) error
+	Revert(ctx context.Context, sha string) error
+	ResetCommit(ctx context.Context, sha, mode string) error
+
+	// Tags
+	TagList(ctx context.Context) ([]string, error)
+	TagCreate(ctx context.Context, name, target, message string) error
+	TagDelete(ctx context.Context, name string) error
+
+	// Config
+	ConfigGet(ctx context.Context, key string) (string, error)
+	ConfigSet(ctx context.Context, key, value string, global bool) error
+
+	// Conflict resolution
+	CheckoutOurs(ctx context.Context, file string) error
+	CheckoutTheirs(ctx context.Context, file string) error
+	ConflictFiles(ctx context.Context) ([]models.ConflictFile, error)
+	GetMergeConflictDetail(ctx context.Context, file string) (*models.MergeConflictDetail, error)
+	StageResolvedFile(ctx context.Context, file, content string) error
+
+	// Reflog
+	Reflog(ctx context.Context, count int) ([]models.ReflogEntry, error)
+	UndoLastAction(ctx context.Context) (string, error)
+
 	// Misc
 	MergeBase(ctx context.Context, a, b string) (string, error)
 	RefExists(ctx context.Context, ref string) (bool, error)

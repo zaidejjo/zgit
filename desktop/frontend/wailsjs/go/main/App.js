@@ -18,12 +18,32 @@ export function CheckoutBranch(arg1) {
   return window['go']['main']['App']['CheckoutBranch'](arg1);
 }
 
+export function CheckoutOurs(arg1) {
+  return window['go']['main']['App']['CheckoutOurs'](arg1);
+}
+
+export function CheckoutTheirs(arg1) {
+  return window['go']['main']['App']['CheckoutTheirs'](arg1);
+}
+
+export function CherryPick(arg1) {
+  return window['go']['main']['App']['CherryPick'](arg1);
+}
+
 export function CloseIssue(arg1) {
   return window['go']['main']['App']['CloseIssue'](arg1);
 }
 
 export function Commit(arg1, arg2) {
   return window['go']['main']['App']['Commit'](arg1, arg2);
+}
+
+export function ConfigGet(arg1) {
+  return window['go']['main']['App']['ConfigGet'](arg1);
+}
+
+export function ConfigSet(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ConfigSet'](arg1, arg2, arg3);
 }
 
 export function CreateBranch(arg1) {
@@ -54,12 +74,24 @@ export function DiscardFile(arg1) {
   return window['go']['main']['App']['DiscardFile'](arg1);
 }
 
+export function GenerateCommitMessage() {
+  return window['go']['main']['App']['GenerateCommitMessage']();
+}
+
+export function GetAIConfig() {
+  return window['go']['main']['App']['GetAIConfig']();
+}
+
 export function GetAheadCommits() {
   return window['go']['main']['App']['GetAheadCommits']();
 }
 
 export function GetBranches() {
   return window['go']['main']['App']['GetBranches']();
+}
+
+export function GetConflictFiles() {
+  return window['go']['main']['App']['GetConflictFiles']();
 }
 
 export function GetCurrentRepoPath() {
@@ -90,12 +122,20 @@ export function GetLog(arg1) {
   return window['go']['main']['App']['GetLog'](arg1);
 }
 
+export function GetMergeConflictDetail(arg1) {
+  return window['go']['main']['App']['GetMergeConflictDetail'](arg1);
+}
+
 export function GetPullRequestDetail(arg1) {
   return window['go']['main']['App']['GetPullRequestDetail'](arg1);
 }
 
 export function GetPullRequests() {
   return window['go']['main']['App']['GetPullRequests']();
+}
+
+export function GetReflog(arg1) {
+  return window['go']['main']['App']['GetReflog'](arg1);
 }
 
 export function GetRemotes() {
@@ -182,16 +222,32 @@ export function ReRunWorkflow(arg1) {
   return window['go']['main']['App']['ReRunWorkflow'](arg1);
 }
 
+export function RebaseSequence(arg1, arg2) {
+  return window['go']['main']['App']['RebaseSequence'](arg1, arg2);
+}
+
 export function RemoveRemote(arg1) {
   return window['go']['main']['App']['RemoveRemote'](arg1);
+}
+
+export function ResetCommit(arg1, arg2) {
+  return window['go']['main']['App']['ResetCommit'](arg1, arg2);
 }
 
 export function ResolveGitRoot(arg1) {
   return window['go']['main']['App']['ResolveGitRoot'](arg1);
 }
 
+export function RevertCommit(arg1) {
+  return window['go']['main']['App']['RevertCommit'](arg1);
+}
+
 export function Run(arg1) {
   return window['go']['main']['App']['Run'](arg1);
+}
+
+export function SetAIConfig(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetAIConfig'](arg1, arg2, arg3, arg4);
 }
 
 export function StageAll() {
@@ -204,6 +260,10 @@ export function StageFile(arg1) {
 
 export function StagePatch(arg1) {
   return window['go']['main']['App']['StagePatch'](arg1);
+}
+
+export function StageResolvedFile(arg1, arg2) {
+  return window['go']['main']['App']['StageResolvedFile'](arg1, arg2);
 }
 
 export function StartDeviceFlow() {
@@ -228,6 +288,22 @@ export function StashPop(arg1) {
 
 export function StashPush(arg1) {
   return window['go']['main']['App']['StashPush'](arg1);
+}
+
+export function TagCreate(arg1, arg2, arg3) {
+  return window['go']['main']['App']['TagCreate'](arg1, arg2, arg3);
+}
+
+export function TagDelete(arg1) {
+  return window['go']['main']['App']['TagDelete'](arg1);
+}
+
+export function TagList() {
+  return window['go']['main']['App']['TagList']();
+}
+
+export function UndoLastAction() {
+  return window['go']['main']['App']['UndoLastAction']();
 }
 
 export function UnstageAll() {

@@ -14,9 +14,18 @@ const configFileName = "config.yaml"
 // Config holds all zgit configuration values.
 type Config struct {
 	GitHub      GitHubConfig `mapstructure:"github"`
+	AI          AIConfig     `mapstructure:"ai"`
 	Repo        RepoConfig   `mapstructure:"repo"`
 	RecentRepos []string     `mapstructure:"recent_repos"`
 	Theme       string       `mapstructure:"theme"`
+}
+
+// AIConfig stores AI commit message provider settings.
+type AIConfig struct {
+	Provider string `mapstructure:"provider"`
+	APIKey   string `mapstructure:"api_key"`
+	Model    string `mapstructure:"model"`
+	Endpoint string `mapstructure:"endpoint"`
 }
 
 // GitHubConfig stores GitHub authentication and preferences.
@@ -58,6 +67,10 @@ func New() (*Manager, error) {
 	// Defaults
 	v.SetDefault("github.user", "")
 	v.SetDefault("github.token", "")
+	v.SetDefault("ai.provider", "")
+	v.SetDefault("ai.api_key", "")
+	v.SetDefault("ai.model", "")
+	v.SetDefault("ai.endpoint", "")
 	v.SetDefault("repo.editor", "code")
 	v.SetDefault("repo.diff_context", 3)
 	v.SetDefault("theme", "default")

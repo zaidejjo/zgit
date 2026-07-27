@@ -11,9 +11,19 @@ export function CancelWorkflowRun(arg1:number):Promise<void>;
 
 export function CheckoutBranch(arg1:string):Promise<void>;
 
+export function CheckoutOurs(arg1:string):Promise<void>;
+
+export function CheckoutTheirs(arg1:string):Promise<void>;
+
+export function CherryPick(arg1:string):Promise<void>;
+
 export function CloseIssue(arg1:number):Promise<void>;
 
 export function Commit(arg1:string,arg2:string):Promise<string>;
+
+export function ConfigGet(arg1:string):Promise<string>;
+
+export function ConfigSet(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
 export function CreateBranch(arg1:string):Promise<void>;
 
@@ -29,9 +39,15 @@ export function DiscardAllFiles():Promise<void>;
 
 export function DiscardFile(arg1:string):Promise<void>;
 
+export function GenerateCommitMessage():Promise<string>;
+
+export function GetAIConfig():Promise<models.AIConfig>;
+
 export function GetAheadCommits():Promise<Array<models.Commit>>;
 
 export function GetBranches():Promise<Array<models.Branch>>;
+
+export function GetConflictFiles():Promise<Array<models.ConflictFile>>;
 
 export function GetCurrentRepoPath():Promise<string>;
 
@@ -47,9 +63,13 @@ export function GetIssues():Promise<Array<models.Issue>>;
 
 export function GetLog(arg1:number):Promise<Array<models.Commit>>;
 
+export function GetMergeConflictDetail(arg1:string):Promise<models.MergeConflictDetail>;
+
 export function GetPullRequestDetail(arg1:number):Promise<models.PullRequestDetail>;
 
 export function GetPullRequests():Promise<Array<models.PullRequestSummary>>;
+
+export function GetReflog(arg1:number):Promise<Array<models.ReflogEntry>>;
 
 export function GetRemotes():Promise<Array<models.Remote>>;
 
@@ -93,17 +113,27 @@ export function PollDeviceFlow(arg1:string):Promise<string>;
 
 export function ReRunWorkflow(arg1:number):Promise<void>;
 
+export function RebaseSequence(arg1:string,arg2:string):Promise<models.RebaseResult>;
+
 export function RemoveRemote(arg1:string):Promise<void>;
+
+export function ResetCommit(arg1:string,arg2:string):Promise<void>;
 
 export function ResolveGitRoot(arg1:string):Promise<string>;
 
+export function RevertCommit(arg1:string):Promise<void>;
+
 export function Run(arg1:embed.FS):Promise<void>;
+
+export function SetAIConfig(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function StageAll():Promise<void>;
 
 export function StageFile(arg1:string):Promise<void>;
 
 export function StagePatch(arg1:string):Promise<void>;
+
+export function StageResolvedFile(arg1:string,arg2:string):Promise<void>;
 
 export function StartDeviceFlow():Promise<models.DeviceFlowCode>;
 
@@ -116,6 +146,14 @@ export function StashList():Promise<Array<models.Stash>>;
 export function StashPop(arg1:number):Promise<void>;
 
 export function StashPush(arg1:string):Promise<void>;
+
+export function TagCreate(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function TagDelete(arg1:string):Promise<void>;
+
+export function TagList():Promise<Array<string>>;
+
+export function UndoLastAction():Promise<string>;
 
 export function UnstageAll():Promise<void>;
 

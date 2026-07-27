@@ -51,6 +51,11 @@ func ParsePorcelainV2(data []byte, branchInfo *branchInfo) *models.Status {
 			if fs != nil {
 				s.Files = append(s.Files, *fs)
 			}
+		case porcelainV2Unmerged:
+			fs := parsePorcelainV2Entry(line)
+			if fs != nil {
+				s.Files = append(s.Files, *fs)
+			}
 		case porcelainV2Untracked:
 			path := strings.TrimPrefix(line, "? ")
 			s.Files = append(s.Files, models.FileStatus{
@@ -405,7 +410,7 @@ func parseNumstatLine(line string) (*models.FileChange, error) {
 
 // ParseRemotes parses `git remote -v` output.
 func ParseRemotes(data []byte) ([]*models.Remote, error) {
-	var remotes []*models.Remote
+	remotes := make([]*models.Remote, 0)
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	for scanner.Scan() {
 		line := scanner.Text()

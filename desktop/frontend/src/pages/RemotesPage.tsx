@@ -32,8 +32,9 @@ export default function RemotesPage() {
   };
 
   // Group remotes by name (each remote has fetch + push entries)
+  const remoteList = remotes || [];
   const remoteMap = new Map<string, { name: string; fetchUrl?: string; pushUrl?: string }>();
-  for (const r of remotes) {
+  for (const r of remoteList) {
     const existing = remoteMap.get(r.name) || { name: r.name };
     if (r.type === "fetch" || !r.push_url) {
       existing.fetchUrl = r.url;
@@ -52,7 +53,7 @@ export default function RemotesPage() {
         <div className="flex items-center gap-2">
           <h2 className="text-xl font-bold">Remotes</h2>
           <span className="text-sm text-muted-foreground">
-            {remotes.length > 0 ? `${groupedRemotes.length} remote${groupedRemotes.length !== 1 ? "s" : ""}` : ""}
+            {remoteList.length > 0 ? `${groupedRemotes.length} remote${groupedRemotes.length !== 1 ? "s" : ""}` : ""}
           </span>
         </div>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>

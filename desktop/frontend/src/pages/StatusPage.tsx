@@ -3,7 +3,7 @@ import {
   Download, Upload, Undo2, Archive, RotateCcw, Play, X,
   GitCommitHorizontal, SquarePen, AlignLeft, CheckCheck,
   AlertTriangle, ChevronDown, ListChecks, FileText,
-  RefreshCw,
+  RefreshCw, AlertOctagon, ArrowRight, Sparkles,
 } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import DiffViewer from "@/components/DiffViewer";
+import MergeEditor from "@/components/MergeEditor";
 
 const CONVENTIONAL_PREFIXES = [
   { value: "feat", label: "feat", desc: "New feature", color: "text-green-500" },
@@ -31,6 +32,7 @@ const CONVENTIONAL_PREFIXES = [
 // StatusType enum values from Go models
 const STATUS_UNTRACKED = 0;
 const STATUS_UNMODIFIED = 7;
+const STATUS_UNMERGED = 6; // StatusUpdatedButUnmerged
 
 export default function StatusPage() {
   const {
@@ -39,6 +41,8 @@ export default function StatusPage() {
     commitAndPush, commit, discardFile,
     stashes, fetchStashes, stashPush, stashPop, stashApply, stashDrop,
     gitFetch, gitPull, gitPushForce,
+    resolveConflict, openMergeEditor,
+    aiConfig, aiGenerating, generateCommitMessage, fetchAIConfig,
   } = useAppStore();
 
   // Diff selection
@@ -59,6 +63,7 @@ export default function StatusPage() {
   useEffect(() => {
     fetchStatus();
     fetchStashes();
+    fetchAIConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -159,6 +164,7 @@ export default function StatusPage() {
   const canCommit = stagedFiles.length > 0 && summary.trim().length > 0;
 
   return (
+    <>
     <TooltipProvider delayDuration={300}>
       <div className="flex gap-4 h-full">
         {/* Left column: file list */}
@@ -218,14 +224,29 @@ export default function StatusPage() {
             </div>
           </div>
 
+          {/* Merge conflict resolution */}
+          {status.is_merging && (
+            <>
+              <MergeConflictBanner
+                files={status.files || []}
+                onResolve={(file, side) => resolveConflict(file, side)}
+                onOpenEditor={(file) => openMergeEditor(file)}
+              />
+            </>
+          )}
+
           {/* File list scroll area */}
           <ScrollArea className="flex-1 min-h-0">
             {status.is_clean && (
-              <Card>
-                <CardContent className="py-8 text-center text-muted-foreground">
-                  Clean working tree
-                </CardContent>
-              </Card>
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="w-16 h-16 rounded-full bg-primary/5 flex items-center justify-center mb-4">
+                  <CheckCheck className="w-8 h-8 text-primary/40" />
+                </div>
+                <h3 className="text-base font-semibold text-foreground mb-1">Working tree is clean</h3>
+                <p className="text-sm text-muted-foreground max-w-xs">
+                  No modified or untracked files. Make changes to your project to see them here.
+                </p>
+              </div>
             )}
 
             {!status.is_clean && (
@@ -344,7 +365,7 @@ export default function StatusPage() {
               <div className="relative">
                 <SquarePen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                 <input
-                  className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-10 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   placeholder="Summary (required)"
                   value={summary}
                   onChange={(e) => setSummary(e.target.value)}
@@ -356,6 +377,37 @@ export default function StatusPage() {
                   }}
                   autoFocus
                 />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={async () => {
+                        const msg = await generateCommitMessage();
+                        if (msg) {
+                          // Split on first newline to separate summary from description
+                          const nl = msg.indexOf("\n");
+                          if (nl >= 0) {
+                            setSummary(msg.slice(0, nl).trim());
+                            setDescription(msg.slice(nl + 1).trim());
+                          } else {
+                            setSummary(msg.trim());
+                          }
+                        }
+                      }}
+                      disabled={aiGenerating || !aiConfig?.provider}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={aiConfig?.provider ? "Generate commit message with AI" : "Configure AI in Settings first"}
+                    >
+                      {aiGenerating ? (
+                        <span className="block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    {aiConfig?.provider ? "Generate commit message with AI" : "Configure AI in Settings first"}
+                  </TooltipContent>
+                </Tooltip>
               </div>
 
               {/* Description textarea */}
@@ -532,7 +584,10 @@ export default function StatusPage() {
         </div>
       </div>
     </TooltipProvider>
-  );
+
+    {/* 3-Way Merge Editor modal */}
+    <MergeEditor />
+    </>);
 }
 
 /* ─── Conventional Commit Chips ─── */
@@ -667,6 +722,75 @@ function FileRow({ file, type, selected, checked, onToggleCheck, onClick, onStag
         >
           {type === "staged" ? "Unstage" : "Stage"}
         </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Merge Conflict Banner ─── */
+
+function MergeConflictBanner({
+  files,
+  onResolve,
+  onOpenEditor,
+}: {
+  files: Array<{ path: string; staged: number; unstaged: number }>;
+  onResolve: (file: string, side: "ours" | "theirs") => void;
+  onOpenEditor?: (file: string) => void;
+}) {
+  const conflictedFiles = files.filter(
+    (f) => f.staged === STATUS_UNMERGED || f.unstaged === STATUS_UNMERGED
+  );
+
+  if (conflictedFiles.length === 0) return null;
+
+  return (
+    <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 overflow-hidden">
+      {/* Banner header */}
+      <div className="flex items-center gap-2 px-4 py-3 bg-destructive/10 border-b border-destructive/20">
+        <AlertOctagon className="w-5 h-5 text-destructive shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-destructive">Merge Conflict</p>
+          <p className="text-xs text-destructive/80">
+            {conflictedFiles.length} file{conflictedFiles.length !== 1 ? "s" : ""} with conflicts — resolve before committing
+          </p>
+        </div>
+      </div>
+
+      {/* Conflicted files */}
+      <div className="divide-y divide-destructive/10">
+        {conflictedFiles.map((f) => (
+          <div key={f.path} className="flex items-center gap-3 px-4 py-2.5 hover:bg-destructive/5 transition-colors">
+            <FileText className="w-4 h-4 text-destructive/60 shrink-0" />
+            <span className="text-sm font-mono flex-1 truncate">{f.path}</span>
+            <div className="flex gap-1.5 shrink-0">
+              <button
+                className="text-xs px-2 py-1 rounded border border-blue-500/30 text-blue-600 hover:bg-blue-500/10 transition-colors"
+                onClick={() => onResolve(f.path, "ours")}
+                title="Use our version"
+              >
+                <ArrowRight className="w-3 h-3 mr-0.5 inline" />
+                Ours
+              </button>
+              <button
+                className="text-xs px-2 py-1 rounded border border-purple-500/30 text-purple-600 hover:bg-purple-500/10 transition-colors"
+                onClick={() => onResolve(f.path, "theirs")}
+                title="Use their version"
+              >
+                Theirs
+                <ArrowRight className="w-3 h-3 ml-0.5 inline" />
+              </button>
+              <span className="text-muted-foreground/30">|</span>
+              <button
+                className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground hover:bg-muted/80 transition-colors font-mono"
+                onClick={() => onOpenEditor?.(f.path)}
+                title="Open 3-way merge editor"
+              >
+                Open Editor
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

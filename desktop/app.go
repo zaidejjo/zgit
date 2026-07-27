@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/zaidejjo/zgit/pkg/core"
+	"github.com/zaidejjo/zgit/pkg/core/ai"
 	"github.com/zaidejjo/zgit/pkg/core/git"
 	"github.com/zaidejjo/zgit/pkg/core/github"
 	"github.com/zaidejjo/zgit/pkg/core/models"
@@ -454,6 +456,203 @@ func (a *App) GitMerge(branch string) (string, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
 	defer cancel()
 	return a.engine.Git.Merge(ctx, branch)
+}
+
+// RebaseSequence executes an interactive rebase sequence.
+func (a *App) RebaseSequence(onto string, commitsJSON string) (*models.RebaseResult, error) {
+	var opts models.RebaseSequenceOptions
+	opts.Onto = onto
+	if err := json.Unmarshal([]byte(commitsJSON), &opts.Commits); err != nil {
+		return nil, fmt.Errorf("parse rebase commits: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+	return a.engine.Git.RebaseSequence(ctx, opts)
+}
+
+// CherryPick applies a single commit onto the current HEAD.
+func (a *App) CherryPick(sha string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
+	defer cancel()
+	return a.engine.Git.CherryPick(ctx, sha)
+}
+
+// RevertCommit reverts a single commit.
+func (a *App) RevertCommit(sha string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
+	defer cancel()
+	return a.engine.Git.Revert(ctx, sha)
+}
+
+// ResetCommit moves HEAD to a commit with the given mode (soft, mixed, hard).
+func (a *App) ResetCommit(sha, mode string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
+	defer cancel()
+	return a.engine.Git.ResetCommit(ctx, sha, mode)
+}
+
+// TagList returns all tags sorted by creation date (newest first).
+func (a *App) TagList() ([]string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.TagList(ctx)
+}
+
+// TagCreate creates a tag. If message is non-empty, creates an annotated tag.
+func (a *App) TagCreate(name, target, message string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.TagCreate(ctx, name, target, message)
+}
+
+// TagDelete deletes a tag.
+func (a *App) TagDelete(name string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.TagDelete(ctx, name)
+}
+
+// ConfigGet gets a git config value.
+func (a *App) ConfigGet(key string) (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 5e9)
+	defer cancel()
+	return a.engine.Git.ConfigGet(ctx, key)
+}
+
+// ConfigSet sets a git config value.
+func (a *App) ConfigSet(key, value string, global bool) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 5e9)
+	defer cancel()
+	return a.engine.Git.ConfigSet(ctx, key, value, global)
+}
+
+// CheckoutOurs resolves a conflicted file using the --ours version.
+func (a *App) CheckoutOurs(file string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.CheckoutOurs(ctx, file)
+}
+
+// CheckoutTheirs resolves a conflicted file using the --theirs version.
+func (a *App) CheckoutTheirs(file string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.CheckoutTheirs(ctx, file)
+}
+
+// --- AI Commit Message Generator ---
+
+// GetAIConfig returns the current AI configuration.
+func (a *App) GetAIConfig() (models.AIConfig, error) {
+	cfg := a.engine.Config
+	return models.AIConfig{
+		Provider: cfg.GetString("ai.provider"),
+		APIKey:   cfg.GetString("ai.api_key"),
+		Model:    cfg.GetString("ai.model"),
+		Endpoint: cfg.GetString("ai.endpoint"),
+	}, nil
+}
+
+// SetAIConfig saves the AI provider configuration.
+func (a *App) SetAIConfig(provider, apiKey, model, endpoint string) error {
+	cfg := a.engine.Config
+	cfg.Set("ai.provider", provider)
+	cfg.Set("ai.api_key", apiKey)
+	cfg.Set("ai.model", model)
+	cfg.Set("ai.endpoint", endpoint)
+	return cfg.Save()
+}
+
+// GenerateCommitMessage reads the staged diff and returns an AI-generated conventional commit message.
+func (a *App) GenerateCommitMessage() (string, error) {
+	// 1. Get staged diff
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+
+	diffOpts := git.DiffOptions{Cached: true, Unified: true}
+	diff, err := a.engine.Git.Diff(ctx, diffOpts)
+	if err != nil {
+		return "", fmt.Errorf("get staged diff: %w", err)
+	}
+
+	// Build diff text from files
+	var diffText string
+	for _, f := range diff.Files {
+		if f.UnifiedDiff != "" {
+			diffText += f.UnifiedDiff + "\n"
+		}
+	}
+
+	if strings.TrimSpace(diffText) == "" {
+		return "", fmt.Errorf("no staged changes — stage files before generating a commit message")
+	}
+
+	// 2. Get AI config
+	aiCfg := ai.Config{
+		Provider: ai.ProviderKind(a.engine.Config.GetString("ai.provider")),
+		APIKey:   a.engine.Config.GetString("ai.api_key"),
+		Model:    a.engine.Config.GetString("ai.model"),
+		Endpoint: a.engine.Config.GetString("ai.endpoint"),
+	}
+
+	if aiCfg.Provider == "" {
+		return "", fmt.Errorf("AI provider not configured — go to Settings to set up AI commit message generation")
+	}
+	if aiCfg.APIKey == "" {
+		return "", fmt.Errorf("API key not configured — go to Settings to set your API key")
+	}
+
+	// 3. Generate
+	generator, err := ai.NewGenerator(aiCfg)
+	if err != nil {
+		return "", err
+	}
+
+	msg, err := generator.GenerateCommitMessage(ctx, diffText, aiCfg)
+	if err != nil {
+		return "", fmt.Errorf("AI generation failed: %w", err)
+	}
+
+	return msg, nil
+}
+
+// --- 3-Way Merge Editor ---
+
+// GetConflictFiles returns all files with unresolved merge conflicts.
+func (a *App) GetConflictFiles() ([]models.ConflictFile, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.ConflictFiles(ctx)
+}
+
+// GetMergeConflictDetail returns 3-way conflict detail for a specific file.
+func (a *App) GetMergeConflictDetail(file string) (*models.MergeConflictDetail, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return a.engine.Git.GetMergeConflictDetail(ctx, file)
+}
+
+// StageResolvedFile writes resolved content and stages it.
+func (a *App) StageResolvedFile(file, content string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.StageResolvedFile(ctx, file, content)
+}
+
+// --- Reflog / Undo ---
+
+// GetReflog returns the last N reflog entries.
+func (a *App) GetReflog(count int) ([]models.ReflogEntry, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.Reflog(ctx, count)
+}
+
+// UndoLastAction undoes the most recent reflog entry and returns a description.
+func (a *App) UndoLastAction() (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return a.engine.Git.UndoLastAction(ctx)
 }
 
 // --- GitHub operations ---

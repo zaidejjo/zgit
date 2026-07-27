@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   GitBranch, Plus, ArrowRightFromLine, Trash2, Pencil,
   Merge, AlertTriangle, CheckCheck, X, GitCommitHorizontal,
   ArrowUpWideNarrow, ArrowDownWideNarrow,
 } from "lucide-react";
 import { useAppStore } from "@/store/app";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -15,11 +15,14 @@ import {
   Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import EmptyState from "@/components/EmptyState";
 
 export default function BranchesPage() {
+  const navigate = useNavigate();
   const {
     branches, currentBranch, loading, fetchBranches,
     checkoutBranch, createBranch, deleteBranch, renameBranch, gitMerge,
+    repoPath,
   } = useAppStore();
 
   // New branch dialog state
@@ -56,6 +59,23 @@ export default function BranchesPage() {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground">
         Loading branches...
+      </div>
+    );
+  }
+
+  if (!loading.branches && branches.length === 0) {
+    return (
+      <div className="h-full flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-bold">Branches</h2>
+        </div>
+        <EmptyState
+          icon={<GitBranch className="w-16 h-16" />}
+          title="No branches found yet"
+          description={repoPath ? "Create your first commit to initialize the main branch!" : "Open a repository to view its branches."}
+          action={repoPath ? { label: "Go to Status", onClick: () => navigate({ to: "/" }) } : undefined}
+          className="flex-1"
+        />
       </div>
     );
   }
@@ -132,7 +152,7 @@ export default function BranchesPage() {
             <DialogHeader>
               <DialogTitle>New Branch</DialogTitle>
               <DialogDescription>
-                Create a new branch from <span className="font-mono font-medium">{currentBranch || "HEAD"}</span>
+                Create a new branch from <span className="font-mono font-medium">{currentBranch && currentBranch !== "HEAD" ? currentBranch : "HEAD"}</span>
               </DialogDescription>
             </DialogHeader>
             <div className="flex gap-2">

@@ -7,6 +7,7 @@ import PullRequestsPage from "./pages/PullRequestsPage";
 import IssuesPage from "./pages/IssuesPage";
 import ActionsPage from "./pages/ActionsPage";
 import RemotesPage from "./pages/RemotesPage";
+import TagsPage from "./pages/TagsPage";
 import SettingsPage from "./pages/SettingsPage";
 
 const rootRoute = createRootRoute({
@@ -55,6 +56,12 @@ const remotesRoute = createRoute({
   component: RemotesPage,
 });
 
+const tagsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tags",
+  component: TagsPage,
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
@@ -69,6 +76,7 @@ const routeTree = rootRoute.addChildren([
   issuesRoute,
   actionsRoute,
   remotesRoute,
+  tagsRoute,
   settingsRoute,
 ]);
 
