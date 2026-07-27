@@ -667,6 +667,7 @@ interface AppState {
   fetchAIConfig: () => Promise<void>;
   setAIConfigAction: (provider: string, apiKey: string, model: string, endpoint?: string) => Promise<void>;
   generateCommitMessage: () => Promise<string | null>;
+  generatePRDescription: (head: string, base?: string) => Promise<string | null>;
 
   // Agentic AI Assistant — Dual Mode
   toggleAIPanel: () => void;
@@ -1867,6 +1868,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       return message;
     } catch (e: any) {
       set({ error: e.message || "Failed to generate commit message" });
+      set({ aiGenerating: false });
+      return null;
+    }
+  },
+
+  generatePRDescription: async (head, base) => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      set({ aiGenerating: true });
+      const result: string = await backend.GeneratePRDescription(head, base || "main");
+      set({ aiGenerating: false });
+      return result;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to generate PR description" });
       set({ aiGenerating: false });
       return null;
     }
