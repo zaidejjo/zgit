@@ -20,11 +20,11 @@ const CONFIG_KEYS = [
 ];
 
 const AI_PROVIDERS = [
-  { value: "openai", label: "OpenAI", models: ["gpt-4o-mini", "gpt-4o"] },
-  { value: "anthropic", label: "Anthropic", models: ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"] },
-  { value: "deepseek", label: "DeepSeek", models: ["deepseek-chat", "deepseek-coder"] },
-  { value: "openrouter", label: "OpenRouter", models: ["openai/gpt-4o-mini", "openai/gpt-4o", "anthropic/claude-3.5-sonnet", "deepseek/deepseek-chat"] },
-  { value: "custom", label: "Custom / OpenCode", models: [] },
+  { value: "openai", label: "OpenAI", models: ["gpt-4o-mini", "gpt-4o", "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"] },
+  { value: "anthropic", label: "Anthropic", models: ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-haiku-20240307"] },
+  { value: "deepseek", label: "DeepSeek", models: ["deepseek-chat", "deepseek-coder", "deepseek-reasoner"] },
+  { value: "openrouter", label: "OpenRouter", models: ["openai/gpt-4o-mini", "openai/gpt-4o", "anthropic/claude-3.5-sonnet", "deepseek/deepseek-chat", "deepseek/deepseek-r1", "google/gemini-2.0-flash-exp"] },
+  { value: "custom", label: "Custom / Ollama", models: ["llama3.2", "qwen2.5-coder", "mistral", "codestral"] },
 ];
 
 export default function SettingsPage() {
@@ -217,41 +217,58 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Model selector */}
-          {aiProvider && aiProvider !== "custom" && (
-            <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground font-medium">Model</label>
-              <div className="flex flex-wrap gap-1.5">
+          {/* Model — free text input + quick picks */}
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground font-medium">Model</label>
+            <Input
+              className="h-8 text-xs flex-1 font-mono"
+              value={aiModel}
+              onChange={(e) => setAiModel(e.target.value)}
+              placeholder={
+                aiProvider
+                  ? `e.g. ${(AI_PROVIDERS.find((p) => p.value === aiProvider)?.models[0] || "gpt-4o-mini")}`
+                  : "Select a provider first"
+              }
+              disabled={!aiProvider}
+            />
+            {aiProvider && (
+              <div className="flex flex-wrap gap-1 mt-1">
                 {(AI_PROVIDERS.find((p) => p.value === aiProvider)?.models || []).map((m) => (
                   <button
                     key={m}
                     onClick={() => setAiModel(m)}
                     className={cn(
-                      "text-xs px-2 py-1 rounded-md border font-mono transition-colors",
+                      "text-[10px] px-2 py-0.5 rounded-full border font-mono transition-colors",
                       aiModel === m
                         ? "border-primary bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground hover:border-primary/50"
+                        : "border-border text-muted-foreground/60 hover:border-primary/50 hover:text-foreground"
                     )}
                   >
                     {m}
                   </button>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+            <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+              Type any model name or pick a recommended one above
+            </p>
+          </div>
 
-          {/* Custom endpoint */}
-          {aiProvider === "custom" && (
-            <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground font-medium">API Endpoint</label>
-              <Input
-                className="h-8 text-xs flex-1 font-mono"
-                value={aiEndpoint}
-                onChange={(e) => setAiEndpoint(e.target.value)}
-                placeholder="https://api.example.com/v1/chat/completions"
-              />
-            </div>
-          )}
+          {/* Endpoint — shown for all providers, pre-filled for non-custom */}
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground font-medium">API Endpoint</label>
+            <Input
+              className="h-8 text-xs flex-1 font-mono"
+              value={aiEndpoint}
+              onChange={(e) => setAiEndpoint(e.target.value)}
+              placeholder={
+                aiProvider === "custom"
+                  ? "https://api.example.com/v1/chat/completions"
+                  : "Auto-detected from provider (override if needed)"
+              }
+              disabled={!aiProvider}
+            />
+          </div>
 
           {/* Save button */}
           <div className="flex justify-end pt-1">

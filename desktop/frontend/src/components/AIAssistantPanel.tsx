@@ -113,16 +113,17 @@ export default function AIAssistantPanel() {
               <Bot className="w-6 h-6 text-primary" />
             </div>
             <h3 className="text-base font-semibold mb-1">AI Agent Assistant</h3>
-            <p className="text-sm text-muted-foreground max-w-xs mb-6">
+            <p className="text-sm text-muted-foreground max-w-xs mb-3">
               Autonomous Git assistant powered by{" "}
               {(() => {
                 const cfg = useAppStore.getState().aiConfig;
-                return cfg?.provider || "AI";
+                const model = cfg?.model ? ` (${cfg.model})` : "";
+                return (cfg?.provider || "AI") + model;
               })()}
               . Inspects repo state, proposes actions, and waits for your approval.
             </p>
             <p className="text-xs text-muted-foreground/60 mb-6 max-w-xs">
-              Configure your AI provider in Settings to get started.
+              Configure model and provider in Settings
             </p>
             <p className="text-[10px] text-muted-foreground/40">
               Ctrl+Shift+A to toggle • Esc to close
