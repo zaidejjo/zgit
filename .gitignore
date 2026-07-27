@@ -1,0 +1,12 @@
+/zgit
+/zgit.exe
+/tmp/
+/coverage.out
+
+# Desktop build artifacts
+/desktop/desktop
+/desktop/frontend/dist/
+/desktop/frontend/node_modules/
+/desktop/build/bin/
+*.sum
+
