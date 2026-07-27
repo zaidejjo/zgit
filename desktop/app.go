@@ -33,11 +33,20 @@ type App struct {
 	watcher     *fsnotify.Watcher
 	watcherMu   sync.Mutex
 	watcherDone chan struct{}
+	agent       *ai.Agent
+	agentMu     sync.Mutex
+
+	sessionManager *ai.SessionManager
+	askCancel      context.CancelFunc
+	askCancelMu    sync.Mutex
 }
 
 // NewApp creates a new App with the given engine.
 func NewApp(engine *core.Engine) *App {
-	return &App{engine: engine}
+	return &App{
+		engine:         engine,
+		sessionManager: ai.NewSessionManager(),
+	}
 }
 
 // Run starts the Wails application.
@@ -614,6 +623,356 @@ func (a *App) GenerateCommitMessage() (string, error) {
 	}
 
 	return msg, nil
+}
+
+// --- Agentic AI Assistant ---
+
+// AgentStart creates a new agent session with the configured provider.
+func (a *App) AgentStart() error {
+	a.agentMu.Lock()
+	defer a.agentMu.Unlock()
+
+	aiCfg := ai.Config{
+		Provider: ai.ProviderKind(a.engine.Config.GetString("ai.provider")),
+		APIKey:   a.engine.Config.GetString("ai.api_key"),
+		Model:    a.engine.Config.GetString("ai.model"),
+		Endpoint: a.engine.Config.GetString("ai.endpoint"),
+	}
+
+	maxTurns := a.engine.Config.GetInt("ai.max_turns")
+	if maxTurns > 0 {
+		aiCfg.MaxTurns = maxTurns
+	}
+	aiCfg.AutoMode = a.engine.Config.GetBool("ai.auto_mode")
+
+	if aiCfg.Provider == "" {
+		return fmt.Errorf("AI provider not configured — go to Settings to set up AI")
+	}
+	if aiCfg.APIKey == "" {
+		return fmt.Errorf("API key not configured — go to Settings to set your API key")
+	}
+
+	agent, err := a.engine.NewAgent(aiCfg)
+	if err != nil {
+		return fmt.Errorf("create agent: %w", err)
+	}
+
+	// Register additional tools that need full engine access
+	agent.RegisterTool(ai.NewAutoResolveConflictTool(a.engine.Git))
+	agent.RegisterTool(ai.NewGeneratePRReviewTool(a.engine.Git))
+
+	a.agent = agent
+	return nil
+}
+
+// AgentChat sends a message to the AI agent and returns its response.
+func (a *App) AgentChat(message string) (*ai.AgentResponse, error) {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return nil, fmt.Errorf("no active agent session — call AgentStart first")
+	}
+
+	ctx, cancel := context.WithTimeout(a.getContext(), 180e9)
+	defer cancel()
+
+	return agent.Chat(ctx, message)
+}
+
+// AgentApproveProposal executes an approved proposal.
+func (a *App) AgentApproveProposal(proposalID string) (*ai.ProposalResult, error) {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return nil, fmt.Errorf("no active agent session")
+	}
+
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+
+	return agent.ApproveProposal(ctx, proposalID)
+}
+
+// AgentRejectProposal rejects a proposal with optional feedback.
+func (a *App) AgentRejectProposal(proposalID string, feedback string) error {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return fmt.Errorf("no active agent session")
+	}
+
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+
+	return agent.RejectProposal(ctx, proposalID, feedback)
+}
+
+// AgentReset clears the current agent session.
+func (a *App) AgentReset() error {
+	a.agentMu.Lock()
+	defer a.agentMu.Unlock()
+
+	if a.agent != nil {
+		a.agent.Reset()
+		a.agent = nil
+	}
+	return nil
+}
+
+// AgentGetProposals returns all pending proposals.
+func (a *App) AgentGetProposals() ([]ai.AgentActionProposal, error) {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return nil, nil
+	}
+	return agent.GetPendingProposals(), nil
+}
+
+// AgentGetHistory returns the raw conversation history.
+func (a *App) AgentGetHistory() ([]ai.Message, error) {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return nil, nil
+	}
+	return agent.History(), nil
+}
+
+// --- Ask Mode (tool-less Q&A) ---
+
+// getAskConfig reads AI config from viper and returns a Config for Ask mode.
+func (a *App) getAskConfig() ai.Config {
+	return ai.Config{
+		Provider: ai.ProviderKind(a.engine.Config.GetString("ai.provider")),
+		APIKey:   a.engine.Config.GetString("ai.api_key"),
+		Model:    a.engine.Config.GetString("ai.model"),
+		Endpoint: a.engine.Config.GetString("ai.endpoint"),
+	}
+}
+
+// AskChat sends a tool-less Q&A message and returns the full response.
+// Uses the active Ask session, or creates one if none exists.
+func (a *App) AskChat(message string) (string, error) {
+	aiCfg := a.getAskConfig()
+	if aiCfg.Provider == "" {
+		return "", fmt.Errorf("AI provider not configured — go to Settings to set up AI")
+	}
+	if aiCfg.APIKey == "" {
+		return "", fmt.Errorf("API key not configured — go to Settings to set your API key")
+	}
+
+	provider, err := ai.NewAskProvider(aiCfg)
+	if err != nil {
+		return "", fmt.Errorf("create ask provider: %w", err)
+	}
+
+	// Ensure active Ask session
+	session := a.sessionManager.Active()
+	if session == nil || session.Mode != "ask" {
+		session, err = a.sessionManager.Create("Ask Session", "ask")
+		if err != nil {
+			return "", fmt.Errorf("create session: %w", err)
+		}
+	}
+
+	// Add user message to session
+	if err := a.sessionManager.AddMessage(session.ID, ai.Message{Role: "user", Content: message}); err != nil {
+		return "", fmt.Errorf("add message: %w", err)
+	}
+
+	// Get full message history for context
+	messages, err := a.sessionManager.GetMessages(session.ID)
+	if err != nil {
+		return "", fmt.Errorf("get messages: %w", err)
+	}
+
+	// Send to provider (blocking)
+	resp, err := provider.Ask(a.getContext(), messages)
+	if err != nil {
+		return "", fmt.Errorf("ask failed: %w", err)
+	}
+
+	// Add assistant response to session
+	if err := a.sessionManager.AddMessage(session.ID, resp); err != nil {
+		return "", fmt.Errorf("add response: %w", err)
+	}
+
+	return resp.Content, nil
+}
+
+// AskChatStream starts a streaming Q&A call. Tokens are emitted via Wails runtime
+// events ("ai:token"). Completion emits "ai:done" with full content. Errors emit "ai:error".
+func (a *App) AskChatStream(message string) error {
+	aiCfg := a.getAskConfig()
+	if aiCfg.Provider == "" {
+		runtime.EventsEmit(a.ctx, "ai:error", "AI provider not configured — go to Settings to set up AI")
+		return nil
+	}
+	if aiCfg.APIKey == "" {
+		runtime.EventsEmit(a.ctx, "ai:error", "API key not configured — go to Settings to set your API key")
+		return nil
+	}
+
+	provider, err := ai.NewAskProvider(aiCfg)
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("create ask provider: %s", err.Error()))
+		return nil
+	}
+
+	// Ensure active Ask session
+	session := a.sessionManager.Active()
+	if session == nil || session.Mode != "ask" {
+		session, err = a.sessionManager.Create("Ask Session", "ask")
+		if err != nil {
+			runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("create session: %s", err.Error()))
+			return nil
+		}
+	}
+
+	// Add user message
+	if err := a.sessionManager.AddMessage(session.ID, ai.Message{Role: "user", Content: message}); err != nil {
+		runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("add message: %s", err.Error()))
+		return nil
+	}
+
+	messages, err := a.sessionManager.GetMessages(session.ID)
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("get messages: %s", err.Error()))
+		return nil
+	}
+
+	// Create cancellable context for streaming
+	ctx, cancel := context.WithCancel(a.getContext())
+	a.askCancelMu.Lock()
+	if a.askCancel != nil {
+		a.askCancel()
+	}
+	a.askCancel = cancel
+	a.askCancelMu.Unlock()
+
+	// Stream in background
+	go func() {
+		defer cancel()
+
+		resp, err := provider.AskStream(ctx, messages, func(token string) {
+			runtime.EventsEmit(a.ctx, "ai:token", token)
+		})
+		if err != nil {
+			runtime.EventsEmit(a.ctx, "ai:error", err.Error())
+			return
+		}
+
+		// Add assistant response to session
+		if err := a.sessionManager.AddMessage(session.ID, resp); err != nil {
+			runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("save response: %s", err.Error()))
+			return
+		}
+
+		runtime.EventsEmit(a.ctx, "ai:done", resp.Content)
+	}()
+
+	return nil
+}
+
+// AskChatCancel cancels any in-flight streaming Ask call.
+func (a *App) AskChatCancel() error {
+	a.askCancelMu.Lock()
+	defer a.askCancelMu.Unlock()
+	if a.askCancel != nil {
+		a.askCancel()
+		a.askCancel = nil
+	}
+	return nil
+}
+
+// AgentCancel cancels any in-flight agent Chat call.
+func (a *App) AgentCancel() error {
+	a.agentMu.Lock()
+	defer a.agentMu.Unlock()
+	if a.agent != nil {
+		a.agent.Reset()
+		a.agent = nil
+	}
+	return nil
+}
+
+// --- Session Management ---
+
+// SessionCreate creates a new session with the given name and mode ("ask" or "agent").
+func (a *App) SessionCreate(name, mode string) (*ai.SessionSummary, error) {
+	s, err := a.sessionManager.Create(name, mode)
+	if err != nil {
+		return nil, err
+	}
+	return &ai.SessionSummary{
+		ID:           s.ID,
+		Name:         s.Name,
+		Mode:         s.Mode,
+		MessageCount: len(s.Messages),
+		CreatedAt:    s.CreatedAt,
+		UpdatedAt:    s.UpdatedAt,
+	}, nil
+}
+
+// SessionList returns summaries of all sessions.
+func (a *App) SessionList() ([]ai.SessionSummary, error) {
+	return a.sessionManager.List(), nil
+}
+
+// SessionRename renames a session.
+func (a *App) SessionRename(id, name string) error {
+	return a.sessionManager.Rename(id, name)
+}
+
+// SessionDelete deletes a session.
+func (a *App) SessionDelete(id string) error {
+	return a.sessionManager.Delete(id)
+}
+
+// SessionSwitch switches the active session.
+func (a *App) SessionSwitch(id string) (*ai.SessionSummary, error) {
+	s, err := a.sessionManager.Switch(id)
+	if err != nil {
+		return nil, err
+	}
+	return &ai.SessionSummary{
+		ID:           s.ID,
+		Name:         s.Name,
+		Mode:         s.Mode,
+		MessageCount: len(s.Messages),
+		CreatedAt:    s.CreatedAt,
+		UpdatedAt:    s.UpdatedAt,
+	}, nil
+}
+
+// SessionGetMessages returns all messages for a session.
+func (a *App) SessionGetMessages(id string) ([]ai.Message, error) {
+	return a.sessionManager.GetMessages(id)
+}
+
+// SessionClearMessages clears a session's messages (keeps system prompt).
+func (a *App) SessionClearMessages(id string) error {
+	return a.sessionManager.ClearMessages(id)
+}
+
+// SessionActiveID returns the ID of the currently active session.
+func (a *App) SessionActiveID() (string, error) {
+	id := a.sessionManager.ActiveID()
+	if id == "" {
+		return "", fmt.Errorf("no active session")
+	}
+	return id, nil
 }
 
 // --- 3-Way Merge Editor ---

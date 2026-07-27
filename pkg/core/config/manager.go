@@ -154,3 +154,13 @@ func (m *Manager) ConfigPath() string {
 func (m *Manager) ConfigFilePath() string {
 	return filepath.Join(m.path, configFileName)
 }
+
+// GetInt returns an int config value.
+func (m *Manager) GetInt(key string) int {
+	return m.v.GetInt(key)
+}
+
+// GetBool returns a bool config value.
+func (m *Manager) GetBool(key string) bool {
+	return m.v.GetBool(key)
+}
