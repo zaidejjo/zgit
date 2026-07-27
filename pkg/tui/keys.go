@@ -13,12 +13,13 @@ type KeyMap struct {
 	PageUp   key.Binding
 	PageDown key.Binding
 
-	// View switching
-	TabNext   key.Binding
-	TabPrev   key.Binding
-	TabStatus key.Binding
-	TabLog    key.Binding
-	TabBranch key.Binding
+	// Panel focus
+	PanelNext key.Binding
+	PanelPrev key.Binding
+
+	// Full-screen views
+	ViewPRs    key.Binding
+	ViewIssues key.Binding
 
 	// Actions
 	Enter  key.Binding
@@ -59,12 +60,13 @@ func DefaultKeyMap() KeyMap {
 		PageUp:   key.NewBinding(key.WithKeys("pgup", "ctrl+b"), key.WithHelp("PgUp", "page up")),
 		PageDown: key.NewBinding(key.WithKeys("pgdown", "ctrl+f"), key.WithHelp("PgDn", "page down")),
 
-		// View switching
-		TabNext:   key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "next view")),
-		TabPrev:   key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("S-tab", "prev view")),
-		TabStatus: key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "status")),
-		TabLog:    key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "log")),
-		TabBranch: key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "branches")),
+		// Panel focus
+		PanelNext: key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "next panel")),
+		PanelPrev: key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("S-tab", "prev panel")),
+
+		// Full-screen views
+		ViewPRs:    key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "PRs")),
+		ViewIssues: key.NewBinding(key.WithKeys("4"), key.WithHelp("4", "issues")),
 
 		// Actions
 		Enter:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select")),
@@ -99,7 +101,8 @@ func DefaultKeyMap() KeyMap {
 func (k KeyMap) FullHelp() []key.Binding {
 	return []key.Binding{
 		k.Up, k.Down, k.First, k.Last, k.PageUp, k.PageDown,
-		k.TabNext, k.TabPrev,
+		k.PanelNext, k.PanelPrev,
+		k.ViewPRs, k.ViewIssues,
 		k.Enter, k.Escape, k.Space,
 		k.Stage, k.Unstage, k.StageAll, k.UnstageAll, k.Discard,
 		k.Commit, k.Amend,

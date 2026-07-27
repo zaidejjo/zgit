@@ -9,22 +9,30 @@ import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/core/config"
 	gitpkg "github.com/zaidejjo/zgit/pkg/core/git"
 	"github.com/zaidejjo/zgit/pkg/core/github"
 	"github.com/zaidejjo/zgit/pkg/core/models"
+	"github.com/zaidejjo/zgit/pkg/tui/components"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 	"github.com/zaidejjo/zgit/pkg/tui/views"
 )
 
-// View IDs for tab switching.
+// Panel identifiers for focus cycling.
 const (
-	ViewStatus = iota // 0
-	ViewLog           // 1
-	ViewBranch        // 2
-	ViewPR            // 3
-	ViewIssue         // 4
-	viewCount
+	PanelStatus = iota // 0
+	PanelLog           // 1
+	PanelBranch        // 2
+	panelCount
+)
+
+// Full-screen view identifiers (override panel layout).
+// Values 3+ to avoid overlap with subscriber event IDs (0=status,1=log,2=branches).
+const (
+	fsNone  = -1 // normal panel layout
+	fsPR    = 3  // matches old ViewPR for subscriber compatibility
+	fsIssue = 4  // matches old ViewIssue
 )
 
 // Application modes (overlays and dialogs).
@@ -33,9 +41,6 @@ const (
 	modeDiff
 	modeCommit
 )
-
-// tab labels for the header bar.
-var tabNames = []string{"Status", "Log", "Branches", "PRs", "Issues"}
 
 // Model is the root Bubble Tea model for the zgit TUI.
 type Model struct {
@@ -46,11 +51,12 @@ type Model struct {
 	msgs chan teaMsg
 
 	// State
-	activeView int // currently visible view
-	showHelp   bool
-	mode       int // normal, diff, commit overlay
-	ready      bool
-	quitting   bool
+	focusedPanel   int // which panel has cursor focus (0-2)
+	fullScreenView int // -1 = panels, fsPR, fsIssue
+	showHelp       bool
+	mode           int // normal, diff, commit overlay
+	ready          bool
+	quitting       bool
 
 	// Sub-models (views)
 	status   views.StatusModel
@@ -72,6 +78,11 @@ type Model struct {
 	width  int
 	height int
 
+	// Layout dimensions (computed on resize)
+	leftWidth     int
+	rightWidth    int
+	contentHeight int
+
 	// Detected GitHub repo info
 	ghOwner    string
 	ghRepo     string
@@ -83,19 +94,21 @@ func NewModel(gitExec *gitpkg.NativeExec) *Model {
 	msgs := make(chan teaMsg, 16)
 
 	m := &Model{
-		git:        gitExec,
-		msgs:       msgs,
-		sub:        NewSubscriber(gitExec, msgs),
-		status:     views.NewStatusModel(),
-		log:        views.NewLogModel(),
-		branches:   views.NewBranchModel(),
-		prs:        views.NewPRListModel(),
-		issues:     views.NewIssueListModel(),
-		helpView:   views.HelpModel{},
-		diffViewer: views.NewDiffModel(),
-		commitDlg:  views.NewCommitModel(),
-		help:       help.New(),
-		mode:       modeNormal,
+		git:            gitExec,
+		msgs:           msgs,
+		sub:            NewSubscriber(gitExec, msgs),
+		status:         views.NewStatusModel(),
+		log:            views.NewLogModel(),
+		branches:       views.NewBranchModel(),
+		prs:            views.NewPRListModel(),
+		issues:         views.NewIssueListModel(),
+		helpView:       views.HelpModel{},
+		diffViewer:     views.NewDiffModel(),
+		commitDlg:      views.NewCommitModel(),
+		help:           help.New(),
+		mode:           modeNormal,
+		focusedPanel:   PanelStatus,
+		fullScreenView: fsNone,
 	}
 
 	// Try to initialize GitHub client from config
@@ -141,7 +154,6 @@ func (m *Model) tryDetectRepo() {
 			candidates = append(candidates, r)
 		}
 	}
-	// Also try the first remote
 	if len(remotes) > 0 {
 		candidates = append(candidates, remotes[0])
 	}
@@ -162,10 +174,6 @@ func (m *Model) tryDetectRepo() {
 
 // parseGitHubRemote extracts owner/repo from a GitHub remote URL.
 func parseGitHubRemote(url string) (string, string, error) {
-	// Handle formats:
-	// https://github.com/owner/repo.git
-	// git@github.com:owner/repo.git
-	// https://github.com/owner/repo
 	url = stringsTrimSuffixGit(url, ".git")
 	var path string
 
@@ -184,7 +192,7 @@ func parseGitHubRemote(url string) (string, string, error) {
 	return "", "", fmt.Errorf("cannot parse owner/repo from %q", url)
 }
 
-// Simple string helpers to avoid importing strings in app.go
+// Simple string helpers.
 func stringsTrimSuffixGit(s, suffix string) string {
 	if len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix {
 		return s[:len(s)-len(suffix)]
@@ -223,6 +231,64 @@ func (m *Model) Init() tea.Cmd {
 	)
 }
 
+// --- Layout calculations ---
+
+func (m *Model) calcLayout() {
+	statusBarH := 1
+	m.contentHeight = m.height - statusBarH
+	if m.contentHeight < 4 {
+		m.contentHeight = 4
+	}
+
+	m.leftWidth = int(float64(m.width)*0.4 + 0.5)
+	m.rightWidth = m.width - m.leftWidth
+
+	// Minimum widths
+	if m.leftWidth < 24 {
+		m.leftWidth = 24
+		m.rightWidth = m.width - m.leftWidth
+	}
+	if m.rightWidth < 30 {
+		m.rightWidth = 30
+		m.leftWidth = m.width - m.rightWidth
+	}
+	if m.leftWidth < 24 {
+		m.leftWidth = 24
+		m.rightWidth = m.width - m.leftWidth
+	}
+	if m.leftWidth < 4 {
+		m.leftWidth = 4
+	}
+	if m.rightWidth < 4 {
+		m.rightWidth = 4
+	}
+
+	// Panel heights for right side (log top, branches bottom)
+	// Each panel loses 2 for border + 1 for title = 3 lines of overhead
+	logPanelH := int(float64(m.contentHeight)*0.55 + 0.5)
+	branchPanelH := m.contentHeight - logPanelH
+
+	// Set view scroll heights (inner height minus title line)
+	m.log.Height = logPanelH - 3
+	if m.log.Height < 1 {
+		m.log.Height = 1
+	}
+	m.branches.Height = branchPanelH - 3
+	if m.branches.Height < 1 {
+		m.branches.Height = 1
+	}
+	m.prs.Height = m.contentHeight - 4
+	if m.prs.Height < 1 {
+		m.prs.Height = 1
+	}
+	m.issues.Height = m.contentHeight - 4
+	if m.issues.Height < 1 {
+		m.issues.Height = 1
+	}
+}
+
+// --- Update ---
+
 // Update implements tea.Model.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// If in commit dialog mode, delegate to commit model
@@ -240,16 +306,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ready = true
+		m.calcLayout()
 
-		// Update viewport
-		m.viewport = viewport.New(msg.Width, msg.Height-4)
+		// Update viewport and overlays
+		m.viewport = viewport.New(msg.Width, m.height-4)
 		m.viewport.Style = styles.ContentStyle
-
-		// Update view heights
-		m.log.Height = msg.Height - 6
-		m.branches.Height = msg.Height - 6
-		m.prs.Height = msg.Height - 6
-		m.issues.Height = msg.Height - 6
 		m.commitDlg.Update(msg)
 		m.diffViewer.Update(msg)
 
@@ -266,108 +327,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// updateCommit delegates updates to the commit dialog model.
-func (m *Model) updateCommit(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Handle "confirm → execute" transition at the app level
-	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "enter" {
-		if m.commitDlg.State == views.CommitConfirming {
-			m.commitDlg.State = views.CommitResult
-			m.commitDlg.Result = views.CommitResultInfo{
-				Success: true, // assume success until goroutine reports otherwise
-				Message: m.commitDlg.GetMessage(),
-			}
-			go m.executeCommit(m.commitDlg.GetMessage())
-			return m, nil
-		}
-	}
-
-	updated, cmd := m.commitDlg.Update(msg)
-	m.commitDlg = *updated
-
-	// Close dialog when canceled
-	if !m.commitDlg.Active() {
-		m.mode = modeNormal
-		return m, nil
-	}
-
-	// Close result view on keypress (after goroutine finished)
-	if m.commitDlg.State == views.CommitResult {
-		if keyMsg, ok := msg.(tea.KeyMsg); ok {
-			switch keyMsg.String() {
-			case "enter", "esc":
-				shouldRefresh := m.commitDlg.Result.Success && m.commitDlg.Result.Error == ""
-				m.commitDlg.Close()
-				m.mode = modeNormal
-				if shouldRefresh {
-					m.sub.Refresh()
-				}
-				return m, nil
-			}
-		}
-	}
-
-	return m, cmd
-}
-
-type commitResultEvent struct {
-	Result views.CommitResultInfo
-}
-
-// executeCommit runs git commit in a goroutine and sends result via msg channel.
-func (m *Model) executeCommit(msg string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30e9)
-	defer cancel()
-
-	opts := gitpkg.CommitOptions{Message: msg}
-	err := m.git.Commit(ctx, opts)
-	if err != nil {
-		m.msgs <- teaMsg{
-			view: -1, // special, not a specific view
-			data: commitResultEvent{
-				Result: views.CommitResultInfo{
-					Success: false,
-					Error:   err.Error(),
-				},
-			},
-		}
-		return
-	}
-
-	// Try to get the commit hash from the last commit
-	hash := ""
-	if commits, logErr := m.git.Log(ctx, gitpkg.LogOptions{Count: 1}); logErr == nil && len(commits) > 0 {
-		hash = commits[0].Hash
-	}
-	m.msgs <- teaMsg{
-		view: -1,
-		data: commitResultEvent{
-			Result: views.CommitResultInfo{
-				Success: true,
-				Hash:    hash,
-				Message: msg,
-			},
-		},
-	}
-}
-
-// updateDiff delegates updates to the diff viewer model.
-func (m *Model) updateDiff(msg tea.Msg) (tea.Model, tea.Cmd) {
-	updated, cmd := m.diffViewer.Update(msg)
-	m.diffViewer = *updated
-
-	// Escape or Enter closes diff viewer
-	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		switch keyMsg.String() {
-		case "esc", "enter":
-			if m.diffViewer.Active() {
-				m.diffViewer.Clear()
-				m.mode = modeNormal
-			}
-		}
-	}
-
-	return m, cmd
-}
+// --- View ---
 
 // View implements tea.Model.
 func (m *Model) View() string {
@@ -379,98 +339,120 @@ func (m *Model) View() string {
 		return ""
 	}
 
-	// If in an overlay mode, render the overlay on top of the content
-	if m.mode == modeCommit {
-		tabs := renderTabs(m.activeView, tabNames, m.width)
-		content := m.renderContent()
-		statusBar := m.renderStatusBar()
-		overlay := m.commitDlg.View(m.width)
-		return fmt.Sprintf("%s\n%s\n%s\n%s", tabs, content, overlay, statusBar)
-	}
-
-	// Render tabs
-	tabs := renderTabs(m.activeView, tabNames, m.width)
+	// Determine which content to show
 	content := m.renderContent()
-	statusBar := m.renderStatusBar()
 
-	return fmt.Sprintf("%s\n%s\n%s", tabs, content, statusBar)
-}
-
-// renderTabs renders the tab bar at the top.
-func renderTabs(active int, names []string, width int) string {
-	var cells []string
-	for i, name := range names {
-		if i == active {
-			cells = append(cells, styles.ActiveTabStyle.Render(name))
-		} else {
-			cells = append(cells, styles.InactiveTabStyle.Render(name))
-		}
+	// Overlays render on top of content
+	if m.mode == modeCommit {
+		overlay := m.commitDlg.View(m.width)
+		statusBar := m.renderStatusBar()
+		return fmt.Sprintf("%s\n%s\n%s", content, overlay, statusBar)
 	}
-	return styles.AppStyle.Width(width).Render("")
+
+	statusBar := m.renderStatusBar()
+	return fmt.Sprintf("%s\n%s", content, statusBar)
 }
 
-// renderContent returns the content area for the active view.
+// renderContent returns either the panel layout or a full-screen view.
 func (m *Model) renderContent() string {
 	if m.showHelp {
 		return m.helpView.View(m.width)
 	}
 
-	// If in diff mode, show diff viewer instead of the active view
+	// If in diff mode, show diff viewer full-screen
 	if m.mode == modeDiff && m.diffViewer.Active() {
 		return m.diffViewer.View(m.width)
 	}
 
-	contentWidth := m.width - 2
-	if contentWidth < 10 {
-		contentWidth = 10
+	// Full-screen views (PRs, Issues)
+	switch m.fullScreenView {
+	case fsPR:
+		return m.prs.View(m.width - 2)
+	case fsIssue:
+		return m.issues.View(m.width - 2)
 	}
 
-	switch m.activeView {
-	case ViewStatus:
-		return m.status.View(contentWidth)
-	case ViewLog:
-		return m.log.View(contentWidth)
-	case ViewBranch:
-		return m.branches.View(contentWidth)
-	case ViewPR:
-		return m.prs.View(contentWidth)
-	case ViewIssue:
-		return m.issues.View(contentWidth)
-	default:
-		return "unknown view"
-	}
+	// Panel layout: Status | (Log / Branches)
+	return m.renderPanels()
 }
 
-// renderStatusBar shows repo info at the bottom.
+// renderPanels builds the horizontal split layout.
+func (m *Model) renderPanels() string {
+	leftInnerW := m.leftWidth - 2 // minus panel border
+	rightInnerW := m.rightWidth - 2
+
+	// Compute panel heights
+	logPanelH := int(float64(m.contentHeight)*0.55 + 0.5)
+	branchPanelH := m.contentHeight - logPanelH
+	// Status panel fills full height of left column
+	statusPanelH := m.contentHeight
+
+	// Render view content into inner widths
+	statusContent := m.status.View(leftInnerW)
+	logContent := m.log.View(rightInnerW)
+	branchContent := m.branches.View(rightInnerW)
+
+	// Build panels with fixed heights
+	statusPanel := components.NewPanel("Status", m.leftWidth, m.focusedPanel == PanelStatus)
+	statusPanel.Height = statusPanelH
+	statusPanel.Content = statusContent
+
+	logPanel := components.NewPanel("Log", m.rightWidth, m.focusedPanel == PanelLog)
+	logPanel.Height = logPanelH
+	logPanel.Content = logContent
+
+	branchPanel := components.NewPanel("Branches", m.rightWidth, m.focusedPanel == PanelBranch)
+	branchPanel.Height = branchPanelH
+	branchPanel.Content = branchContent
+
+	// Assemble: left column full-height, right column split vertically
+	rightCol := lipgloss.JoinVertical(
+		lipgloss.Top,
+		logPanel.View(),
+		branchPanel.View(),
+	)
+
+	mainContent := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		statusPanel.View(),
+		rightCol,
+	)
+
+	return mainContent
+}
+
+// renderStatusBar builds the bottom bar.
 func (m *Model) renderStatusBar() string {
 	if !m.ready {
 		return ""
 	}
 
-	branch := "—"
+	data := components.StatusBarData{
+		Branch:     "—",
+		GhOwner:    m.ghOwner,
+		GhRepo:     m.ghRepo,
+		GhDetected: m.ghDetected,
+	}
+
 	if m.status.Status != nil {
-		branch = m.status.Status.Branch
+		data.Branch = m.status.Status.Branch
+		data.Ahead = m.status.Status.Ahead
+		data.Behind = m.status.Status.Behind
+		data.StagedCount = m.status.Status.StagedCount
+		data.UnstagedCount = m.status.Status.UnstagedCount
+		data.UntrackedCount = len(m.status.Status.UntrackedFiles())
 	}
 
-	left := styles.StatusBarBranchStyle.Render(" " + branch)
-	middle := ""
-	if m.ghDetected {
-		middle = styles.StatusBarInfoStyle.Render(fmt.Sprintf(" %s/%s ", m.ghOwner, m.ghRepo))
-	}
-	right := styles.StatusBarInfoStyle.Render(" ? help • q quit ")
-
-	bar := styles.StatusBarStyle.
-		Width(m.width).
-		Render(left + middle + right)
-
-	return bar
+	bar := components.NewStatusBar(m.width, data)
+	return bar.View()
 }
 
-// handleKeyMsg processes keyboard input.
+// --- Key handling ---
+
 func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
-	// Global keys that work in all views
+	// Global keys
 	switch key {
 	case "q", "ctrl+c":
 		m.quitting = true
@@ -486,75 +468,80 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.refreshGitHubData()
 		return m, nil
 
+	// Tab cycles focus: Status → Log → Branches → Status
 	case "tab":
-		m.activeView = (m.activeView + 1) % viewCount
-		m.ensureGHDataLoaded()
+		if m.fullScreenView != fsNone {
+			// In full-screen view, Tab goes back to panels
+			m.fullScreenView = fsNone
+		} else {
+			m.focusedPanel = (m.focusedPanel + 1) % panelCount
+		}
 		return m, nil
 
 	case "shift+tab":
-		m.activeView = (m.activeView - 1 + viewCount) % viewCount
-		m.ensureGHDataLoaded()
+		if m.fullScreenView != fsNone {
+			m.fullScreenView = fsNone
+		} else {
+			m.focusedPanel = (m.focusedPanel - 1 + panelCount) % panelCount
+		}
 		return m, nil
 
-	case "1":
-		m.activeView = ViewStatus
-		return m, nil
-	case "2":
-		m.activeView = ViewLog
-		return m, nil
+	// Full-screen view switches
 	case "3":
-		m.activeView = ViewBranch
-		return m, nil
-	case "4":
-		m.activeView = ViewPR
+		m.fullScreenView = fsPR
 		m.ensureGHDataLoaded()
 		return m, nil
-	case "5":
-		m.activeView = ViewIssue
+	case "4":
+		m.fullScreenView = fsIssue
 		m.ensureGHDataLoaded()
 		return m, nil
 	}
 
-	// Delegate to active view
+	// If help is open, no other keys
 	if m.showHelp {
 		return m, nil
 	}
 
-	switch m.activeView {
-	case ViewStatus:
-		return m.handleStatusKeys(key)
-	case ViewLog:
-		return m.handleLogKeys(key)
-	case ViewBranch:
-		return m.handleBranchKeys(key)
-	case ViewPR:
+	// If in full-screen view (PR/Issue), delegate to those handlers
+	if m.fullScreenView == fsPR {
 		return m.handlePRKeys(key)
-	case ViewIssue:
+	}
+	if m.fullScreenView == fsIssue {
 		return m.handleIssueKeys(key)
+	}
+
+	// Delegate to focused panel
+	switch m.focusedPanel {
+	case PanelStatus:
+		return m.handleStatusKeys(key)
+	case PanelLog:
+		return m.handleLogKeys(key)
+	case PanelBranch:
+		return m.handleBranchKeys(key)
 	}
 
 	return m, nil
 }
 
-// ensureGHDataLoaded fetches GitHub data if not already loaded for PR/Issue views.
+// --- GitHub data loading ---
+
 func (m *Model) ensureGHDataLoaded() {
 	if !m.ghDetected || m.gh == nil {
 		return
 	}
 
-	switch m.activeView {
-	case ViewPR:
+	switch m.fullScreenView {
+	case 3: // PRs
 		if m.prs.PRs == nil {
 			go m.fetchPRs()
 		}
-	case ViewIssue:
+	case 4: // Issues
 		if m.issues.Issues == nil {
 			go m.fetchIssues()
 		}
 	}
 }
 
-// refreshGitHubData fetches fresh data from GitHub.
 func (m *Model) refreshGitHubData() {
 	if !m.ghDetected || m.gh == nil {
 		return
@@ -563,10 +550,9 @@ func (m *Model) refreshGitHubData() {
 	go m.fetchIssues()
 }
 
-// fetchPRs retrieves open pull requests from GitHub.
 func (m *Model) fetchPRs() {
 	if m.gh == nil || !m.ghDetected {
-		m.msgs <- teaMsg{view: ViewPR, data: prEvent{err: fmt.Errorf("GitHub not authenticated; run 'zgit auth login'")}}
+		m.msgs <- teaMsg{view: 3, data: prEvent{err: fmt.Errorf("GitHub not authenticated; run 'zgit auth login'")}}
 		return
 	}
 
@@ -580,18 +566,16 @@ func (m *Model) fetchPRs() {
 	}
 	prs, err := m.gh.ListPullRequests(ctx, m.ghOwner, m.ghRepo, opts)
 	if err != nil {
-		m.msgs <- teaMsg{view: ViewPR, data: prEvent{err: err}}
+		m.msgs <- teaMsg{view: 3, data: prEvent{err: err}}
 		return
 	}
 
-	// Convert []*models.PullRequestSummary to []*models.PullRequestSummary
-	m.msgs <- teaMsg{view: ViewPR, data: prEvent{prs: prs}}
+	m.msgs <- teaMsg{view: 3, data: prEvent{prs: prs}}
 }
 
-// fetchIssues retrieves open issues from GitHub.
 func (m *Model) fetchIssues() {
 	if m.gh == nil || !m.ghDetected {
-		m.msgs <- teaMsg{view: ViewIssue, data: issueEvent{err: fmt.Errorf("GitHub not authenticated; run 'zgit auth login'")}}
+		m.msgs <- teaMsg{view: 4, data: issueEvent{err: fmt.Errorf("GitHub not authenticated; run 'zgit auth login'")}}
 		return
 	}
 
@@ -605,14 +589,15 @@ func (m *Model) fetchIssues() {
 	}
 	issues, err := m.gh.ListIssues(ctx, m.ghOwner, m.ghRepo, opts)
 	if err != nil {
-		m.msgs <- teaMsg{view: ViewIssue, data: issueEvent{err: err}}
+		m.msgs <- teaMsg{view: 4, data: issueEvent{err: err}}
 		return
 	}
 
-	m.msgs <- teaMsg{view: ViewIssue, data: issueEvent{issues: issues}}
+	m.msgs <- teaMsg{view: 4, data: issueEvent{issues: issues}}
 }
 
-// handleStatusKeys processes keys for the status view.
+// --- View-specific key handlers ---
+
 func (m *Model) handleStatusKeys(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "j", "down":
@@ -636,72 +621,15 @@ func (m *Model) handleStatusKeys(key string) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "enter":
-		// Open diff viewer for the selected file
 		if m.status.Status != nil && m.status.Cursor < len(m.status.Status.Files) {
 			m.openFileDiff()
 		}
 	case "c":
-		// Open commit dialog
 		m.openCommitDialog()
 	}
 	return m, nil
 }
 
-// openFileDiff opens the diff viewer for the currently selected file.
-func (m *Model) openFileDiff() {
-	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
-		return
-	}
-
-	file := m.status.Status.Files[m.status.Cursor]
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
-	defer cancel()
-
-	opts := gitpkg.DiffOptions{
-		Unified:  true,
-		Pathspec: file.Path,
-	}
-	diff, err := m.git.Diff(ctx, opts)
-	if err != nil {
-		// Try with different approaches
-		opts2 := gitpkg.DiffOptions{
-			Unified:  true,
-			Pathspec: file.Path,
-			Cached:   true,
-		}
-		diff, err = m.git.Diff(ctx, opts2)
-		if err != nil {
-			m.status.Error = fmt.Sprintf("diff %s: %v", file.Path, err)
-			return
-		}
-	}
-
-	filePath := file.Path
-	if diff != nil && len(diff.Files) > 0 {
-		filePath = diff.Files[0].NewPath
-		if filePath == "" {
-			filePath = diff.Files[0].OldPath
-		}
-		unifiedDiff := ""
-		if len(diff.Files) > 0 {
-			unifiedDiff = diff.Files[0].UnifiedDiff
-		}
-		m.diffViewer.SetDiff(filePath, unifiedDiff, diff.TotalAdds, diff.TotalDeletes)
-	} else {
-		m.diffViewer.SetDiff(file.Path, "(no changes)", 0, 0)
-	}
-
-	m.mode = modeDiff
-}
-
-// openCommitDialog opens the interactive commit dialog.
-func (m *Model) openCommitDialog() {
-	m.commitDlg.Open()
-	m.mode = modeCommit
-}
-
-// handleLogKeys processes keys for the log view.
 func (m *Model) handleLogKeys(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "j", "down":
@@ -733,7 +661,6 @@ func (m *Model) handleLogKeys(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleBranchKeys processes keys for the branch view.
 func (m *Model) handleBranchKeys(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "j", "down":
@@ -764,7 +691,6 @@ func (m *Model) handleBranchKeys(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handlePRKeys processes keys for the PR list view.
 func (m *Model) handlePRKeys(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "j", "down":
@@ -796,7 +722,6 @@ func (m *Model) handlePRKeys(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleIssueKeys processes keys for the issue list view.
 func (m *Model) handleIssueKeys(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "j", "down":
@@ -828,7 +753,155 @@ func (m *Model) handleIssueKeys(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// --- Event types for GitHub data ---
+// --- Diff & Commit ---
+
+func (m *Model) openFileDiff() {
+	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
+		return
+	}
+
+	file := m.status.Status.Files[m.status.Cursor]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
+	defer cancel()
+
+	opts := gitpkg.DiffOptions{
+		Unified:  true,
+		Pathspec: file.Path,
+	}
+	diff, err := m.git.Diff(ctx, opts)
+	if err != nil {
+		opts2 := gitpkg.DiffOptions{
+			Unified:  true,
+			Pathspec: file.Path,
+			Cached:   true,
+		}
+		diff, err = m.git.Diff(ctx, opts2)
+		if err != nil {
+			m.status.Error = fmt.Sprintf("diff %s: %v", file.Path, err)
+			return
+		}
+	}
+
+	filePath := file.Path
+	if diff != nil && len(diff.Files) > 0 {
+		filePath = diff.Files[0].NewPath
+		if filePath == "" {
+			filePath = diff.Files[0].OldPath
+		}
+		unifiedDiff := ""
+		if len(diff.Files) > 0 {
+			unifiedDiff = diff.Files[0].UnifiedDiff
+		}
+		m.diffViewer.SetDiff(filePath, unifiedDiff, diff.TotalAdds, diff.TotalDeletes)
+	} else {
+		m.diffViewer.SetDiff(file.Path, "(no changes)", 0, 0)
+	}
+
+	m.mode = modeDiff
+}
+
+func (m *Model) openCommitDialog() {
+	m.commitDlg.Open()
+	m.mode = modeCommit
+}
+
+func (m *Model) updateCommit(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "enter" {
+		if m.commitDlg.State == views.CommitConfirming {
+			m.commitDlg.State = views.CommitResult
+			m.commitDlg.Result = views.CommitResultInfo{
+				Success: true,
+				Message: m.commitDlg.GetMessage(),
+			}
+			go m.executeCommit(m.commitDlg.GetMessage())
+			return m, nil
+		}
+	}
+
+	updated, cmd := m.commitDlg.Update(msg)
+	m.commitDlg = *updated
+
+	if !m.commitDlg.Active() {
+		m.mode = modeNormal
+		return m, nil
+	}
+
+	if m.commitDlg.State == views.CommitResult {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			switch keyMsg.String() {
+			case "enter", "esc":
+				shouldRefresh := m.commitDlg.Result.Success && m.commitDlg.Result.Error == ""
+				m.commitDlg.Close()
+				m.mode = modeNormal
+				if shouldRefresh {
+					m.sub.Refresh()
+				}
+				return m, nil
+			}
+		}
+	}
+
+	return m, cmd
+}
+
+type commitResultEvent struct {
+	Result views.CommitResultInfo
+}
+
+func (m *Model) executeCommit(msg string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30e9)
+	defer cancel()
+
+	opts := gitpkg.CommitOptions{Message: msg}
+	err := m.git.Commit(ctx, opts)
+	if err != nil {
+		m.msgs <- teaMsg{
+			view: -1,
+			data: commitResultEvent{
+				Result: views.CommitResultInfo{
+					Success: false,
+					Error:   err.Error(),
+				},
+			},
+		}
+		return
+	}
+
+	hash := ""
+	if commits, logErr := m.git.Log(ctx, gitpkg.LogOptions{Count: 1}); logErr == nil && len(commits) > 0 {
+		hash = commits[0].Hash
+	}
+	m.msgs <- teaMsg{
+		view: -1,
+		data: commitResultEvent{
+			Result: views.CommitResultInfo{
+				Success: true,
+				Hash:    hash,
+				Message: msg,
+			},
+		},
+	}
+}
+
+func (m *Model) updateDiff(msg tea.Msg) (tea.Model, tea.Cmd) {
+	updated, cmd := m.diffViewer.Update(msg)
+	m.diffViewer = *updated
+
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		switch keyMsg.String() {
+		case "esc", "enter":
+			if m.diffViewer.Active() {
+				m.diffViewer.Clear()
+				m.mode = modeNormal
+			}
+		}
+	}
+
+	return m, cmd
+}
+
+// --- Event types ---
 
 type prEvent struct {
 	prs []*models.PullRequestSummary
@@ -842,7 +915,6 @@ type issueEvent struct {
 
 // handleEngineMsg processes messages from the background subscriber.
 func (m *Model) handleEngineMsg(msg teaMsg) (tea.Model, tea.Cmd) {
-	// Check for commit result event first (view == -1)
 	if msg.view == -1 {
 		if evt, ok := msg.data.(commitResultEvent); ok {
 			m.commitDlg.Result = evt.Result
@@ -852,7 +924,7 @@ func (m *Model) handleEngineMsg(msg teaMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.view {
-	case ViewStatus:
+	case 0: // status
 		if evt, ok := msg.data.(statusEvent); ok {
 			if evt.err != nil {
 				m.status.Error = evt.err.Error()
@@ -860,7 +932,7 @@ func (m *Model) handleEngineMsg(msg teaMsg) (tea.Model, tea.Cmd) {
 				m.status.UpdateStatus(evt.status)
 			}
 		}
-	case ViewLog:
+	case 1: // log
 		if evt, ok := msg.data.(logEvent); ok {
 			if evt.err != nil {
 				m.log.Error = evt.err.Error()
@@ -868,7 +940,7 @@ func (m *Model) handleEngineMsg(msg teaMsg) (tea.Model, tea.Cmd) {
 				m.log.UpdateLog(evt.commits)
 			}
 		}
-	case ViewBranch:
+	case 2: // branches
 		if evt, ok := msg.data.(branchEvent); ok {
 			if evt.err != nil {
 				m.branches.Error = evt.err.Error()
@@ -876,7 +948,7 @@ func (m *Model) handleEngineMsg(msg teaMsg) (tea.Model, tea.Cmd) {
 				m.branches.UpdateBranches(evt.branches)
 			}
 		}
-	case ViewPR:
+	case 3: // PRs
 		if evt, ok := msg.data.(prEvent); ok {
 			if evt.err != nil {
 				m.prs.Error = evt.err.Error()
@@ -884,7 +956,7 @@ func (m *Model) handleEngineMsg(msg teaMsg) (tea.Model, tea.Cmd) {
 				m.prs.UpdatePRs(evt.prs)
 			}
 		}
-	case ViewIssue:
+	case 4: // Issues
 		if evt, ok := msg.data.(issueEvent); ok {
 			if evt.err != nil {
 				m.issues.Error = evt.err.Error()

@@ -32,19 +32,22 @@ func (h HelpModel) View(width int) string {
 			},
 		},
 		{
-			title: "Views",
+			title: "Panel Focus",
 			keys: []helpEntry{
-				{"Tab", "Next view"},
-				{"S-Tab", "Previous view"},
-				{"1", "Status view"},
-				{"2", "Log view"},
-				{"3", "Branches view"},
-				{"4", "PRs view"},
-				{"5", "Issues view"},
+				{"Tab", "Next panel (Status→Log→Branches)"},
+				{"S-Tab", "Previous panel"},
 			},
 		},
 		{
-			title: "File Operations",
+			title: "Full-Screen Views",
+			keys: []helpEntry{
+				{"3", "Pull Requests"},
+				{"4", "Issues"},
+				{"Tab / Esc", "Back to panels"},
+			},
+		},
+		{
+			title: "File Operations (Status panel)",
 			keys: []helpEntry{
 				{"s", "Stage file"},
 				{"S", "Unstage file"},
@@ -56,7 +59,7 @@ func (h HelpModel) View(width int) string {
 			},
 		},
 		{
-			title: "Branch Operations",
+			title: "Branch Operations (Branches panel)",
 			keys: []helpEntry{
 				{"c / enter", "Checkout branch"},
 				{"n", "New branch"},
