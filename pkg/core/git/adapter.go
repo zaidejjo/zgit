@@ -21,6 +21,7 @@ type LogOptions struct {
 	Merges   bool   // only merge commits
 	NoMerges bool   // exclude merge commits
 	Format   string // overrides default format (used internally)
+	Graph    bool   // include --topo-order --parents for graph topology
 }
 
 // DiffOptions controls git diff output.

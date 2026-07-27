@@ -219,6 +219,13 @@ func (a *App) GetLog(count int) ([]*models.Commit, error) {
 	return a.engine.Git.Log(ctx, git.LogOptions{Count: count})
 }
 
+// GetGraphLog returns commit history with parent hashes, in topo-order for graph rendering.
+func (a *App) GetGraphLog(count int) ([]*models.Commit, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.Log(ctx, git.LogOptions{Count: count, Graph: true})
+}
+
 // GetBranches returns all local branches.
 func (a *App) GetBranches() ([]*models.Branch, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
