@@ -68,7 +68,7 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libgtk-3-dev libwebkit2gtk-4.0-dev libayatana-appindicator3-dev
+          sudo apt-get install -y -qq libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
@@ -76,7 +76,7 @@ jobs:
       - name: Build desktop app
         run: |
           cd desktop
-          wails build -clean -skipbindings \
+          wails build -clean -skipbindings -tags webkit2_41 \
             -ldflags="-s -w -X main.Version=${GITHUB_REF_NAME#v}"
 
       - name: Package artifacts
@@ -130,7 +130,7 @@ jobs:
       - name: Build desktop app
         run: |
           cd desktop
-          wails build -clean -skipbindings \
+          wails build -clean -skipbindings -tags webkit2_41 \
             -ldflags="-s -w -X main.Version=${GITHUB_REF_NAME#v}"
 
       - name: Package artifact
@@ -173,7 +173,7 @@ jobs:
       - name: Build desktop app
         run: |
           cd desktop
-          wails build -clean -skipbindings `
+          wails build -clean -skipbindings -tags webkit2_41 `
             -ldflags="-s -w -X main.Version=$env:GITHUB_REF_NAME.Replace('v','')"
 
       - name: Package artifact
