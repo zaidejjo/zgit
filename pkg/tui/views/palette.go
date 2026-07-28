@@ -11,8 +11,12 @@ import (
 // SelectionStyle is the highlighted item style.
 var SelectionStyle = lipgloss.NewStyle().Background(styles.Mauve).Foreground(styles.Base).Bold(true)
 
-// accentStyle is for keybinding hints.
+// accentStyle is for keybinding hints (normal rows).
 var accentStyle = lipgloss.NewStyle().Foreground(styles.Mauve)
+
+// accentStyleSelected is for keybinding hints on the selected row.
+// Uses dark foreground to contrast with Mauve background.
+var accentStyleSelected = lipgloss.NewStyle().Foreground(styles.Surface).Bold(true)
 
 // mutedStyle is for secondary text.
 var mutedStyle = lipgloss.NewStyle().Foreground(styles.Subtext)
@@ -275,7 +279,11 @@ func (m PaletteModel) View(width int) string {
 		// Keybinding hint, right-aligned
 		keysStr := ""
 		if cmd.Keys != "" {
-			keysStr = "  " + accentStyle.Render(cmd.Keys)
+			if isSelected {
+				keysStr = "  " + accentStyleSelected.Render(cmd.Keys)
+			} else {
+				keysStr = "  " + accentStyle.Render(cmd.Keys)
+			}
 		}
 
 		// Build label with prefix

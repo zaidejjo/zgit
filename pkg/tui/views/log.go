@@ -33,6 +33,7 @@ func (m *LogModel) UpdateLog(commits []*models.Commit) {
 }
 
 // View renders the commit log with tree graph.
+// Layout: [tree] [hash] [branch badges] [message]
 func (m LogModel) View(width int) string {
 	if m.Error != "" {
 		return styles.ErrorStyle.Render("Error: " + m.Error)
@@ -73,47 +74,65 @@ func (m LogModel) View(width int) string {
 	for i, c := range visible {
 		globalIdx := m.Offset + i
 
-		// Build tree prefix for this row
+		// Tree graph prefix
 		treeStr := ""
 		if treePrefix != nil && i < len(treePrefix) {
 			treeStr = treePrefix[i]
 		}
-
-		// Use lipgloss.Width for visual width (treeStr contains ANSI escape sequences from lipgloss styling)
 		treeWidth := lipgloss.Width(treeStr)
 
-		// Compact: hash(7) + message (no author/date on separate line to save space)
+		// Short hash (7 chars)
 		hash := c.Hash
 		if len(hash) > 7 {
 			hash = hash[:7]
 		}
 
-		timeStr := formatTimeCompact(c.Timestamp)
-		timeWidth := lipgloss.Width(timeStr)
-
-		// Available width after tree prefix + space
-		// Format: treeStr + " " + hash(7) + " " + msg + " " + timeStr
-		msgMax := width - treeWidth - 1 - 7 - 1 - 1 - timeWidth
+		// Available width for message: width - tree - space - hash(7) - space
+		msgMax := width - treeWidth - 1 - 7 - 1
 		if msgMax < 1 {
 			msgMax = 1
 		}
-		msg := truncateStr(c.Message, msgMax)
 
-		// Build line and verify it fits — if ANSI overflow, trim msg further
-		line := fmt.Sprintf("%s %s %s %s", treeStr, hash, msg, timeStr)
+		// Parse branch/tag refs for badges
+		var badgeStr string
+		if c.RefNames != "" {
+			badgeStr = renderRefBadges(c.RefNames)
+		}
+		badgeWidth := lipgloss.Width(badgeStr)
+		if badgeStr != "" {
+			badgeStr = " " + badgeStr
+			badgeWidth++ // leading space
+		}
+
+		// Adjust msg for badge space
+		msgMaxAdjusted := msgMax - badgeWidth
+		if msgMaxAdjusted < 0 {
+			msgMaxAdjusted = 0
+		}
+		msg := truncateStr(c.Message, msgMaxAdjusted)
+
+		// Build line: treeStr + " " + hash + badge + " " + msg
+		line := fmt.Sprintf("%s %s%s %s", treeStr, hash, badgeStr, msg)
 		lineWidth := lipgloss.Width(line)
 		if lineWidth > width {
-			// Overflow — trim msg
+			// Overflow — trim msg further
 			overflow := lineWidth - width
-			msg = truncateStr(c.Message, msgMax-overflow)
-			if msgMax-overflow < 1 {
+			msg = truncateStr(c.Message, msgMaxAdjusted-overflow)
+			if msgMaxAdjusted-overflow < 0 {
 				msg = ""
 			}
-			line = fmt.Sprintf("%s %s %s %s", treeStr, hash, msg, timeStr)
+			line = fmt.Sprintf("%s %s%s %s", treeStr, hash, badgeStr, msg)
 		}
 
 		if globalIdx == m.Cursor {
-			b.WriteString(styles.ListItemSelectedStyle.Render(line))
+			// Cursor: ❯ prefix replaces first rune (handles multi-byte tree symbols)
+			runes := []rune(line)
+			if len(runes) > 0 {
+				cursorLine := "❯" + string(runes[1:])
+				b.WriteString(styles.ListItemActiveStyle.Render(cursorLine))
+			} else {
+				b.WriteString(styles.ListItemActiveStyle.Render("❯"))
+			}
 		} else {
 			b.WriteString(styles.ListItemStyle.Render(line))
 		}
@@ -121,6 +140,45 @@ func (m LogModel) View(width int) string {
 	}
 
 	return b.String()
+}
+
+// renderRefBadges parses RefNames (e.g. "HEAD -> main, origin/main")
+// and returns compact colored badges like "[main] [origin/main]".
+// Filters out HEAD and remote tracking refs for brevity.
+func renderRefBadges(refNames string) string {
+	if refNames == "" {
+		return ""
+	}
+	var badges []string
+	for _, part := range strings.Split(refNames, ", ") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		// Skip HEAD pointer
+		if part == "HEAD" {
+			continue
+		}
+		// Take the right side after " -> " (branch that HEAD points to)
+		if idx := strings.LastIndex(part, " -> "); idx >= 0 {
+			part = part[idx+4:]
+		}
+		if part == "" {
+			continue
+		}
+		// Style the badge
+		color := styles.Teal
+		if strings.HasPrefix(part, "origin/") {
+			color = styles.Subtext
+			part = part[len("origin/"):]
+		}
+		badge := lipgloss.NewStyle().
+			Foreground(color).
+			Bold(true).
+			Render(part)
+		badges = append(badges, badge)
+	}
+	return strings.Join(badges, " ")
 }
 
 func (m *LogModel) ensureCursorVisible() {

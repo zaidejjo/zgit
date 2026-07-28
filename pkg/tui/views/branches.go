@@ -104,9 +104,8 @@ func (m BranchModel) View(width int) string {
 		}
 
 		if globalIdx == m.Cursor {
-			b.WriteString(styles.ListItemActiveStyle.Render(line))
-		} else if br.IsHead {
-			b.WriteString(styles.ListItemStyle.Render(line))
+			// Replace leading space with ❯ prefix
+			b.WriteString(styles.ListItemActiveStyle.Render("❯" + line[1:]))
 		} else {
 			b.WriteString(styles.ListItemStyle.Render(line))
 		}
