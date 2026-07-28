@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { GitBranch, Plus, Trash2, Globe } from "lucide-react";
+import { GitBranch, Plus, Trash2, Pencil, Globe, Link } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 
 export default function RemotesPage() {
-  const { remotes, loading, fetchRemotes, addRemote, removeRemote } = useAppStore();
+  const { remotes, loading, fetchRemotes, addRemote, removeRemote, renameRemote, setRemoteUrl } = useAppStore();
 
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newUrl, setNewUrl] = useState("");
+
+  const [renameTarget, setRenameTarget] = useState<string | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [renameOpen, setRenameOpen] = useState(false);
+
+  const [editUrlTarget, setEditUrlTarget] = useState<string | null>(null);
+  const [editUrl, setEditUrl] = useState("");
+  const [editUrlOpen, setEditUrlOpen] = useState(false);
 
   useEffect(() => {
     fetchRemotes();
@@ -29,6 +37,34 @@ export default function RemotesPage() {
 
   const handleRemove = async (name: string) => {
     await removeRemote(name);
+  };
+
+  const handleRenameStart = (name: string) => {
+    setRenameTarget(name);
+    setRenameName(name);
+    setRenameOpen(true);
+  };
+
+  const handleRename = async () => {
+    if (!renameTarget || !renameName.trim() || renameName.trim() === renameTarget) return;
+    await renameRemote(renameTarget, renameName.trim());
+    setRenameOpen(false);
+    setRenameTarget(null);
+    setRenameName("");
+  };
+
+  const handleEditUrlStart = (name: string, currentUrl: string) => {
+    setEditUrlTarget(name);
+    setEditUrl(currentUrl);
+    setEditUrlOpen(true);
+  };
+
+  const handleEditUrl = async () => {
+    if (!editUrlTarget || !editUrl.trim()) return;
+    await setRemoteUrl(editUrlTarget, editUrl.trim());
+    setEditUrlOpen(false);
+    setEditUrlTarget(null);
+    setEditUrl("");
   };
 
   // Group remotes by name (each remote has fetch + push entries)
@@ -95,6 +131,62 @@ export default function RemotesPage() {
         </Dialog>
       </div>
 
+      {/* Rename Remote dialog */}
+      <Dialog open={renameOpen} onOpenChange={(open) => { if (!open) { setRenameOpen(false); setRenameTarget(null); setRenameName(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Remote</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">New name</label>
+              <Input
+                placeholder="e.g. upstream"
+                value={renameName}
+                onChange={(e) => setRenameName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleRename(); }}
+                autoFocus
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Rename <code className="font-mono bg-muted/30 px-1 rounded">{renameTarget}</code> to a new name.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => { setRenameOpen(false); setRenameTarget(null); setRenameName(""); }}>Cancel</Button>
+              <Button onClick={handleRename} disabled={!renameName.trim() || renameName.trim() === renameTarget}>Rename</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Remote URL dialog */}
+      <Dialog open={editUrlOpen} onOpenChange={(open) => { if (!open) { setEditUrlOpen(false); setEditUrlTarget(null); setEditUrl(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Remote URL</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">New URL</label>
+              <Input
+                placeholder="e.g. https://github.com/user/repo.git"
+                value={editUrl}
+                onChange={(e) => setEditUrl(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleEditUrl(); }}
+                autoFocus
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Update URL for <code className="font-mono bg-muted/30 px-1 rounded">{editUrlTarget}</code>.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => { setEditUrlOpen(false); setEditUrlTarget(null); setEditUrl(""); }}>Cancel</Button>
+              <Button onClick={handleEditUrl} disabled={!editUrl.trim()}>Save</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Remote list */}
       <ScrollArea className="flex-1">
         {loading.remotes ? (
@@ -130,15 +222,26 @@ export default function RemotesPage() {
                       <GitBranch className="w-4 h-4 text-muted-foreground" />
                       <span className="font-mono">{remote.name}</span>
                     </CardTitle>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => handleRemove(remote.name)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5 mr-1" />
-                      Remove
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => handleRenameStart(remote.name)}
+                      >
+                        <Pencil className="w-3.5 h-3.5 mr-1" />
+                        Rename
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => handleRemove(remote.name)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5 mr-1" />
+                        Remove
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-2 pt-0">
@@ -148,6 +251,15 @@ export default function RemotesPage() {
                       <code className="flex-1 font-mono bg-muted/30 px-2 py-1 rounded truncate">
                         {remote.fetchUrl}
                       </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => handleEditUrlStart(remote.name, remote.fetchUrl || "")}
+                      >
+                        <Link className="w-3 h-3 mr-1" />
+                        Edit URL
+                      </Button>
                     </div>
                   )}
                   {remote.pushUrl && remote.pushUrl !== remote.fetchUrl && (

@@ -33,11 +33,20 @@ type App struct {
 	watcher     *fsnotify.Watcher
 	watcherMu   sync.Mutex
 	watcherDone chan struct{}
+	agent       *ai.Agent
+	agentMu     sync.Mutex
+
+	sessionManager *ai.SessionManager
+	askCancel      context.CancelFunc
+	askCancelMu    sync.Mutex
 }
 
 // NewApp creates a new App with the given engine.
 func NewApp(engine *core.Engine) *App {
-	return &App{engine: engine}
+	return &App{
+		engine:         engine,
+		sessionManager: ai.NewSessionManager(),
+	}
 }
 
 // Run starts the Wails application.
@@ -210,6 +219,13 @@ func (a *App) GetLog(count int) ([]*models.Commit, error) {
 	return a.engine.Git.Log(ctx, git.LogOptions{Count: count})
 }
 
+// GetGraphLog returns commit history with parent hashes, in topo-order for graph rendering.
+func (a *App) GetGraphLog(count int) ([]*models.Commit, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.Log(ctx, git.LogOptions{Count: count, Graph: true})
+}
+
 // GetBranches returns all local branches.
 func (a *App) GetBranches() ([]*models.Branch, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
@@ -345,6 +361,20 @@ func (a *App) RemoveRemote(name string) error {
 	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.RemoteRemove(ctx, name)
+}
+
+// RenameRemote renames a remote from oldName to newName.
+func (a *App) RenameRemote(oldName, newName string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.RemoteRename(ctx, oldName, newName)
+}
+
+// SetRemoteURL updates the URL of a remote.
+func (a *App) SetRemoteURL(name, url string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.RemoteSetURL(ctx, name, url)
 }
 
 // GetAheadCommits returns commits ahead of the remote tracking branch.
@@ -565,36 +595,29 @@ func (a *App) SetAIConfig(provider, apiKey, model, endpoint string) error {
 
 // GenerateCommitMessage reads the staged diff and returns an AI-generated conventional commit message.
 func (a *App) GenerateCommitMessage() (string, error) {
-	// 1. Get staged diff
 	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
 	defer cancel()
 
-	diffOpts := git.DiffOptions{Cached: true, Unified: true}
-	diff, err := a.engine.Git.Diff(ctx, diffOpts)
+	// Get staged diff with token-optimized summarization
+	diff, err := a.engine.Git.Diff(ctx, git.DiffOptions{Cached: true, Unified: true})
 	if err != nil {
 		return "", fmt.Errorf("get staged diff: %w", err)
 	}
-
-	// Build diff text from files
-	var diffText string
-	for _, f := range diff.Files {
-		if f.UnifiedDiff != "" {
-			diffText += f.UnifiedDiff + "\n"
-		}
-	}
-
-	if strings.TrimSpace(diffText) == "" {
+	if diff == nil || len(diff.Files) == 0 {
 		return "", fmt.Errorf("no staged changes — stage files before generating a commit message")
 	}
 
-	// 2. Get AI config
-	aiCfg := ai.Config{
-		Provider: ai.ProviderKind(a.engine.Config.GetString("ai.provider")),
-		APIKey:   a.engine.Config.GetString("ai.api_key"),
-		Model:    a.engine.Config.GetString("ai.model"),
-		Endpoint: a.engine.Config.GetString("ai.endpoint"),
+	summary := ai.SummarizeDiff(diff)
+	diffText := summary.Summary
+	if strings.TrimSpace(diffText) == "" || diffText == "No changes." {
+		return "", fmt.Errorf("no staged changes — stage files before generating a commit message")
 	}
 
+	// Prefix with file stats to compensate for possible truncation
+	diffText = fmt.Sprintf("Stats: %d files changed (%d lockfile/binary filtered).\n\n%s",
+		summary.ChangedFiles, summary.Filtered, diffText)
+
+	aiCfg := a.aiConfig()
 	if aiCfg.Provider == "" {
 		return "", fmt.Errorf("AI provider not configured — go to Settings to set up AI commit message generation")
 	}
@@ -602,7 +625,6 @@ func (a *App) GenerateCommitMessage() (string, error) {
 		return "", fmt.Errorf("API key not configured — go to Settings to set your API key")
 	}
 
-	// 3. Generate
 	generator, err := ai.NewGenerator(aiCfg)
 	if err != nil {
 		return "", err
@@ -614,6 +636,438 @@ func (a *App) GenerateCommitMessage() (string, error) {
 	}
 
 	return msg, nil
+}
+
+// GeneratePRDescription generates a PR title and description from the diff between head and base branches.
+func (a *App) GeneratePRDescription(head, base string) (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 120e9)
+	defer cancel()
+
+	if head == "" {
+		return "", fmt.Errorf("head branch is required")
+	}
+	if base == "" {
+		base = "main"
+	}
+
+	// Get diff between base and head
+	diff, err := a.engine.Git.Diff(ctx, git.DiffOptions{A: base, B: head, Unified: true})
+	if err != nil {
+		return "", fmt.Errorf("get branch diff: %w", err)
+	}
+	if diff == nil || len(diff.Files) == 0 {
+		return "", fmt.Errorf("no differences between %s and %s", base, head)
+	}
+
+	summary := ai.SummarizeDiff(diff)
+	diffText := summary.Summary
+
+	// Get recent commits for context
+	var logContext string
+	log, logErr := a.engine.Git.Log(ctx, git.LogOptions{Count: 10, Branch: head})
+	if logErr == nil && len(log) > 0 {
+		var sb strings.Builder
+		sb.WriteString("\nRecent commits on " + head + ":\n")
+		for _, c := range log {
+			sb.WriteString("  " + c.Hash[:7] + " " + c.Message + "\n")
+		}
+		logContext = sb.String()
+	}
+
+	diffText = fmt.Sprintf("Stats: %d files changed (%d lockfile/binary filtered).\n%s\n\n%s",
+		summary.ChangedFiles, summary.Filtered, logContext, diffText)
+
+	aiCfg := a.aiConfig()
+	if aiCfg.Provider == "" {
+		return "", fmt.Errorf("AI provider not configured — go to Settings first")
+	}
+	if aiCfg.APIKey == "" {
+		return "", fmt.Errorf("API key not configured — go to Settings to set your API key")
+	}
+
+	generator, err := ai.NewGenerator(aiCfg)
+	if err != nil {
+		return "", err
+	}
+
+	prompt := `You are a PR description generator. Create a pull request title and structured description.
+
+Format:
+PR Title: <concise title following conventional commits>
+
+## Summary
+<2-3 sentence overview of what this PR does>
+
+## Key Changes
+- <change 1>
+- <change 2>
+- <change 3>
+
+## Test Plan
+<suggestions for testing>
+
+Return ONLY the PR title and description. No extra commentary.`
+
+	msg, err := generator.GenerateCommitMessage(ctx, fmt.Sprintf("%s\n\nBranch diff to review:\n\n```\n%s\n```", prompt, diffText), aiCfg)
+	if err != nil {
+		return "", fmt.Errorf("AI generation failed: %w", err)
+	}
+
+	return msg, nil
+}
+
+// aiConfig extracts AI provider config from the engine settings.
+func (a *App) aiConfig() ai.Config {
+	return ai.Config{
+		Provider: ai.ProviderKind(a.engine.Config.GetString("ai.provider")),
+		APIKey:   a.engine.Config.GetString("ai.api_key"),
+		Model:    a.engine.Config.GetString("ai.model"),
+		Endpoint: a.engine.Config.GetString("ai.endpoint"),
+	}
+}
+
+// --- Agentic AI Assistant ---
+
+// AgentStart creates a new agent session with the configured provider.
+func (a *App) AgentStart() error {
+	a.agentMu.Lock()
+	defer a.agentMu.Unlock()
+
+	aiCfg := a.aiConfig()
+	maxTurns := a.engine.Config.GetInt("ai.max_turns")
+	if maxTurns > 0 {
+		aiCfg.MaxTurns = maxTurns
+	}
+	aiCfg.AutoMode = a.engine.Config.GetBool("ai.auto_mode")
+
+	if aiCfg.Provider == "" {
+		return fmt.Errorf("AI provider not configured — go to Settings to set up AI")
+	}
+	if aiCfg.APIKey == "" {
+		return fmt.Errorf("API key not configured — go to Settings to set your API key")
+	}
+
+	agent, err := a.engine.NewAgent(aiCfg)
+	if err != nil {
+		return fmt.Errorf("create agent: %w", err)
+	}
+
+	// Register additional tools that need full engine access
+	agent.RegisterTool(ai.NewAutoResolveConflictTool(a.engine.Git))
+	agent.RegisterTool(ai.NewGeneratePRReviewTool(a.engine.Git))
+
+	a.agent = agent
+	return nil
+}
+
+// AgentChat sends a message to the AI agent and returns its response.
+func (a *App) AgentChat(message string) (*ai.AgentResponse, error) {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return nil, fmt.Errorf("no active agent session — call AgentStart first")
+	}
+
+	ctx, cancel := context.WithTimeout(a.getContext(), 180e9)
+	defer cancel()
+
+	return agent.Chat(ctx, message)
+}
+
+// AgentApproveProposal executes an approved proposal.
+func (a *App) AgentApproveProposal(proposalID string) (*ai.ProposalResult, error) {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return nil, fmt.Errorf("no active agent session")
+	}
+
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+
+	return agent.ApproveProposal(ctx, proposalID)
+}
+
+// AgentRejectProposal rejects a proposal with optional feedback.
+func (a *App) AgentRejectProposal(proposalID string, feedback string) error {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return fmt.Errorf("no active agent session")
+	}
+
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+
+	return agent.RejectProposal(ctx, proposalID, feedback)
+}
+
+// AgentReset clears the current agent session.
+func (a *App) AgentReset() error {
+	a.agentMu.Lock()
+	defer a.agentMu.Unlock()
+
+	if a.agent != nil {
+		a.agent.Reset()
+		a.agent = nil
+	}
+	return nil
+}
+
+// AgentGetProposals returns all pending proposals.
+func (a *App) AgentGetProposals() ([]ai.AgentActionProposal, error) {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return nil, nil
+	}
+	return agent.GetPendingProposals(), nil
+}
+
+// AgentGetHistory returns the raw conversation history.
+func (a *App) AgentGetHistory() ([]ai.Message, error) {
+	a.agentMu.Lock()
+	agent := a.agent
+	a.agentMu.Unlock()
+
+	if agent == nil {
+		return nil, nil
+	}
+	return agent.History(), nil
+}
+
+// --- Ask Mode (tool-less Q&A) ---
+
+// getAskConfig reads AI config from viper and returns a Config for Ask mode.
+func (a *App) getAskConfig() ai.Config {
+	return ai.Config{
+		Provider: ai.ProviderKind(a.engine.Config.GetString("ai.provider")),
+		APIKey:   a.engine.Config.GetString("ai.api_key"),
+		Model:    a.engine.Config.GetString("ai.model"),
+		Endpoint: a.engine.Config.GetString("ai.endpoint"),
+	}
+}
+
+// AskChat sends a tool-less Q&A message and returns the full response.
+// Uses the active Ask session, or creates one if none exists.
+func (a *App) AskChat(message string) (string, error) {
+	aiCfg := a.getAskConfig()
+	if aiCfg.Provider == "" {
+		return "", fmt.Errorf("AI provider not configured — go to Settings to set up AI")
+	}
+	if aiCfg.APIKey == "" {
+		return "", fmt.Errorf("API key not configured — go to Settings to set your API key")
+	}
+
+	provider, err := ai.NewAskProvider(aiCfg)
+	if err != nil {
+		return "", fmt.Errorf("create ask provider: %w", err)
+	}
+
+	// Ensure active Ask session
+	session := a.sessionManager.Active()
+	if session == nil || session.Mode != "ask" {
+		session, err = a.sessionManager.Create("Ask Session", "ask")
+		if err != nil {
+			return "", fmt.Errorf("create session: %w", err)
+		}
+	}
+
+	// Add user message to session
+	if err := a.sessionManager.AddMessage(session.ID, ai.Message{Role: "user", Content: message}); err != nil {
+		return "", fmt.Errorf("add message: %w", err)
+	}
+
+	// Get full message history for context
+	messages, err := a.sessionManager.GetMessages(session.ID)
+	if err != nil {
+		return "", fmt.Errorf("get messages: %w", err)
+	}
+
+	// Send to provider (blocking)
+	resp, err := provider.Ask(a.getContext(), messages)
+	if err != nil {
+		return "", fmt.Errorf("ask failed: %w", err)
+	}
+
+	// Add assistant response to session
+	if err := a.sessionManager.AddMessage(session.ID, resp); err != nil {
+		return "", fmt.Errorf("add response: %w", err)
+	}
+
+	return resp.Content, nil
+}
+
+// AskChatStream starts a streaming Q&A call. Tokens are emitted via Wails runtime
+// events ("ai:token"). Completion emits "ai:done" with full content. Errors emit "ai:error".
+func (a *App) AskChatStream(message string) error {
+	aiCfg := a.getAskConfig()
+	if aiCfg.Provider == "" {
+		runtime.EventsEmit(a.ctx, "ai:error", "AI provider not configured — go to Settings to set up AI")
+		return nil
+	}
+	if aiCfg.APIKey == "" {
+		runtime.EventsEmit(a.ctx, "ai:error", "API key not configured — go to Settings to set your API key")
+		return nil
+	}
+
+	provider, err := ai.NewAskProvider(aiCfg)
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("create ask provider: %s", err.Error()))
+		return nil
+	}
+
+	// Ensure active Ask session
+	session := a.sessionManager.Active()
+	if session == nil || session.Mode != "ask" {
+		session, err = a.sessionManager.Create("Ask Session", "ask")
+		if err != nil {
+			runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("create session: %s", err.Error()))
+			return nil
+		}
+	}
+
+	// Add user message
+	if err := a.sessionManager.AddMessage(session.ID, ai.Message{Role: "user", Content: message}); err != nil {
+		runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("add message: %s", err.Error()))
+		return nil
+	}
+
+	messages, err := a.sessionManager.GetMessages(session.ID)
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("get messages: %s", err.Error()))
+		return nil
+	}
+
+	// Create cancellable context for streaming
+	ctx, cancel := context.WithCancel(a.getContext())
+	a.askCancelMu.Lock()
+	if a.askCancel != nil {
+		a.askCancel()
+	}
+	a.askCancel = cancel
+	a.askCancelMu.Unlock()
+
+	// Stream in background
+	go func() {
+		defer cancel()
+
+		resp, err := provider.AskStream(ctx, messages, func(token string) {
+			runtime.EventsEmit(a.ctx, "ai:token", token)
+		})
+		if err != nil {
+			runtime.EventsEmit(a.ctx, "ai:error", err.Error())
+			return
+		}
+
+		// Add assistant response to session
+		if err := a.sessionManager.AddMessage(session.ID, resp); err != nil {
+			runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("save response: %s", err.Error()))
+			return
+		}
+
+		runtime.EventsEmit(a.ctx, "ai:done", resp.Content)
+	}()
+
+	return nil
+}
+
+// AskChatCancel cancels any in-flight streaming Ask call.
+func (a *App) AskChatCancel() error {
+	a.askCancelMu.Lock()
+	defer a.askCancelMu.Unlock()
+	if a.askCancel != nil {
+		a.askCancel()
+		a.askCancel = nil
+	}
+	return nil
+}
+
+// AgentCancel cancels any in-flight agent Chat call.
+func (a *App) AgentCancel() error {
+	a.agentMu.Lock()
+	defer a.agentMu.Unlock()
+	if a.agent != nil {
+		a.agent.Reset()
+		a.agent = nil
+	}
+	return nil
+}
+
+// --- Session Management ---
+
+// SessionCreate creates a new session with the given name and mode ("ask" or "agent").
+func (a *App) SessionCreate(name, mode string) (*ai.SessionSummary, error) {
+	s, err := a.sessionManager.Create(name, mode)
+	if err != nil {
+		return nil, err
+	}
+	return &ai.SessionSummary{
+		ID:           s.ID,
+		Name:         s.Name,
+		Mode:         s.Mode,
+		MessageCount: len(s.Messages),
+		CreatedAt:    s.CreatedAt,
+		UpdatedAt:    s.UpdatedAt,
+	}, nil
+}
+
+// SessionList returns summaries of all sessions.
+func (a *App) SessionList() ([]ai.SessionSummary, error) {
+	return a.sessionManager.List(), nil
+}
+
+// SessionRename renames a session.
+func (a *App) SessionRename(id, name string) error {
+	return a.sessionManager.Rename(id, name)
+}
+
+// SessionDelete deletes a session.
+func (a *App) SessionDelete(id string) error {
+	return a.sessionManager.Delete(id)
+}
+
+// SessionSwitch switches the active session.
+func (a *App) SessionSwitch(id string) (*ai.SessionSummary, error) {
+	s, err := a.sessionManager.Switch(id)
+	if err != nil {
+		return nil, err
+	}
+	return &ai.SessionSummary{
+		ID:           s.ID,
+		Name:         s.Name,
+		Mode:         s.Mode,
+		MessageCount: len(s.Messages),
+		CreatedAt:    s.CreatedAt,
+		UpdatedAt:    s.UpdatedAt,
+	}, nil
+}
+
+// SessionGetMessages returns all messages for a session.
+func (a *App) SessionGetMessages(id string) ([]ai.Message, error) {
+	return a.sessionManager.GetMessages(id)
+}
+
+// SessionClearMessages clears a session's messages (keeps system prompt).
+func (a *App) SessionClearMessages(id string) error {
+	return a.sessionManager.ClearMessages(id)
+}
+
+// SessionActiveID returns the ID of the currently active session.
+func (a *App) SessionActiveID() (string, error) {
+	id := a.sessionManager.ActiveID()
+	if id == "" {
+		return "", fmt.Errorf("no active session")
+	}
+	return id, nil
 }
 
 // --- 3-Way Merge Editor ---

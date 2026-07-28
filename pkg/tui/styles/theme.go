@@ -44,7 +44,6 @@ var (
 
 	// Lists
 	ListItemStyle = lipgloss.NewStyle().
-			PaddingLeft(2).
 			Foreground(Text)
 	ListItemSelectedStyle = lipgloss.NewStyle().
 				PaddingLeft(1).
@@ -52,9 +51,7 @@ var (
 				Foreground(Text).
 				Bold(true)
 	ListItemActiveStyle = lipgloss.NewStyle().
-				PaddingLeft(1).
-				Background(Blue).
-				Foreground(Base).
+				Foreground(Blue).
 				Bold(true)
 
 	// Headers

@@ -49,12 +49,12 @@ type chatResponse struct {
 func (o *OpenAI) GenerateCommitMessage(ctx context.Context, diff string, cfg Config) (string, error) {
 	endpoint := cfg.Endpoint
 	if endpoint == "" {
-		endpoint = DefaultEndpoints[ProviderOpenAI]
+		endpoint = DefaultEndpoints[cfg.Provider]
 	}
 
 	model := cfg.Model
 	if model == "" {
-		model = DefaultModels[ProviderOpenAI]
+		model = DefaultModels[cfg.Provider]
 	}
 
 	// Truncate diff to avoid token limits (max ~6000 chars for most models)

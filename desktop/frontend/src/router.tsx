@@ -9,6 +9,7 @@ import ActionsPage from "./pages/ActionsPage";
 import RemotesPage from "./pages/RemotesPage";
 import TagsPage from "./pages/TagsPage";
 import SettingsPage from "./pages/SettingsPage";
+import AIFocusPage from "./pages/AIFocusPage";
 
 const rootRoute = createRootRoute({
   component: AppLayout,
@@ -68,6 +69,12 @@ const settingsRoute = createRoute({
   component: SettingsPage,
 });
 
+const aiRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/ai",
+  component: AIFocusPage,
+});
+
 const routeTree = rootRoute.addChildren([
   statusRoute,
   logRoute,
@@ -78,6 +85,7 @@ const routeTree = rootRoute.addChildren([
   remotesRoute,
   tagsRoute,
   settingsRoute,
+  aiRoute,
 ]);
 
 // Use hash history — works in all URL schemes (file://, wails://, etc.)

@@ -33,28 +33,28 @@ type branchEvent struct {
 	err      error
 }
 
-type refreshEvent struct{}
-
 // Subscriber bridges git engine events to Bubble Tea messages.
 // Runs a background poller on a ticker — never blocks the UI.
 type Subscriber struct {
-	git    *git.NativeExec
-	msgs   chan teaMsg
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-	tick   *time.Ticker
+	git       *git.NativeExec
+	msgs      chan teaMsg
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
+	tick      *time.Ticker
+	refreshCh chan struct{}
 }
 
 // NewSubscriber creates a subscriber that polls git state periodically.
 func NewSubscriber(gitExec *git.NativeExec, msgs chan teaMsg) *Subscriber {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Subscriber{
-		git:    gitExec,
-		msgs:   msgs,
-		ctx:    ctx,
-		cancel: cancel,
-		tick:   time.NewTicker(5 * time.Second),
+		git:       gitExec,
+		msgs:      msgs,
+		ctx:       ctx,
+		cancel:    cancel,
+		tick:      time.NewTicker(5 * time.Second),
+		refreshCh: make(chan struct{}, 1),
 	}
 }
 
@@ -73,20 +73,24 @@ func (s *Subscriber) Stop() {
 
 // Refresh triggers an immediate poll from the UI.
 func (s *Subscriber) Refresh() {
-	s.send(0, refreshEvent{})
+	select {
+	case s.refreshCh <- struct{}{}:
+	default:
+	}
 }
 
 func (s *Subscriber) pollLoop() {
 	defer s.wg.Done()
 
-	// Initial load
-	s.fetchAll()
-
+	// No initial fetch here — first fetch is triggered by bubbletea Init via Refresh().
+	// This ensures the event loop is ready to receive messages before any are sent.
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
 		case <-s.tick.C:
+			s.fetchAll()
+		case <-s.refreshCh:
 			s.fetchAll()
 		}
 	}
@@ -121,7 +125,7 @@ func (s *Subscriber) fetchLog() {
 	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
 	defer cancel()
 
-	commits, err := s.git.Log(ctx, git.LogOptions{Count: 50})
+	commits, err := s.git.Log(ctx, git.LogOptions{Count: 100, Graph: true, All: true})
 	if err != nil {
 		s.send(1, logEvent{err: err})
 		return

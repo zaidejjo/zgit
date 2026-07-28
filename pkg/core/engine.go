@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zaidejjo/zgit/pkg/core/ai"
 	"github.com/zaidejjo/zgit/pkg/core/cache"
 	"github.com/zaidejjo/zgit/pkg/core/config"
 	gitpkg "github.com/zaidejjo/zgit/pkg/core/git"
@@ -159,6 +160,11 @@ func (e *Engine) AuthenticateGitHub(token string) error {
 // IsGitHubAuthenticated returns true if a GitHub client is available.
 func (e *Engine) IsGitHubAuthenticated() bool {
 	return e.GitHub != nil
+}
+
+// NewAgent creates an AI agent wired to this engine's git adapter.
+func (e *Engine) NewAgent(cfg ai.Config) (*ai.Agent, error) {
+	return ai.NewAgent(cfg, e.Git)
 }
 
 // secondsToDuration converts seconds to time.Duration, 0 = no expiration.

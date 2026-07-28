@@ -27,6 +27,7 @@ export interface Status {
 
 export interface Commit {
   hash: string;
+  parents: string[];
   author: string;
   email: string;
   message: string;
@@ -318,6 +319,8 @@ declare global {
           GetRemotes(): Promise<Remote[]>;
           AddRemote(name: string, url: string): Promise<void>;
           RemoveRemote(name: string): Promise<void>;
+          RenameRemote(oldName: string, newName: string): Promise<void>;
+          SetRemoteURL(name: string, url: string): Promise<void>;
           GetAheadCommits(): Promise<Commit[]>;
           StartDeviceFlow(): Promise<DeviceFlowCode>;
           PollDeviceFlow(deviceCode: string): Promise<string>;
@@ -384,6 +387,28 @@ declare global {
           GetAIConfig(): Promise<AIConfig>;
           SetAIConfig(provider: string, apiKey: string, model: string, endpoint: string): Promise<void>;
           GenerateCommitMessage(): Promise<string>;
+          // Agentic AI
+          AgentStart(): Promise<void>;
+          AgentChat(message: string): Promise<AgentResponse>;
+          AgentApproveProposal(proposalID: string): Promise<ProposalResult>;
+          AgentRejectProposal(proposalID: string, feedback: string): Promise<void>;
+          AgentReset(): Promise<void>;
+          AgentGetProposals(): Promise<AgentActionProposal[]>;
+          AgentGetHistory(): Promise<AgentMessage[]>;
+          AgentCancel(): Promise<void>;
+          // Ask mode
+          AskChat(message: string): Promise<string>;
+          AskChatStream(message: string): Promise<void>;
+          AskChatCancel(): Promise<void>;
+          // Sessions
+          SessionCreate(name: string, mode: string): Promise<ChatSession>;
+          SessionList(): Promise<ChatSession[]>;
+          SessionRename(id: string, name: string): Promise<void>;
+          SessionDelete(id: string): Promise<void>;
+          SessionSwitch(id: string): Promise<ChatSession>;
+          SessionGetMessages(id: string): Promise<AgentMessage[]>;
+          SessionClearMessages(id: string): Promise<void>;
+          SessionActiveID(): Promise<string>;
         };
       };
     };
@@ -391,11 +416,63 @@ declare global {
   }
 }
 
+// --- AI Agent types ---
+
+export interface AgentToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export interface AgentMessage {
+  role: string;           // "user" | "assistant" | "tool" | "system"
+  content?: string;
+  tool_call_id?: string;
+  tool_calls?: AgentToolCall[];
+}
+
+export interface AgentActionProposal {
+  id: string;
+  type: string;
+  description: string;
+  reasoning: string;
+  diff_preview?: string;
+  status: "pending" | "approved" | "rejected" | "executed" | "failed";
+  created_at: string;
+  params?: Record<string, any>;
+}
+
+export interface AgentResponse {
+  message: string;
+  proposals?: AgentActionProposal[];
+  finished: boolean;
+}
+
+export interface ProposalResult {
+  proposal_id: string;
+  status: string;
+  success: boolean;
+  output?: string;
+  error?: string;
+}
+
+// Chat session (used for both Ask and Agent mode)
+export interface ChatSession {
+  id: string;
+  name: string;
+  mode: "ask" | "agent";
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // App state store
 interface AppState {
   // Git state
   status: Status | null;
   log: Commit[];
+  graphLog: Commit[];
+  graphView: boolean;
   branches: Branch[];
   diff: Diff | null;
   currentBranch: string;
@@ -448,6 +525,18 @@ interface AppState {
   aiConfig: AIConfig | null;
   aiGenerating: boolean;
 
+  // Agentic AI Assistant (shared for Ask + Agent modes)
+  aiPanelOpen: boolean;
+  aiSessionActive: boolean;
+  aiMessages: AgentMessage[];
+  aiProposals: AgentActionProposal[];
+  aiThinking: boolean;
+  aiError: string | null;
+  aiMode: "ask" | "agent";
+  aiSessions: ChatSession[];
+  aiActiveSessionId: string | null;
+  aiFullscreen: boolean;
+
   // Reflog / Undo
   reflog: ReflogEntry[];
   undoDescription: string | null;
@@ -469,6 +558,8 @@ interface AppState {
   toggleDarkMode: () => void;
   fetchStatus: () => Promise<void>;
   fetchLog: (count?: number) => Promise<void>;
+  fetchGraphLog: (count?: number) => Promise<void>;
+  toggleGraphView: () => void;
   fetchBranches: () => Promise<void>;
   fetchDiff: (pathspec?: string) => Promise<void>;
   stageFile: (file: string) => Promise<void>;
@@ -533,6 +624,8 @@ interface AppState {
   fetchRemotes: () => Promise<void>;
   addRemote: (name: string, url: string) => Promise<void>;
   removeRemote: (name: string) => Promise<void>;
+  renameRemote: (oldName: string, newName: string) => Promise<void>;
+  setRemoteUrl: (name: string, url: string) => Promise<void>;
 
   // Push confirmation
   requestPush: () => Promise<void>;
@@ -578,6 +671,27 @@ interface AppState {
   fetchAIConfig: () => Promise<void>;
   setAIConfigAction: (provider: string, apiKey: string, model: string, endpoint?: string) => Promise<void>;
   generateCommitMessage: () => Promise<string | null>;
+  generatePRDescription: (head: string, base?: string) => Promise<string | null>;
+
+  // Agentic AI Assistant — Dual Mode
+  toggleAIPanel: () => void;
+  setAIMode: (mode: "ask" | "agent") => void;
+  startAgentSession: () => Promise<boolean>;
+  sendAgentMessage: (message: string) => Promise<void>;
+  sendAskMessage: (message: string) => Promise<void>;
+  askChatCancel: () => void;
+  approveProposal: (proposalID: string) => Promise<void>;
+  rejectProposal: (proposalID: string, feedback?: string) => Promise<void>;
+  resetAgentSession: () => Promise<void>;
+  toggleAIFullscreen: () => void;
+  // Session management
+  fetchSessions: () => Promise<void>;
+  createSession: (name: string, mode: "ask" | "agent") => Promise<void>;
+  renameSession: (id: string, name: string) => Promise<void>;
+  deleteSession: (id: string) => Promise<void>;
+  switchSession: (id: string) => Promise<void>;
+  loadSessionMessages: (id: string) => Promise<void>;
+  clearSessionMessages: (id: string) => Promise<void>;
 
   // Reflog / Undo
   fetchReflog: (count?: number) => Promise<void>;
@@ -643,6 +757,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   status: null,
   log: [],
+  graphLog: [],
+  graphView: false,
   branches: [],
   diff: null,
   currentBranch: "",
@@ -662,6 +778,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   mergeRebaseDialog: null,
   aiConfig: null,
   aiGenerating: false,
+  aiPanelOpen: false,
+  aiSessionActive: false,
+  aiMessages: [],
+  aiProposals: [],
+  aiThinking: false,
+  aiError: null,
+  aiMode: "ask",
+  aiSessions: [],
+  aiActiveSessionId: null,
+  aiFullscreen: false,
   reflog: [],
   undoDescription: null,
   pendingPush: false,
@@ -720,6 +846,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       set({ error: msg || "Failed to fetch log", loading: { ...get().loading, log: false } });
     }
+  },
+
+  fetchGraphLog: async (count = 500) => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, graphLog: true } }));
+    try {
+      const graphLog = await backend.GetGraphLog(count);
+      set({ graphLog, loading: { ...get().loading, graphLog: false } });
+    } catch (e: any) {
+      const msg = e.message || "";
+      if (msg.includes("does not have any commits yet") || msg.includes("does not have any commits")) {
+        set({ graphLog: [], loading: { ...get().loading, graphLog: false } });
+        return;
+      }
+      set({ error: msg || "Failed to fetch graph log", loading: { ...get().loading, graphLog: false } });
+    }
+  },
+
+  toggleGraphView: () => {
+    set((s) => ({ graphView: !s.graphView }));
   },
 
   fetchBranches: async () => {
@@ -876,6 +1023,28 @@ export const useAppStore = create<AppState>((set, get) => ({
       await get().fetchRemotes();
     } catch (e: any) {
       set({ error: e.message || `Failed to remove remote ${name}` });
+    }
+  },
+
+  renameRemote: async (oldName, newName) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.RenameRemote(oldName, newName);
+      await get().fetchRemotes();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to rename remote ${oldName}` });
+    }
+  },
+
+  setRemoteUrl: async (name, url) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.SetRemoteURL(name, url);
+      await get().fetchRemotes();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to set URL for remote ${name}` });
     }
   },
 
@@ -1232,6 +1401,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         repoPath,
         status: null,
         log: [],
+        graphLog: [],
+        graphView: false,
         branches: [],
         diff: null,
         currentBranch: "",
@@ -1281,6 +1452,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await Promise.allSettled([
       s.fetchStatus(),
       s.fetchLog(),
+      s.fetchGraphLog(),
       s.fetchBranches(),
       s.fetchPullRequests(),
       s.fetchIssues(),
@@ -1724,6 +1896,344 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ error: e.message || "Failed to generate commit message" });
       set({ aiGenerating: false });
       return null;
+    }
+  },
+
+  generatePRDescription: async (head, base) => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      set({ aiGenerating: true });
+      const result: string = await backend.GeneratePRDescription(head, base || "main");
+      set({ aiGenerating: false });
+      return result;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to generate PR description" });
+      set({ aiGenerating: false });
+      return null;
+    }
+  },
+
+  // --- Agentic AI Assistant — Dual Mode ---
+
+  setAIMode: (mode) => {
+    const prev = get().aiMode;
+    set({ aiMode: mode });
+    // Switching to Agent: auto-start session
+    if (mode === "agent" && prev !== "agent") {
+      if (!get().aiSessionActive) {
+        get().startAgentSession();
+      }
+    }
+    // Switching to Ask: cancel any agent session, clear proposals
+    if (mode === "ask" && prev !== "ask") {
+      set({ aiProposals: [] });
+    }
+  },
+
+  toggleAIPanel: () => {
+    const next = !get().aiPanelOpen;
+    set({ aiPanelOpen: next, aiFullscreen: false });
+    // Auto-start based on current mode
+    if (next && !get().aiSessionActive) {
+      if (get().aiMode === "agent") {
+        get().startAgentSession();
+      }
+    }
+  },
+
+  toggleAIFullscreen: () => {
+    set((s) => ({ aiFullscreen: !s.aiFullscreen }));
+  },
+
+  startAgentSession: async () => {
+    const backend = getBackend();
+    if (!backend) return false;
+    try {
+      await backend.AgentStart();
+      // Create or ensure an agent session
+      const sessions = await backend.SessionList();
+      const existingAgent = sessions.find((s: ChatSession) => s.mode === "agent");
+      if (!existingAgent) {
+        const session = await backend.SessionCreate("Agent Session", "agent");
+        set({ aiActiveSessionId: session.id });
+      } else {
+        set({ aiActiveSessionId: existingAgent.id });
+      }
+      set({
+        aiSessionActive: true,
+        aiMessages: [],
+        aiProposals: [],
+        aiThinking: false,
+        aiError: null,
+        aiMode: "agent",
+      });
+      // Refresh session list
+      get().fetchSessions();
+      return true;
+    } catch (e: any) {
+      set({ aiError: e.message || "Failed to start agent session", aiSessionActive: false });
+      return false;
+    }
+  },
+
+  sendAgentMessage: async (message: string) => {
+    const backend = getBackend();
+    if (!backend) return;
+    const msg: AgentMessage = { role: "user", content: message };
+    set((s) => ({ aiMessages: [...s.aiMessages, msg], aiThinking: true, aiError: null }));
+    try {
+      const resp: AgentResponse = await backend.AgentChat(message);
+      const assistantMsg: AgentMessage = {
+        role: "assistant",
+        content: resp.message || "",
+      };
+      set((s) => ({
+        aiMessages: [...s.aiMessages, assistantMsg],
+        aiProposals: resp.proposals || [],
+        aiThinking: false,
+      }));
+    } catch (e: any) {
+      set({ aiError: e.message || "Agent error", aiThinking: false });
+    }
+  },
+
+  sendAskMessage: async (message: string) => {
+    const backend = getBackend();
+    if (!backend) return;
+    const msg: AgentMessage = { role: "user", content: message };
+    set((s) => ({ aiMessages: [...s.aiMessages, msg], aiThinking: true, aiError: null, aiSessionActive: true }));
+    try {
+      const responseText: string = await backend.AskChat(message);
+      const assistantMsg: AgentMessage = {
+        role: "assistant",
+        content: responseText || "",
+      };
+      set((s) => ({
+        aiMessages: [...s.aiMessages, assistantMsg],
+        aiThinking: false,
+      }));
+      // Refresh sessions to get updated message count
+      get().fetchSessions();
+    } catch (e: any) {
+      set({ aiError: e.message || "Ask error", aiThinking: false });
+    }
+  },
+
+  askChatCancel: () => {
+    const backend = getBackend();
+    if (!backend) return;
+    backend.AskChatCancel().catch(() => {});
+    set({ aiThinking: false });
+  },
+
+  approveProposal: async (proposalID: string) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      set((s) => ({
+        aiProposals: s.aiProposals.map((p) =>
+          p.id === proposalID ? { ...p, status: "approved" as const } : p
+        ),
+      }));
+      const result: ProposalResult = await backend.AgentApproveProposal(proposalID);
+
+      // Add result to chat
+      const resultMsg: AgentMessage = {
+        role: "tool",
+        tool_call_id: proposalID,
+        content: result.success
+          ? `✅ ${result.output || "Action completed successfully"}`
+          : `❌ ${result.error || "Action failed"}`,
+      };
+      set((s) => ({ aiMessages: [...s.aiMessages, resultMsg] }));
+
+      if (result.success) {
+        set((s) => ({
+          aiProposals: s.aiProposals.map((p) =>
+            p.id === proposalID ? { ...p, status: "executed" as const } : p
+          ),
+        }));
+        // Continue agent loop: send empty message to let agent check context
+        set({ aiThinking: true });
+        try {
+          const followUp: AgentResponse = await backend.AgentChat("_continue");
+          const followMsg: AgentMessage = {
+            role: "assistant",
+            content: followUp.message || "",
+          };
+          set((s) => ({
+            aiMessages: [...s.aiMessages, followMsg],
+            aiProposals: followUp.proposals || [],
+            aiThinking: false,
+          }));
+        } catch {
+          set({ aiThinking: false });
+        }
+      } else {
+        set((s) => ({
+          aiProposals: s.aiProposals.map((p) =>
+            p.id === proposalID ? { ...p, status: "failed" as const } : p
+          ),
+        }));
+      }
+    } catch (e: any) {
+      set({ aiError: e.message || "Failed to execute proposal" });
+    }
+  },
+
+  rejectProposal: async (proposalID: string, feedback?: string) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.AgentRejectProposal(proposalID, feedback || "");
+      set((s) => ({
+        aiProposals: s.aiProposals.map((p) =>
+          p.id === proposalID ? { ...p, status: "rejected" as const } : p
+        ),
+      }));
+
+      // If feedback provided, send it to agent for alternative suggestion
+      if (feedback) {
+        const feedbackMsg: AgentMessage = { role: "user", content: feedback };
+        set((s) => ({ aiMessages: [...s.aiMessages, feedbackMsg], aiThinking: true }));
+        try {
+          const resp: AgentResponse = await backend.AgentChat(feedback);
+          const assistantMsg: AgentMessage = {
+            role: "assistant",
+            content: resp.message || "",
+          };
+          set((s) => ({
+            aiMessages: [...s.aiMessages, assistantMsg],
+            aiProposals: resp.proposals || [],
+            aiThinking: false,
+          }));
+        } catch (e: any) {
+          set({ aiError: e.message || "Agent error", aiThinking: false });
+        }
+      }
+    } catch (e: any) {
+      set({ aiError: e.message || "Failed to reject proposal" });
+    }
+  },
+
+  resetAgentSession: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.AgentReset();
+    } catch {
+      // ignore
+    }
+    set({
+      aiSessionActive: false,
+      aiMessages: [],
+      aiProposals: [],
+      aiThinking: false,
+      aiError: null,
+      aiPanelOpen: false,
+      aiFullscreen: false,
+    });
+  },
+
+  // --- Session Management ---
+
+  fetchSessions: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const sessions: ChatSession[] = await backend.SessionList();
+      set({ aiSessions: sessions });
+      // Update active session ID if not set
+      const activeID: string = await backend.SessionActiveID();
+      set({ aiActiveSessionId: activeID || null });
+    } catch {
+      // Silent
+    }
+  },
+
+  createSession: async (name, mode) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const session: ChatSession = await backend.SessionCreate(name, mode);
+      set({
+        aiActiveSessionId: session.id,
+        aiMessages: [],
+        aiProposals: [],
+        aiSessionActive: true,
+      });
+      get().fetchSessions();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to create session" });
+    }
+  },
+
+  renameSession: async (id, name) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.SessionRename(id, name);
+      get().fetchSessions();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to rename session" });
+    }
+  },
+
+  deleteSession: async (id) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.SessionDelete(id);
+      const state = get();
+      if (state.aiActiveSessionId === id) {
+        set({ aiActiveSessionId: null, aiMessages: [], aiProposals: [], aiSessionActive: false });
+      }
+      get().fetchSessions();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to delete session" });
+    }
+  },
+
+  switchSession: async (id) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const session: ChatSession = await backend.SessionSwitch(id);
+      const messages: AgentMessage[] = await backend.SessionGetMessages(id);
+      set({
+        aiActiveSessionId: session.id,
+        aiMode: session.mode as "ask" | "agent",
+        aiMessages: messages,
+        aiProposals: [],
+        aiSessionActive: true,
+        aiThinking: false,
+        aiError: null,
+      });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to switch session" });
+    }
+  },
+
+  loadSessionMessages: async (id) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const messages: AgentMessage[] = await backend.SessionGetMessages(id);
+      set({ aiMessages: messages });
+    } catch {
+      // Silent
+    }
+  },
+
+  clearSessionMessages: async (id) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.SessionClearMessages(id);
+      set({ aiMessages: [] });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to clear session" });
     }
   },
 

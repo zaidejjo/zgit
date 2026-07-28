@@ -229,6 +229,9 @@ func (n *NativeExec) gitDir(ctx context.Context) string {
 func (n *NativeExec) Log(ctx context.Context, opts LogOptions) ([]*models.Commit, error) {
 	args := []string{"log", "--format=" + logFormat}
 
+	if opts.Graph {
+		args = append(args, "--topo-order")
+	}
 	if opts.Count > 0 {
 		args = append(args, fmt.Sprintf("-%d", opts.Count))
 	}
@@ -258,6 +261,11 @@ func (n *NativeExec) Log(ctx context.Context, opts LogOptions) ([]*models.Commit
 
 	data, err := n.run(ctx, args...)
 	if err != nil {
+		// Empty repo / unborn HEAD: git log exits with code 128.
+		var gitErr *GitError
+		if asGitErr(err, &gitErr) && gitErr.ExitCode == 128 {
+			return []*models.Commit{}, nil
+		}
 		return nil, err
 	}
 	return ParseLog(data)
@@ -519,6 +527,12 @@ func (n *NativeExec) RebaseSequence(ctx context.Context, opts models.RebaseSeque
 
 func (n *NativeExec) CherryPick(ctx context.Context, sha string) error {
 	_, err := n.run(ctx, "cherry-pick", sha)
+	return err
+}
+
+// CherryPickNoCommit stages changes from a commit without creating a commit.
+func (n *NativeExec) CherryPickNoCommit(ctx context.Context, sha string) error {
+	_, err := n.run(ctx, "cherry-pick", "--no-commit", sha)
 	return err
 }
 
@@ -893,6 +907,16 @@ func (n *NativeExec) RemoteAdd(ctx context.Context, name, url string) error {
 
 func (n *NativeExec) RemoteRemove(ctx context.Context, name string) error {
 	_, err := n.run(ctx, "remote", "remove", name)
+	return err
+}
+
+func (n *NativeExec) RemoteRename(ctx context.Context, oldName, newName string) error {
+	_, err := n.run(ctx, "remote", "rename", oldName, newName)
+	return err
+}
+
+func (n *NativeExec) RemoteSetURL(ctx context.Context, name, url string) error {
+	_, err := n.run(ctx, "remote", "set-url", name, url)
 	return err
 }
 

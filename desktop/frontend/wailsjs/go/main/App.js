@@ -6,6 +6,50 @@ export function AddRemote(arg1, arg2) {
   return window['go']['main']['App']['AddRemote'](arg1, arg2);
 }
 
+export function AgentApproveProposal(arg1) {
+  return window['go']['main']['App']['AgentApproveProposal'](arg1);
+}
+
+export function AgentCancel() {
+  return window['go']['main']['App']['AgentCancel']();
+}
+
+export function AgentChat(arg1) {
+  return window['go']['main']['App']['AgentChat'](arg1);
+}
+
+export function AgentGetHistory() {
+  return window['go']['main']['App']['AgentGetHistory']();
+}
+
+export function AgentGetProposals() {
+  return window['go']['main']['App']['AgentGetProposals']();
+}
+
+export function AgentRejectProposal(arg1, arg2) {
+  return window['go']['main']['App']['AgentRejectProposal'](arg1, arg2);
+}
+
+export function AgentReset() {
+  return window['go']['main']['App']['AgentReset']();
+}
+
+export function AgentStart() {
+  return window['go']['main']['App']['AgentStart']();
+}
+
+export function AskChat(arg1) {
+  return window['go']['main']['App']['AskChat'](arg1);
+}
+
+export function AskChatCancel() {
+  return window['go']['main']['App']['AskChatCancel']();
+}
+
+export function AskChatStream(arg1) {
+  return window['go']['main']['App']['AskChatStream'](arg1);
+}
+
 export function AuthenticateGitHub(arg1) {
   return window['go']['main']['App']['AuthenticateGitHub'](arg1);
 }
@@ -78,6 +122,10 @@ export function GenerateCommitMessage() {
   return window['go']['main']['App']['GenerateCommitMessage']();
 }
 
+export function GeneratePRDescription(arg1, arg2) {
+  return window['go']['main']['App']['GeneratePRDescription'](arg1, arg2);
+}
+
 export function GetAIConfig() {
   return window['go']['main']['App']['GetAIConfig']();
 }
@@ -108,6 +156,10 @@ export function GetFileDiff(arg1) {
 
 export function GetGitHubUser() {
   return window['go']['main']['App']['GetGitHubUser']();
+}
+
+export function GetGraphLog(arg1) {
+  return window['go']['main']['App']['GetGraphLog'](arg1);
 }
 
 export function GetIssueDetail(arg1) {
@@ -230,6 +282,14 @@ export function RemoveRemote(arg1) {
   return window['go']['main']['App']['RemoveRemote'](arg1);
 }
 
+export function RenameRemote(arg1, arg2) {
+  return window['go']['main']['App']['RenameRemote'](arg1, arg2);
+}
+
+export function SetRemoteURL(arg1, arg2) {
+  return window['go']['main']['App']['SetRemoteURL'](arg1, arg2);
+}
+
 export function ResetCommit(arg1, arg2) {
   return window['go']['main']['App']['ResetCommit'](arg1, arg2);
 }
@@ -246,8 +306,44 @@ export function Run(arg1) {
   return window['go']['main']['App']['Run'](arg1);
 }
 
+export function SessionActiveID() {
+  return window['go']['main']['App']['SessionActiveID']();
+}
+
+export function SessionClearMessages(arg1) {
+  return window['go']['main']['App']['SessionClearMessages'](arg1);
+}
+
+export function SessionCreate(arg1, arg2) {
+  return window['go']['main']['App']['SessionCreate'](arg1, arg2);
+}
+
+export function SessionDelete(arg1) {
+  return window['go']['main']['App']['SessionDelete'](arg1);
+}
+
+export function SessionGetMessages(arg1) {
+  return window['go']['main']['App']['SessionGetMessages'](arg1);
+}
+
+export function SessionList() {
+  return window['go']['main']['App']['SessionList']();
+}
+
+export function SessionRename(arg1, arg2) {
+  return window['go']['main']['App']['SessionRename'](arg1, arg2);
+}
+
+export function SessionSwitch(arg1) {
+  return window['go']['main']['App']['SessionSwitch'](arg1);
+}
+
 export function SetAIConfig(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SetAIConfig'](arg1, arg2, arg3, arg4);
+}
+
+export function SetRemoteURL(arg1, arg2) {
+  return window['go']['main']['App']['SetRemoteURL'](arg1, arg2);
 }
 
 export function StageAll() {

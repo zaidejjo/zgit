@@ -215,9 +215,9 @@ func parseStatusByte(b byte) models.StatusType {
 
 // --- git log format ---
 // We use tab (%x09) delimiter for easy parsing.
-// %H = hash, %an = author name, %ae = author email, %at = author timestamp, %s = subject, %D = ref names
+// %H = hash, %P = parent hashes, %an = author name, %ae = author email, %at = author timestamp, %s = subject, %D = ref names
 // Note: log format uses %x09 (not %09 — those are for for-each-ref format only).
-const logFormat = "%H%x09%an%x09%ae%x09%at%x09%s%x09%D"
+const logFormat = "%H%x09%P%x09%an%x09%ae%x09%at%x09%s%x09%D"
 
 // ParseLog parses `git log --format=...` output into commits.
 func ParseLog(data []byte) ([]*models.Commit, error) {
@@ -239,25 +239,32 @@ func ParseLog(data []byte) ([]*models.Commit, error) {
 
 func parseCommitLine(line string) (*models.Commit, error) {
 	parts := strings.Split(line, "\t")
-	if len(parts) < 5 {
+	if len(parts) < 6 {
 		return nil, fmt.Errorf("malformed commit line: %q", line)
 	}
 
-	ts, err := strconv.ParseInt(parts[3], 10, 64)
+	ts, err := strconv.ParseInt(parts[4], 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("parse timestamp %q: %w", parts[3], err)
+		return nil, fmt.Errorf("parse timestamp %q: %w", parts[4], err)
+	}
+
+	// Parse parent hashes (space-separated, or empty for root commits)
+	parents := make([]string, 0)
+	if parentsStr := parts[1]; parentsStr != "" {
+		parents = strings.Split(parentsStr, " ")
 	}
 
 	c := &models.Commit{
 		Hash:      parts[0],
-		Author:    parts[1],
-		Email:     parts[2],
+		Parents:   parents,
+		Author:    parts[2],
+		Email:     parts[3],
 		Timestamp: time.Unix(ts, 0),
-		Message:   parts[4],
+		Message:   parts[5],
 	}
 
-	if len(parts) > 5 && parts[5] != "" {
-		c.RefNames = parts[5]
+	if len(parts) > 6 && parts[6] != "" {
+		c.RefNames = parts[6]
 	}
 
 	return c, nil

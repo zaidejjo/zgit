@@ -5,17 +5,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/core/models"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
 // LogModel holds state for the commit log view.
 type LogModel struct {
-	Commits []*models.Commit
-	Cursor  int
-	Offset  int // scroll offset
-	Error   string
-	Height  int // visible height
+	Commits    []*models.Commit
+	Cursor     int
+	Offset     int // scroll offset
+	Error      string
+	Height     int      // visible height
+	treePrefix []string // cached tree graph strings
 }
 
 // NewLogModel creates a default log view model.
@@ -23,13 +25,15 @@ func NewLogModel() LogModel {
 	return LogModel{Height: 20}
 }
 
-// UpdateLog refreshes the commit list.
+// UpdateLog refreshes the commit list and rebuilds tree graph.
 func (m *LogModel) UpdateLog(commits []*models.Commit) {
 	m.Commits = commits
 	m.Error = ""
+	m.treePrefix = RenderTreeGraph(commits)
 }
 
-// View renders the commit log.
+// View renders the commit log with tree graph.
+// Layout: [tree] [hash] [branch badges] [message]
 func (m LogModel) View(width int) string {
 	if m.Error != "" {
 		return styles.ErrorStyle.Render("Error: " + m.Error)
@@ -45,6 +49,7 @@ func (m LogModel) View(width int) string {
 	m.ensureCursorVisible()
 
 	visible := m.Commits
+	treePrefix := m.treePrefix
 	if len(visible) > m.Height {
 		end := m.Offset + m.Height
 		if end > len(visible) {
@@ -55,36 +60,125 @@ func (m LogModel) View(width int) string {
 			}
 		}
 		visible = visible[m.Offset:end]
+		if treePrefix != nil && m.Offset < len(treePrefix) {
+			treeEnd := m.Offset + len(visible)
+			if treeEnd > len(treePrefix) {
+				treeEnd = len(treePrefix)
+			}
+			treePrefix = treePrefix[m.Offset:treeEnd]
+		} else {
+			treePrefix = nil
+		}
 	}
 
 	for i, c := range visible {
 		globalIdx := m.Offset + i
+
+		// Tree graph prefix
+		treeStr := ""
+		if treePrefix != nil && i < len(treePrefix) {
+			treeStr = treePrefix[i]
+		}
+		treeWidth := lipgloss.Width(treeStr)
+
+		// Short hash (7 chars)
 		hash := c.Hash
 		if len(hash) > 7 {
 			hash = hash[:7]
 		}
 
+		// Available width for message: width - tree - space - hash(7) - space
+		msgMax := width - treeWidth - 1 - 7 - 1
+		if msgMax < 1 {
+			msgMax = 1
+		}
+
+		// Parse branch/tag refs for badges
+		var badgeStr string
+		if c.RefNames != "" {
+			badgeStr = renderRefBadges(c.RefNames)
+		}
+		badgeWidth := lipgloss.Width(badgeStr)
+		if badgeStr != "" {
+			badgeStr = " " + badgeStr
+			badgeWidth++ // leading space
+		}
+
+		// Adjust msg for badge space
+		msgMaxAdjusted := msgMax - badgeWidth
+		if msgMaxAdjusted < 0 {
+			msgMaxAdjusted = 0
+		}
+		msg := truncateStr(c.Message, msgMaxAdjusted)
+
+		// Build line: treeStr + " " + hash + badge + " " + msg
+		line := fmt.Sprintf("%s %s%s %s", treeStr, hash, badgeStr, msg)
+		lineWidth := lipgloss.Width(line)
+		if lineWidth > width {
+			// Overflow — trim msg further
+			overflow := lineWidth - width
+			msg = truncateStr(c.Message, msgMaxAdjusted-overflow)
+			if msgMaxAdjusted-overflow < 0 {
+				msg = ""
+			}
+			line = fmt.Sprintf("%s %s%s %s", treeStr, hash, badgeStr, msg)
+		}
+
 		if globalIdx == m.Cursor {
-			b.WriteString(styles.ListItemActiveStyle.Render(
-				fmt.Sprintf(" %s %s", hash, truncateStr(c.Message, width-20)),
-			))
-			b.WriteString("\n")
-			b.WriteString(styles.ListItemActiveStyle.Render(
-				fmt.Sprintf("   %s  %s", c.Author, formatTime(c.Timestamp)),
-			))
+			// Cursor: ❯ prefix replaces first rune (handles multi-byte tree symbols)
+			runes := []rune(line)
+			if len(runes) > 0 {
+				cursorLine := "❯" + string(runes[1:])
+				b.WriteString(styles.ListItemActiveStyle.Render(cursorLine))
+			} else {
+				b.WriteString(styles.ListItemActiveStyle.Render("❯"))
+			}
 		} else {
-			b.WriteString(styles.ListItemStyle.Render(
-				fmt.Sprintf(" %s %s", hash, truncateStr(c.Message, width-10)),
-			))
-			b.WriteString("\n")
-			b.WriteString(styles.SubtitleStyle.Render(
-				fmt.Sprintf("   %s  %s", c.Author, formatTime(c.Timestamp)),
-			))
+			b.WriteString(styles.ListItemStyle.Render(line))
 		}
 		b.WriteString("\n")
 	}
 
 	return b.String()
+}
+
+// renderRefBadges parses RefNames (e.g. "HEAD -> main, origin/main")
+// and returns compact colored badges like "[main] [origin/main]".
+// Filters out HEAD and remote tracking refs for brevity.
+func renderRefBadges(refNames string) string {
+	if refNames == "" {
+		return ""
+	}
+	var badges []string
+	for _, part := range strings.Split(refNames, ", ") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		// Skip HEAD pointer
+		if part == "HEAD" {
+			continue
+		}
+		// Take the right side after " -> " (branch that HEAD points to)
+		if idx := strings.LastIndex(part, " -> "); idx >= 0 {
+			part = part[idx+4:]
+		}
+		if part == "" {
+			continue
+		}
+		// Style the badge
+		color := styles.Teal
+		if strings.HasPrefix(part, "origin/") {
+			color = styles.Subtext
+			part = part[len("origin/"):]
+		}
+		badge := lipgloss.NewStyle().
+			Foreground(color).
+			Bold(true).
+			Render(part)
+		badges = append(badges, badge)
+	}
+	return strings.Join(badges, " ")
 }
 
 func (m *LogModel) ensureCursorVisible() {
@@ -96,6 +190,23 @@ func (m *LogModel) ensureCursorVisible() {
 	}
 }
 
+func formatTimeCompact(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	default:
+		return fmt.Sprintf("%dmo", int(d.Hours()/(24*30)))
+	}
+}
+
+// formatTime is used by all view files in this package.
 func formatTime(t time.Time) string {
 	d := time.Since(t)
 	switch {

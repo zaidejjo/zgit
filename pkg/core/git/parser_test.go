@@ -210,10 +210,11 @@ func TestParseLog(t *testing.T) {
 	}{
 		{
 			name: "single commit",
-			data: "abc123\tJohn Doe\tjohn@ex.com\t1700000000\tInitial commit\t",
+			data: "abc123\t\tJohn Doe\tjohn@ex.com\t1700000000\tInitial commit\t",
 			want: []*models.Commit{
 				{
 					Hash:      "abc123",
+					Parents:   nil,
 					Author:    "John Doe",
 					Email:     "john@ex.com",
 					Timestamp: time.Unix(1700000000, 0),
@@ -223,14 +224,14 @@ func TestParseLog(t *testing.T) {
 		},
 		{
 			name: "multiple commits",
-			data: "aaa\tAlice\talice@ex.com\t1700000100\tFirst commit\t(tag: v1.0)\nbbb\tBob\tbob@ex.com\t1700000200\tSecond commit\t(main)\n",
+			data: "aaa\tp001\tAlice\talice@ex.com\t1700000100\tFirst commit\t(tag: v1.0)\nbbb\tp002 p003\tBob\tbob@ex.com\t1700000200\tSecond commit\t(main)\n",
 			want: []*models.Commit{
 				{
-					Hash: "aaa", Author: "Alice", Email: "alice@ex.com",
+					Hash: "aaa", Parents: []string{"p001"}, Author: "Alice", Email: "alice@ex.com",
 					Timestamp: time.Unix(1700000100, 0), Message: "First commit", RefNames: "(tag: v1.0)",
 				},
 				{
-					Hash: "bbb", Author: "Bob", Email: "bob@ex.com",
+					Hash: "bbb", Parents: []string{"p002", "p003"}, Author: "Bob", Email: "bob@ex.com",
 					Timestamp: time.Unix(1700000200, 0), Message: "Second commit", RefNames: "(main)",
 				},
 			},
@@ -264,6 +265,15 @@ func TestParseLog(t *testing.T) {
 				}
 				if !c.Timestamp.Equal(wc.Timestamp) {
 					t.Errorf("Commit[%d].Timestamp = %v, want %v", i, c.Timestamp, wc.Timestamp)
+				}
+				if len(c.Parents) != len(wc.Parents) {
+					t.Errorf("Commit[%d].Parents len = %d, want %d", i, len(c.Parents), len(wc.Parents))
+				} else {
+					for j, p := range c.Parents {
+						if p != wc.Parents[j] {
+							t.Errorf("Commit[%d].Parents[%d] = %q, want %q", i, j, p, wc.Parents[j])
+						}
+					}
 				}
 			}
 		})
@@ -545,7 +555,7 @@ func TestStatusHelperMethods(t *testing.T) {
 }
 
 func TestCommitRefNames(t *testing.T) {
-	data := "abc123\tAlice\talice@ex.com\t1700000100\tFix bug\t(tag: v1.0, main)\n"
+	data := "abc123\tparentHash\tAlice\talice@ex.com\t1700000100\tFix bug\t(tag: v1.0, main)\n"
 	got, err := ParseLog([]byte(data))
 	if err != nil {
 		t.Fatal(err)

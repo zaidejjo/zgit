@@ -20,12 +20,21 @@ type Config struct {
 	Theme       string       `mapstructure:"theme"`
 }
 
+// ProviderConfig stores per-provider AI settings.
+type ProviderConfig struct {
+	APIKey       string   `mapstructure:"api_key"`
+	Model        string   `mapstructure:"model"`
+	Endpoint     string   `mapstructure:"endpoint,omitempty"`
+	CustomModels []string `mapstructure:"custom_models,omitempty"`
+}
+
 // AIConfig stores AI commit message provider settings.
 type AIConfig struct {
-	Provider string `mapstructure:"provider"`
-	APIKey   string `mapstructure:"api_key"`
-	Model    string `mapstructure:"model"`
-	Endpoint string `mapstructure:"endpoint"`
+	Provider  string                    `mapstructure:"provider"`
+	APIKey    string                    `mapstructure:"api_key"`
+	Model     string                    `mapstructure:"model"`
+	Endpoint  string                    `mapstructure:"endpoint"`
+	Providers map[string]ProviderConfig `mapstructure:"providers,omitempty"`
 }
 
 // GitHubConfig stores GitHub authentication and preferences.
@@ -71,6 +80,7 @@ func New() (*Manager, error) {
 	v.SetDefault("ai.api_key", "")
 	v.SetDefault("ai.model", "")
 	v.SetDefault("ai.endpoint", "")
+	v.SetDefault("ai.providers", map[string]interface{}{})
 	v.SetDefault("repo.editor", "code")
 	v.SetDefault("repo.diff_context", 3)
 	v.SetDefault("theme", "default")
@@ -153,4 +163,82 @@ func (m *Manager) ConfigPath() string {
 // ConfigFilePath returns the full path to the config file.
 func (m *Manager) ConfigFilePath() string {
 	return filepath.Join(m.path, configFileName)
+}
+
+// GetInt returns an int config value.
+func (m *Manager) GetInt(key string) int {
+	return m.v.GetInt(key)
+}
+
+// GetBool returns a bool config value.
+func (m *Manager) GetBool(key string) bool {
+	return m.v.GetBool(key)
+}
+
+// GetProviderKeys returns all configured provider names.
+func (m *Manager) GetProviderKeys() []string {
+	providers := m.v.GetStringMap("ai.providers")
+	keys := make([]string, 0, len(providers))
+	for k := range providers {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// GetProviderConfig returns config for a specific provider, falling back to top-level defaults.
+func (m *Manager) GetProviderConfig(provider string) ProviderConfig {
+	key := "ai.providers." + provider
+	pc := ProviderConfig{
+		APIKey:   m.v.GetString(key + ".api_key"),
+		Model:    m.v.GetString(key + ".model"),
+		Endpoint: m.v.GetString(key + ".endpoint"),
+	}
+	// Fall back to top-level if per-provider not set
+	if pc.APIKey == "" {
+		pc.APIKey = m.GetString("ai.api_key")
+	}
+	if pc.Model == "" {
+		pc.Model = m.GetString("ai.model")
+	}
+	if pc.Endpoint == "" {
+		pc.Endpoint = m.GetString("ai.endpoint")
+	}
+	return pc
+}
+
+// SetProviderConfig saves config for a specific provider.
+func (m *Manager) SetProviderConfig(provider string, pc ProviderConfig) {
+	key := "ai.providers." + provider
+	m.v.Set(key+".api_key", pc.APIKey)
+	m.v.Set(key+".model", pc.Model)
+	if pc.Endpoint != "" {
+		m.v.Set(key+".endpoint", pc.Endpoint)
+	}
+	if len(pc.CustomModels) > 0 {
+		m.v.Set(key+".custom_models", pc.CustomModels)
+	}
+}
+
+// GetCustomModels returns saved custom models for a provider.
+func (m *Manager) GetCustomModels(provider string) []string {
+	key := "ai.providers." + provider + ".custom_models"
+	return m.v.GetStringSlice(key)
+}
+
+// AddCustomModel adds a model to the provider's custom models list (deduped).
+func (m *Manager) AddCustomModel(provider string, model string) {
+	models := m.GetCustomModels(provider)
+	for _, m := range models {
+		if m == model {
+			return // already exists
+		}
+	}
+	models = append(models, model)
+	m.v.Set("ai.providers."+provider+".custom_models", models)
+}
+
+// DeleteProviderConfig removes a provider's config.
+func (m *Manager) DeleteProviderConfig(provider string) {
+	key := "ai.providers." + provider
+	m.v.Set(key, nil)
 }
