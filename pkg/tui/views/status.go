@@ -12,11 +12,39 @@ import (
 // StatusModel holds state for the working tree status view.
 type StatusModel struct {
 	Status        *models.Status
-	Cursor        int
+	Cursor        int // index into VisibleFiles
 	ShowStaged    bool
 	ShowUnstaged  bool
 	ShowUntracked bool
 	Error         string
+}
+
+// VisibleFiles returns the flat list of files currently visible in the panel,
+// ordered as: staged, unstaged, untracked.
+func (m *StatusModel) VisibleFiles() []models.FileStatus {
+	if m.Status == nil {
+		return nil
+	}
+	var out []models.FileStatus
+	if m.ShowStaged {
+		out = append(out, m.Status.StagedFiles()...)
+	}
+	if m.ShowUnstaged {
+		out = append(out, m.Status.UnstagedFiles()...)
+	}
+	if m.ShowUntracked {
+		out = append(out, m.Status.UntrackedFiles()...)
+	}
+	return out
+}
+
+// CursorFile returns the FileStatus at the current cursor position, or nil.
+func (m *StatusModel) CursorFile() *models.FileStatus {
+	visible := m.VisibleFiles()
+	if m.Cursor < 0 || m.Cursor >= len(visible) {
+		return nil
+	}
+	return &visible[m.Cursor]
 }
 
 // NewStatusModel creates a default status view model.
@@ -34,7 +62,9 @@ func (m *StatusModel) UpdateStatus(s *models.Status) {
 	m.Error = ""
 }
 
-// View renders the status screen.
+// View renders the status screen with section-aware cursor indexing.
+// Cursor is a flat index into VisibleFiles() (staged + unstaged + untracked).
+// Each section computes its local cursor from the flat index.
 func (m StatusModel) View(width int) string {
 	if m.Error != "" {
 		return styles.ErrorStyle.Render("Error: " + m.Error)
@@ -44,6 +74,15 @@ func (m StatusModel) View(width int) string {
 		return styles.LoadingStyle.Render("Loading status...")
 	}
 
+	// Pre-compute file lists and section offsets
+	staged := m.Status.StagedFiles()
+	unstaged := m.Status.UnstagedFiles()
+	untracked := m.Status.UntrackedFiles()
+
+	stagedOffset := 0
+	unstagedOffset := len(staged)
+	untrackedOffset := unstagedOffset + len(unstaged)
+
 	var b strings.Builder
 
 	// Branch header
@@ -51,52 +90,50 @@ func (m StatusModel) View(width int) string {
 	b.WriteString("\n")
 
 	// Staged files
-	if m.ShowStaged {
-		staged := m.Status.StagedFiles()
-		if len(staged) > 0 {
-			b.WriteString(sectionTitle(fmt.Sprintf("Staged (%d)", len(staged))))
-			b.WriteString("\n")
-			for i, f := range staged {
-				line := fmt.Sprintf("  %s  %s", statusMark("staged"), formatFilePath(f.Path, width-6))
-				if i == m.Cursor && m.ShowStaged {
-					b.WriteString(styles.ListItemActiveStyle.Render(line))
-				} else {
-					b.WriteString(styles.ListItemStyle.Render(line))
-				}
-				b.WriteString("\n")
+	if m.ShowStaged && len(staged) > 0 {
+		b.WriteString(sectionTitle(fmt.Sprintf("Staged (%d)", len(staged))))
+		b.WriteString("\n")
+		for i, f := range staged {
+			line := fmt.Sprintf("  %s  %s", statusMark("staged"), formatFilePath(f.Path, width-6))
+			localIdx := stagedOffset + i
+			if localIdx == m.Cursor {
+				b.WriteString(styles.ListItemActiveStyle.Render(line))
+			} else {
+				b.WriteString(styles.ListItemStyle.Render(line))
 			}
+			b.WriteString("\n")
 		}
 	}
 
 	// Unstaged files
-	if m.ShowUnstaged {
-		unstaged := m.Status.UnstagedFiles()
-		if len(unstaged) > 0 {
-			b.WriteString(sectionTitle(fmt.Sprintf("Unstaged (%d)", len(unstaged))))
-			b.WriteString("\n")
-			for i, f := range unstaged {
-				line := fmt.Sprintf("  %s  %s", statusMark("unstaged"), formatFilePath(f.Path, width-6))
-				if i == m.Cursor && !m.ShowStaged && m.ShowUnstaged {
-					b.WriteString(styles.ListItemActiveStyle.Render(line))
-				} else {
-					b.WriteString(styles.ListItemStyle.Render(line))
-				}
-				b.WriteString("\n")
+	if m.ShowUnstaged && len(unstaged) > 0 {
+		b.WriteString(sectionTitle(fmt.Sprintf("Unstaged (%d)", len(unstaged))))
+		b.WriteString("\n")
+		for i, f := range unstaged {
+			line := fmt.Sprintf("  %s  %s", statusMark("unstaged"), formatFilePath(f.Path, width-6))
+			localIdx := unstagedOffset + i
+			if localIdx == m.Cursor {
+				b.WriteString(styles.ListItemActiveStyle.Render(line))
+			} else {
+				b.WriteString(styles.ListItemStyle.Render(line))
 			}
+			b.WriteString("\n")
 		}
 	}
 
 	// Untracked files
-	if m.ShowUntracked {
-		untracked := m.Status.UntrackedFiles()
-		if len(untracked) > 0 {
-			b.WriteString(sectionTitle(fmt.Sprintf("Untracked (%d)", len(untracked))))
-			b.WriteString("\n")
-			for _, f := range untracked {
-				line := fmt.Sprintf("  %s  %s", statusMark("untracked"), formatFilePath(f.Path, width-6))
+	if m.ShowUntracked && len(untracked) > 0 {
+		b.WriteString(sectionTitle(fmt.Sprintf("Untracked (%d)", len(untracked))))
+		b.WriteString("\n")
+		for i, f := range untracked {
+			line := fmt.Sprintf("  %s  %s", statusMark("untracked"), formatFilePath(f.Path, width-6))
+			localIdx := untrackedOffset + i
+			if localIdx == m.Cursor {
+				b.WriteString(styles.ListItemActiveStyle.Render(line))
+			} else {
 				b.WriteString(styles.ListItemStyle.Render(line))
-				b.WriteString("\n")
 			}
+			b.WriteString("\n")
 		}
 	}
 

@@ -52,7 +52,6 @@ var (
 				Foreground(Text).
 				Bold(true)
 	ListItemActiveStyle = lipgloss.NewStyle().
-				PaddingLeft(1).
 				Background(Blue).
 				Foreground(Base).
 				Bold(true)

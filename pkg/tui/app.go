@@ -760,13 +760,13 @@ func (m *Model) fetchIssues() {
 // --- View-specific key handlers ---
 
 func (m *Model) handleStatusKeys(key string) (tea.Model, tea.Cmd) {
+	visible := m.status.VisibleFiles()
+	totalVisible := len(visible)
+
 	switch key {
 	case "j", "down":
-		if m.status.Status != nil {
-			total := len(m.status.Status.Files)
-			if total > 0 && m.status.Cursor < total-1 {
-				m.status.Cursor++
-			}
+		if totalVisible > 0 && m.status.Cursor < totalVisible-1 {
+			m.status.Cursor++
 		}
 	case "k", "up":
 		if m.status.Cursor > 0 {
@@ -775,14 +775,12 @@ func (m *Model) handleStatusKeys(key string) (tea.Model, tea.Cmd) {
 	case "g", "home":
 		m.status.Cursor = 0
 	case "G", "end":
-		if m.status.Status != nil {
-			m.status.Cursor = len(m.status.Status.Files) - 1
-			if m.status.Cursor < 0 {
-				m.status.Cursor = 0
-			}
+		m.status.Cursor = totalVisible - 1
+		if m.status.Cursor < 0 {
+			m.status.Cursor = 0
 		}
 	case "enter":
-		if m.status.Status != nil && m.status.Cursor < len(m.status.Status.Files) {
+		if m.status.CursorFile() != nil {
 			m.openFileDiff()
 		}
 	case " ":
@@ -809,10 +807,10 @@ func (m *Model) handleStatusKeys(key string) (tea.Model, tea.Cmd) {
 // --- File operations ---
 
 func (m *Model) stageToggle() {
-	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
+	f := m.status.CursorFile()
+	if f == nil {
 		return
 	}
-	f := m.status.Status.Files[m.status.Cursor]
 	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
 	defer cancel()
 
@@ -835,10 +833,10 @@ func (m *Model) stageToggle() {
 }
 
 func (m *Model) stageFile() {
-	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
+	f := m.status.CursorFile()
+	if f == nil {
 		return
 	}
-	f := m.status.Status.Files[m.status.Cursor]
 	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
 	defer cancel()
 	if err := m.git.Add(ctx, gitpkg.AddOptions{}, f.Path); err != nil {
@@ -850,10 +848,10 @@ func (m *Model) stageFile() {
 }
 
 func (m *Model) unstageFile() {
-	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
+	f := m.status.CursorFile()
+	if f == nil {
 		return
 	}
-	f := m.status.Status.Files[m.status.Cursor]
 	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
 	defer cancel()
 	if err := m.git.RestoreStaged(ctx, f.Path); err != nil {
@@ -865,10 +863,10 @@ func (m *Model) unstageFile() {
 }
 
 func (m *Model) discardFile() {
-	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
+	f := m.status.CursorFile()
+	if f == nil {
 		return
 	}
-	f := m.status.Status.Files[m.status.Cursor]
 	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
 	defer cancel()
 	if err := m.git.Restore(ctx, f.Path); err != nil {
@@ -1097,11 +1095,10 @@ func (m *Model) handleIssueKeys(key string) (tea.Model, tea.Cmd) {
 // --- Diff & Commit ---
 
 func (m *Model) openFileDiff() {
-	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
+	file := m.status.CursorFile()
+	if file == nil {
 		return
 	}
-
-	file := m.status.Status.Files[m.status.Cursor]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
 	defer cancel()
