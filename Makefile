@@ -1,6 +1,9 @@
 BINARY := zgit
 GO ?= go
-GOFLAGS ?= -ldflags="-s -w"
+
+# Version injection — use git tag if available, fallback to "dev"
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+GOFLAGS ?= -ldflags="-s -w -X main.Version=${VERSION}"
 
 # Detect OS for output binary name
 ifeq ($(OS),Windows_NT)

@@ -1,0 +1,61 @@
+id: com.zaidejjo.zgit
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+  - org.freedesktop.Sdk.Extension.node20
+command: zgit-desktop
+finish-args:
+  - --socket=x11
+  - --socket=wayland
+  - --share=ipc
+  - --share=network
+  - --filesystem=host
+  - --talk-name=org.freedesktop.Flatpak
+  - --device=dri
+build-options:
+  append-path: /usr/lib/sdk/golang/bin:/usr/lib/sdk/node20/bin
+  env:
+    CGO_ENABLED: '1'
+    GOPROXY: https://proxy.golang.org,direct
+modules:
+  - name: wails-cli
+    buildsystem: simple
+    build-commands:
+      - go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+    sources:
+      - type: archive
+        url: https://github.com/wailsapp/wails/archive/refs/tags/v2.13.0.tar.gz
+        sha256: __SHA256_WILL_BE_SET_BY_FLATPAK_BUILDER__
+    build-options:
+      env:
+        CGO_ENABLED: '0'
+
+  - name: zgit
+    buildsystem: simple
+    build-commands:
+      # Build TUI binary
+      - go build -ldflags="-s -w -X main.Version=${VERSION}" -o /app/bin/zgit ./cmd/zgit/
+      # Install frontend dependencies
+      - npm ci --prefix desktop/frontend
+      # Build Wails desktop app
+      - cd desktop && wails build -clean -o zgit-desktop -ldflags="-s -w -X main.Version=${VERSION}"
+      # Install desktop binary
+      - install -Dm755 desktop/build/bin/zgit-desktop /app/bin/zgit-desktop
+      # Desktop entry
+      - install -Dm644 dist/aur/zgit-desktop-bin/zgit.desktop \
+          /app/share/applications/com.zaidejjo.zgit.desktop
+      # App icon
+      - install -Dm644 images/logo_512.png \
+          /app/share/icons/hicolor/512x512/apps/zgit.png
+      # AppStream metadata
+      - install -Dm644 dist/flatpak/com.zaidejjo.zgit.metainfo.xml \
+          /app/share/metainfo/com.zaidejjo.zgit.metainfo.xml
+    sources:
+      - type: dir
+        path: ../..
+        dest: zgit
+    build-options:
+      env:
+        VERSION: '0.1.0'

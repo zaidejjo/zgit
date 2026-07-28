@@ -7,6 +7,10 @@ import (
 	"github.com/zaidejjo/zgit/pkg/core"
 )
 
+// Version is injected at build time via ldflags (e.g. -X main.Version=0.1.0).
+// If empty, "dev" is used as fallback.
+var Version = "dev"
+
 //go:embed frontend/dist
 var assets embed.FS
 
