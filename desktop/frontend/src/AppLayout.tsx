@@ -136,6 +136,13 @@ export default function AppLayout() {
       <header className="border-b">
         <div className="flex items-center justify-between px-4 h-12">
           <div className="flex items-center gap-1">
+            {/* Logo */}
+            <img
+              src="/images/logo.svg"
+              alt="zgit"
+              className="w-6 h-6 mr-1 shrink-0"
+            />
+
             {/* Repository switcher — top-left before tabs */}
             <div className="relative mr-2" ref={repoMenuRef}>
               <Button

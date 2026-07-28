@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Zgit
+Comment=A modern, fast Git & GitHub client
+Exec=zgit-desktop
+Icon=zgit
+Type=Application
+Terminal=false
+Categories=Development;VersionControl;
+StartupNotify=true
+Keywords=git;github;vcs;version-control;

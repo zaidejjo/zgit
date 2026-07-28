@@ -1,0 +1,247 @@
+# Release workflow — triggered by tag push v*.*.*
+# Builds TUI + Desktop binaries for Linux, macOS, Windows.
+# Creates a GitHub Release with all artifacts attached.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: '1.26.x'
+  NODE_VERSION: '20'
+
+jobs:
+  goreleaser:
+    name: GoReleaser (TUI — all platforms)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  desktop-linux:
+    name: Desktop — Linux (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: amd64
+            goarch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: desktop/frontend/package-lock.json
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgtk-3-dev libwebkit2gtk-4.0-dev libayatana-appindicator3-dev
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build desktop app
+        run: |
+          cd desktop
+          wails build -clean -skipbindings \
+            -ldflags="-s -w -X main.Version=${GITHUB_REF_NAME#v}"
+
+      - name: Package artifacts
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          cp desktop/build/bin/zgit-desktop "dist/zgit-desktop-v${VERSION}-linux-${{ matrix.arch }}"
+          cp images/logo_512.png dist/zgit.png
+          cp dist/aur/zgit-desktop-bin/zgit.desktop dist/
+          cp dist/flatpak/com.zaidejjo.zgit.metainfo.xml dist/
+          cd dist
+          tar czf "zgit-desktop-v${VERSION}-linux-${{ matrix.arch }}.tar.gz" \
+            "zgit-desktop-v${VERSION}-linux-${{ matrix.arch }}" \
+            zgit.png zgit.desktop com.zaidejjo.zgit.metainfo.xml
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/zgit-desktop-v*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  desktop-macos:
+    name: Desktop — macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: macos-13
+            arch: amd64
+          - runner: macos-latest
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: desktop/frontend/package-lock.json
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build desktop app
+        run: |
+          cd desktop
+          wails build -clean -skipbindings \
+            -ldflags="-s -w -X main.Version=${GITHUB_REF_NAME#v}"
+
+      - name: Package artifact
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          cp desktop/build/bin/zgit-desktop "dist/zgit-desktop-v${VERSION}-darwin-${{ matrix.arch }}"
+          cd dist
+          tar czf "zgit-desktop-v${VERSION}-darwin-${{ matrix.arch }}.tar.gz" \
+            "zgit-desktop-v${VERSION}-darwin-${{ matrix.arch }}"
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/zgit-desktop-v*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  desktop-windows:
+    name: Desktop — Windows amd64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: desktop/frontend/package-lock.json
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build desktop app
+        run: |
+          cd desktop
+          wails build -clean -skipbindings `
+            -ldflags="-s -w -X main.Version=$env:GITHUB_REF_NAME.Replace('v','')"
+
+      - name: Package artifact
+        shell: pwsh
+        run: |
+          $version = "$env:GITHUB_REF_NAME".Replace('v','')
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item "desktop\build\bin\zgit-desktop.exe" "dist\zgit-desktop-v${version}-windows-amd64.exe"
+          Compress-Archive -Path "dist\zgit-desktop-v${version}-windows-amd64.exe" `
+            -DestinationPath "dist\zgit-desktop-v${version}-windows-amd64.zip"
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/zgit-desktop-v*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-aur:
+    name: Publish to AUR
+    needs: [goreleaser, desktop-linux]
+    runs-on: ubuntu-latest
+    if: github.repository == 'zaidejjo/zgit'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release tarballs
+        run: |
+          gh release download "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "*.tar.gz"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Patch zgit-bin PKGBUILD
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA256_X86=$(sha256sum "zgit-v${VERSION}-linux-amd64.tar.gz" | cut -d' ' -f1)
+          SHA256_ARM=$(sha256sum "zgit-v${VERSION}-linux-arm64.tar.gz" | cut -d' ' -f1)
+          sed -i "s/__VERSION__/${VERSION}/g" dist/aur/zgit-bin/PKGBUILD
+          sed -i "s/__SHA256SUM_X86_64__/${SHA256_X86}/g" dist/aur/zgit-bin/PKGBUILD
+          sed -i "s/__SHA256SUM_AARCH64__/${SHA256_ARM}/g" dist/aur/zgit-bin/PKGBUILD
+
+      - name: Publish zgit-bin to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: zgit-bin
+          pkgbuild: dist/aur/zgit-bin/PKGBUILD
+          commit_username: ${{ github.actor }}
+          commit_email: ${{ github.actor }}@users.noreply.github.com
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.AUR_SSH_HOST_KEY }}
+
+      - name: Patch zgit-desktop-bin PKGBUILD
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA256_X86=$(sha256sum "zgit-desktop-v${VERSION}-linux-amd64.tar.gz" | cut -d' ' -f1)
+          SHA256_ARM=$(sha256sum "zgit-desktop-v${VERSION}-linux-arm64.tar.gz" | cut -d' ' -f1)
+          sed -i "s/__VERSION__/${VERSION}/g" dist/aur/zgit-desktop-bin/PKGBUILD
+          sed -i "s/__SHA256SUM_X86_64__/${SHA256_X86}/g" dist/aur/zgit-desktop-bin/PKGBUILD
+          sed -i "s/__SHA256SUM_AARCH64__/${SHA256_ARM}/g" dist/aur/zgit-desktop-bin/PKGBUILD
+
+      - name: Publish zgit-desktop-bin to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: zgit-desktop-bin
+          pkgbuild: dist/aur/zgit-desktop-bin/PKGBUILD
+          commit_username: ${{ github.actor }}
+          commit_email: ${{ github.actor }}@users.noreply.github.com
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.AUR_SSH_HOST_KEY }}

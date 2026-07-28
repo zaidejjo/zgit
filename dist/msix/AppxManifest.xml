@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Microsoft Store / MSIX packaging template for zgit Desktop.
+
+  INSTRUCTIONS:
+  1. Replace "CN=PlaceholderPublisher" below with your actual certificate subject.
+  2. Generate a signing certificate or acquire one from a trusted CA.
+  3. Build with: cd desktop && wails build --package
+  4. Sign with: SignTool.exe sign /fd SHA256 /a /f cert.pfx /p PASSWORD AppxManifest.xml
+
+  For automated builds, store the certificate as a GitHub Secret
+  (WIN_SIGNING_CERT, WIN_SIGNING_PASSWORD) and inject during CI.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="com.zaidejjo.zgit"
+    Publisher="CN=PlaceholderPublisher"
+    Version="0.1.0.0" />
+
+  <Properties>
+    <DisplayName>Zgit</DisplayName>
+    <PublisherDisplayName>zaidejjo</PublisherDisplayName>
+    <Logo>images\logo_512.png</Logo>
+    <Description>A modern, fast Git &amp; GitHub client</Description>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Zgit" Executable="zgit-desktop.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Zgit"
+        Description="A modern, fast Git &amp; GitHub client"
+        Square150x150Logo="images\logo_512.png"
+        Square44x44Logo="images\logo_512.png"
+        BackgroundColor="transparent">
+        <uap:DefaultTile Wide310x150Logo="images\logo_512.png" Square71x71Logo="images\logo_512.png" />
+        <uap:SplashScreen Image="images\logo_512.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <Capability Name="internetClient" />
+  </Capabilities>
+</Package>
