@@ -78,9 +78,22 @@ func (m *Model) aiProviderLabel() string {
 
 // handleAIKey routes key events to the sidebar and triggers send on enter.
 func (m *Model) handleAIKey(key string) (tea.Model, tea.Cmd) {
+	// Toggle keys close sidebar
+	if key == "ctrl+g" || key == "ctrl+e" {
+		m.aiData.Sidebar.Close()
+		m.calcLayout()
+		return m, nil
+	}
+
+	wasActive := m.aiData.Sidebar.Active()
 	handled := m.aiData.Sidebar.HandleKey(key)
 	if !handled {
 		return m, nil
+	}
+
+	// Recalculate layout if sidebar state changed (open/close)
+	if wasActive != m.aiData.Sidebar.Active() {
+		m.calcLayout()
 	}
 
 	// On enter in input state, start streaming

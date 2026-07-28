@@ -62,12 +62,10 @@ func (m *Model) executePaletteCommand(id string) (tea.Model, tea.Cmd) {
 		m.focusedPanel = PanelBranch
 	case "ai-ask":
 		m.aiData.Sidebar.Open(views.ModeAsk)
-		m.aiData.Sidebar.Width = 44
-		m.aiData.Sidebar.Height = m.contentHeight
+		m.calcLayout()
 	case "ai-agent":
 		m.aiData.Sidebar.Open(views.ModeAgent)
-		m.aiData.Sidebar.Width = 44
-		m.aiData.Sidebar.Height = m.contentHeight
+		m.calcLayout()
 	case "open-config":
 		cfg, err := config.New()
 		providers := []string{}

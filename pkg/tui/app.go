@@ -90,6 +90,7 @@ type Model struct {
 	// Layout dimensions (computed on resize)
 	leftWidth     int
 	rightWidth    int
+	sidebarWidth  int
 	contentHeight int
 
 	// Detected GitHub repo info
@@ -284,8 +285,25 @@ func (m *Model) calcLayout() {
 		m.contentHeight = 4
 	}
 
-	m.leftWidth = int(float64(m.width)*0.4 + 0.5)
-	m.rightWidth = m.width - m.leftWidth
+	// Reserve sidebar width if active
+	m.sidebarWidth = 0
+	if m.aiData.Sidebar.Active() {
+		m.sidebarWidth = 42 // matches Width(42) in sidebar View (includes border+padding)
+		m.aiData.Sidebar.Width = 42
+		m.aiData.Sidebar.Height = m.contentHeight
+	}
+
+	availW := m.width - m.sidebarWidth
+	if availW < 54 {
+		availW = 54 // minimum viable panel width
+		m.sidebarWidth = m.width - availW
+		if m.sidebarWidth < 0 {
+			m.sidebarWidth = 0
+		}
+	}
+
+	m.leftWidth = int(float64(availW)*0.4 + 0.5)
+	m.rightWidth = availW - m.leftWidth
 
 	// Minimum widths
 	if m.leftWidth < 24 {
@@ -356,9 +374,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ready = true
 		m.calcLayout()
 
-		// Update AI sidebar dimensions
-		m.aiData.Sidebar.Width = m.width
-
 		// Update viewport and overlays
 		m.viewport = viewport.New(msg.Width, m.height-4)
 		m.viewport.Style = styles.ContentStyle
@@ -405,28 +420,19 @@ func (m *Model) View() string {
 	// Base layout: content + status bar
 	content := m.renderContent()
 	statusBar := m.renderStatusBar()
-	baseView := content
+	fullLayout := content
 	if statusBar != "" {
-		baseView = fmt.Sprintf("%s\n%s", content, statusBar)
+		fullLayout = fmt.Sprintf("%s\n%s", content, statusBar)
 	}
 
-	// Pad baseView to exactly m.height lines so overlay centering is pixel-perfect
-	baseLines := strings.Split(baseView, "\n")
+	// Pad fullLayout to exactly m.height lines so overlay centering is pixel-perfect
+	baseLines := strings.Split(fullLayout, "\n")
 	if len(baseLines) < m.height {
 		padding := make([]string, m.height-len(baseLines))
 		for i := range padding {
 			padding[i] = strings.Repeat(" ", m.width)
 		}
-		baseView = baseView + "\n" + strings.Join(padding, "\n")
-	}
-
-	// Always render AI sidebar on top of base if active
-	fullLayout := baseView
-	if m.aiData.Sidebar.Active() {
-		sidebarView := m.aiData.Sidebar.View()
-		if sidebarView != "" {
-			fullLayout = overlaySidebarPanel(baseView, sidebarView, m.width)
-		}
+		fullLayout = fullLayout + "\n" + strings.Join(padding, "\n")
 	}
 
 	// Floating modal overlays — centered on top of everything, no layout shift
@@ -527,6 +533,29 @@ func (m *Model) renderPanels() string {
 		statusPanel.View(),
 		rightCol,
 	)
+
+	// Append AI sidebar as rightmost column when active
+	if m.aiData.Sidebar.Active() {
+		sidebarView := m.aiData.Sidebar.View()
+		if sidebarView != "" {
+			// Align sidebar height with panels (exactly contentHeight lines)
+			sideLines := strings.Split(sidebarView, "\n")
+			if len(sideLines) > m.contentHeight {
+				sideLines = sideLines[:m.contentHeight]
+			} else {
+				blank := strings.Repeat(" ", m.sidebarWidth)
+				for len(sideLines) < m.contentHeight {
+					sideLines = append(sideLines, blank)
+				}
+			}
+			sidebarView = strings.Join(sideLines, "\n")
+			mainContent = lipgloss.JoinHorizontal(
+				lipgloss.Top,
+				mainContent,
+				sidebarView,
+			)
+		}
+	}
 
 	return mainContent
 }
@@ -635,9 +664,8 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.aiData.Sidebar.Close()
 			} else {
 				m.aiData.Sidebar.Open(views.ModeAsk)
-				m.aiData.Sidebar.Width = 44
-				m.aiData.Sidebar.Height = m.contentHeight
 			}
+			m.calcLayout()
 			return m, nil
 		}
 
@@ -648,9 +676,8 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.aiData.Sidebar.Close()
 			} else {
 				m.aiData.Sidebar.Open(views.ModeAgent)
-				m.aiData.Sidebar.Width = 44
-				m.aiData.Sidebar.Height = m.contentHeight
 			}
+			m.calcLayout()
 			return m, nil
 		}
 
@@ -1602,88 +1629,6 @@ func (m *Model) handleEngineMsg(msg teaMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
-}
-
-// overlaySidebarPanel overlays the AI sidebar on the right side of the content area.
-func overlaySidebarPanel(content, panel string, termWidth int) string {
-	if panel == "" {
-		return content
-	}
-
-	// Split content into lines, overlay panel on the right
-	contentLines := stringsSplit(content, "\n")
-	panelLines := stringsSplit(panel, "\n")
-
-	panelWidth := 0
-	for _, l := range panelLines {
-		if len(l) > panelWidth {
-			panelWidth = len(l)
-		}
-	}
-	if panelWidth <= 0 {
-		return content
-	}
-
-	// Available width for content = termWidth - panelWidth - 1 (gap)
-	availW := termWidth - panelWidth - 1
-	if availW < 10 {
-		// Not enough room — stack vertically
-		return content + "\n" + panel
-	}
-
-	maxLines := len(contentLines)
-	if len(panelLines) > maxLines {
-		maxLines = len(panelLines)
-	}
-
-	var result []string
-	for i := 0; i < maxLines; i++ {
-		left := ""
-		if i < len(contentLines) {
-			left = contentLines[i]
-		}
-		right := ""
-		if i < len(panelLines) {
-			right = panelLines[i]
-		}
-
-		// Truncate left to fit
-		if len(left) > availW {
-			left = left[:availW]
-		}
-		// Pad left to fill available space
-		if len(left) < availW {
-			left += stringsRepeat(" ", availW-len(left))
-		}
-
-		result = append(result, left+" "+right)
-	}
-
-	return stringsJoin(result, "\n")
-}
-
-// stringsRepeat is a simple version of strings.Repeat.
-func stringsRepeat(s string, count int) string {
-	var r string
-	for i := 0; i < count; i++ {
-		r += s
-	}
-	return r
-}
-
-// stringsJoin is a simple version of strings.Join.
-func stringsJoin(elems []string, sep string) string {
-	if len(elems) == 0 {
-		return ""
-	}
-	var r string
-	for i, e := range elems {
-		if i > 0 {
-			r += sep
-		}
-		r += e
-	}
-	return r
 }
 
 // overlayCenter places a modal string dead-center over a base view string.

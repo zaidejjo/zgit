@@ -485,17 +485,36 @@ func (m *AISidebarModel) renderMessages() []string {
 		lines = append(lines, style.Render(prefix+" "+msg.Content))
 	}
 
-	// Streaming content
-	if m.State == SBSStreaming && m.StreamingContent != "" {
-		lines = append(lines,
-			lipgloss.NewStyle().Foreground(styles.Mauve).Bold(true).Render("AI: ")+
-				lipgloss.NewStyle().Foreground(styles.Text).Render(m.StreamingContent)+
-				lipgloss.NewStyle().Foreground(styles.Subtext).Render(" █"))
+	// Streaming state
+	if m.State == SBSStreaming {
+		if m.StreamingContent != "" {
+			// Show accumulated tokens
+			lines = append(lines,
+				lipgloss.NewStyle().Foreground(styles.Mauve).Bold(true).Render("AI: ")+
+					lipgloss.NewStyle().Foreground(styles.Text).Render(m.StreamingContent)+
+					lipgloss.NewStyle().Foreground(styles.Subtext).Render(" █"))
+		} else if m.Error == "" {
+			// Spinner before first token arrives
+			modelInfo := ""
+			if m.Model != "" {
+				modelInfo = " [" + m.Model + "]"
+			}
+			spinner := "⠋"
+			lines = append(lines,
+				lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true).
+					Render(fmt.Sprintf("  %s Thinking...%s", spinner, modelInfo)))
+		}
 	}
 
 	// Error display
 	if m.Error != "" {
-		lines = append(lines, lipgloss.NewStyle().Foreground(styles.Red).Render("⚠ "+m.Error))
+		lines = append(lines, lipgloss.NewStyle().
+			Foreground(styles.Red).
+			Bold(true).
+			Render("✗ Error:"))
+		lines = append(lines, lipgloss.NewStyle().
+			Foreground(styles.Red).
+			Render("  "+m.Error))
 	}
 
 	return lines
