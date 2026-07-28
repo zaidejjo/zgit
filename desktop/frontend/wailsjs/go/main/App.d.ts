@@ -145,7 +145,6 @@ export function RebaseSequence(arg1:string,arg2:string):Promise<models.RebaseRes
 export function RemoveRemote(arg1:string):Promise<void>;
 
 export function RenameRemote(arg1:string,arg2:string):Promise<void>;
-export function SetRemoteURL(arg1:string,arg2:string):Promise<void>;
 
 export function ResetCommit(arg1:string,arg2:string):Promise<void>;
 

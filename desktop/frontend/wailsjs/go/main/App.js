@@ -286,10 +286,6 @@ export function RenameRemote(arg1, arg2) {
   return window['go']['main']['App']['RenameRemote'](arg1, arg2);
 }
 
-export function SetRemoteURL(arg1, arg2) {
-  return window['go']['main']['App']['SetRemoteURL'](arg1, arg2);
-}
-
 export function ResetCommit(arg1, arg2) {
   return window['go']['main']['App']['ResetCommit'](arg1, arg2);
 }
