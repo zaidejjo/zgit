@@ -221,6 +221,10 @@ func (m *CommitModel) renderContent(width int) string {
 				b.WriteString("\n")
 				b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render("  " + m.Result.Hash))
 			}
+			if m.Result.Error != "" {
+				b.WriteString("\n")
+				b.WriteString(styles.ErrorStyle.Render(" ⚠ " + m.Result.Error))
+			}
 		} else {
 			b.WriteString(styles.ErrorStyle.Render(" ✗ Commit failed"))
 			if m.Result.Error != "" {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -40,6 +41,7 @@ const (
 	modeNormal = iota
 	modeDiff
 	modeCommit
+	modeConfig
 )
 
 // Model is the root Bubble Tea model for the zgit TUI.
@@ -70,6 +72,8 @@ type Model struct {
 	// Overlay models
 	diffViewer views.DiffModel
 	commitDlg  views.CommitModel
+	configDlg  views.ConfigModel
+	palette    views.PaletteModel
 
 	// Bubble Tea components
 	help     help.Model
@@ -88,6 +92,10 @@ type Model struct {
 	ghOwner    string
 	ghRepo     string
 	ghDetected bool
+	ghUser     string // authenticated GitHub username
+
+	// AI integration
+	aiData aiState
 }
 
 // NewModel creates the root TUI model.
@@ -106,6 +114,8 @@ func NewModel(gitExec *gitpkg.NativeExec) *Model {
 		helpView:       views.HelpModel{},
 		diffViewer:     views.NewDiffModel(),
 		commitDlg:      views.NewCommitModel(),
+		configDlg:      views.NewConfigModel(),
+		palette:        views.NewPaletteModel(),
 		help:           help.New(),
 		mode:           modeNormal,
 		focusedPanel:   PanelStatus,
@@ -114,6 +124,9 @@ func NewModel(gitExec *gitpkg.NativeExec) *Model {
 
 	// Try to initialize GitHub client from config
 	m.tryInitGitHub()
+
+	// Initialize AI state
+	m.initAI()
 
 	// Try to detect GitHub owner/repo from git remotes
 	m.tryDetectRepo()
@@ -136,6 +149,23 @@ func (m *Model) tryInitGitHub() {
 		return
 	}
 	m.gh = gh
+
+	// Load cached user from config
+	m.ghUser = cfg.GetString("github.user")
+
+	// Try to fetch user if not cached
+	if m.ghUser == "" {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10e9)
+			defer cancel()
+			user, err := gh.GetAuthenticatedUser(ctx)
+			if err == nil && user != nil {
+				cfg.Set("github.user", user.Login)
+				_ = cfg.Save()
+				m.ghUser = user.Login
+			}
+		}()
+	}
 }
 
 // tryDetectRepo attempts to extract owner/repo from git remotes.
@@ -224,11 +254,18 @@ func stringsSplit(s, sep string) []string {
 	return result
 }
 
+// initialRefreshCmd triggers the first data fetch after the event loop is ready.
+func (m *Model) initialRefreshCmd() tea.Msg {
+	m.sub.Refresh()
+	return nil
+}
+
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
 	m.sub.Start()
 	return tea.Batch(
 		listenForMessages(m.msgs),
+		m.initialRefreshCmd,
 	)
 }
 
@@ -302,12 +339,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateDiff(msg)
 	}
 
+	// If in config dialog mode, delegate to config model
+	if m.mode == modeConfig {
+		return m.updateConfig(msg)
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ready = true
 		m.calcLayout()
+
+		// Update AI sidebar dimensions
+		m.aiData.Sidebar.Width = m.width
 
 		// Update viewport and overlays
 		m.viewport = viewport.New(msg.Width, m.height-4)
@@ -318,10 +363,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// Route to command palette if active (overrides everything)
+		if m.palette.Active() {
+			return m.updatePalette(msg)
+		}
+
+		// Route to AI sidebar if active (handles input + commands)
+		if m.aiData.Sidebar.Active() {
+			updated, cmd := m.handleAIKey(msg.String())
+			return updated, cmd
+		}
 		return m.handleKeyMsg(msg)
 
 	case teaMsg:
-		return m.handleEngineMsg(msg)
+		updated, cmd := m.handleEngineMsg(msg)
+		// Reinstall listener for next subscriber message
+		return updated, tea.Batch(cmd, listenForMessages(m.msgs))
 
 	default:
 		return m, nil
@@ -340,18 +397,55 @@ func (m *Model) View() string {
 		return ""
 	}
 
-	// Determine which content to show
+	// Base layout: content + status bar
 	content := m.renderContent()
-
-	// Overlays render on top of content
-	if m.mode == modeCommit {
-		overlay := m.commitDlg.View(m.width)
-		statusBar := m.renderStatusBar()
-		return fmt.Sprintf("%s\n%s\n%s", content, overlay, statusBar)
+	statusBar := m.renderStatusBar()
+	baseView := content
+	if statusBar != "" {
+		baseView = fmt.Sprintf("%s\n%s", content, statusBar)
 	}
 
-	statusBar := m.renderStatusBar()
-	return fmt.Sprintf("%s\n%s", content, statusBar)
+	// Pad baseView to exactly m.height lines so overlay centering is pixel-perfect
+	baseLines := strings.Split(baseView, "\n")
+	if len(baseLines) < m.height {
+		padding := make([]string, m.height-len(baseLines))
+		for i := range padding {
+			padding[i] = strings.Repeat(" ", m.width)
+		}
+		baseView = baseView + "\n" + strings.Join(padding, "\n")
+	}
+
+	// Always render AI sidebar on top of base if active
+	fullLayout := baseView
+	if m.aiData.Sidebar.Active() {
+		sidebarView := m.aiData.Sidebar.View()
+		if sidebarView != "" {
+			fullLayout = overlaySidebarPanel(baseView, sidebarView, m.width)
+		}
+	}
+
+	// Floating modal overlays — centered on top of everything, no layout shift
+	switch {
+	case m.mode == modeCommit:
+		overlay := m.commitDlg.View(m.width)
+		if overlay != "" {
+			return overlayCenter(fullLayout, overlay, m.width, m.height)
+		}
+	case m.mode == modeConfig:
+		overlay := m.configDlg.View(m.width)
+		if overlay != "" {
+			return overlayCenter(fullLayout, overlay, m.width, m.height)
+		}
+	}
+
+	if m.palette.Active() {
+		overlay := m.palette.View(m.width)
+		if overlay != "" {
+			return overlayCenter(fullLayout, overlay, m.width, m.height)
+		}
+	}
+
+	return fullLayout
 }
 
 // renderContent returns either the panel layout or a full-screen view.
@@ -428,11 +522,18 @@ func (m *Model) renderStatusBar() string {
 		return ""
 	}
 
+	repoPath := ""
+	if m.git != nil {
+		repoPath = m.git.Path()
+	}
 	data := components.StatusBarData{
 		Branch:     "—",
 		GhOwner:    m.ghOwner,
 		GhRepo:     m.ghRepo,
 		GhDetected: m.ghDetected,
+		GhUser:     m.ghUser,
+		AIProvider: m.aiProviderLabel(),
+		RepoPath:   repoPath,
 	}
 
 	if m.status.Status != nil {
@@ -461,10 +562,20 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case "?":
-		m.showHelp = !m.showHelp
+		if m.showHelp {
+			m.showHelp = false
+			m.helpView.Input = ""
+			m.helpView.Cursor = 0
+			m.helpView.ShowInput = false
+		} else {
+			m.showHelp = true
+			m.helpView.Input = ""
+			m.helpView.Cursor = 0
+			m.helpView.ShowInput = false
+		}
 		return m, nil
 
-	case "r":
+	case "R":
 		m.sub.Refresh()
 		m.refreshGitHubData()
 		return m, nil
@@ -487,6 +598,47 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	// Command palette (Ctrl+P)
+	case "ctrl+p":
+		if m.mode == modeNormal {
+			m.palette.Open()
+		}
+		return m, nil
+
+	// Config: GitHub PAT or AI settings (Ctrl+T)
+	case "ctrl+t":
+		if m.mode == modeNormal {
+			m.configDlg.OpenGitHubToken()
+			m.mode = modeConfig
+		}
+		return m, nil
+
+	// AI: quick ask sidebar (Ctrl+G)
+	case "ctrl+g":
+		if m.mode == modeNormal && m.fullScreenView == fsNone {
+			if m.aiData.Sidebar.Active() {
+				m.aiData.Sidebar.Close()
+			} else {
+				m.aiData.Sidebar.Open(views.ModeAsk)
+				m.aiData.Sidebar.Width = 44
+				m.aiData.Sidebar.Height = m.contentHeight
+			}
+			return m, nil
+		}
+
+	// AI: agent sidebar (Ctrl+E)
+	case "ctrl+e":
+		if m.mode == modeNormal && m.fullScreenView == fsNone {
+			if m.aiData.Sidebar.Active() {
+				m.aiData.Sidebar.Close()
+			} else {
+				m.aiData.Sidebar.Open(views.ModeAgent)
+				m.aiData.Sidebar.Width = 44
+				m.aiData.Sidebar.Height = m.contentHeight
+			}
+			return m, nil
+		}
+
 	// Full-screen view switches
 	case "3":
 		m.fullScreenView = fsPR
@@ -498,8 +650,16 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// If help is open, no other keys
+	// If help is open, route keys to help model for search
 	if m.showHelp {
+		handled := m.helpView.HandleKey(key)
+		if !handled {
+			// Esc or ? closes help
+			m.showHelp = false
+			m.helpView.Input = ""
+			m.helpView.Cursor = 0
+			m.helpView.ShowInput = false
+		}
 		return m, nil
 	}
 
@@ -652,22 +812,24 @@ func (m *Model) stageToggle() {
 	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
 		return
 	}
-	file := m.status.Status.Files[m.status.Cursor]
+	f := m.status.Status.Files[m.status.Cursor]
 	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
 	defer cancel()
 
-	if file.Staged != models.StatusUnmodified && file.Staged != models.StatusUntracked && file.Unstaged == models.StatusUnmodified {
+	if f.Staged != models.StatusUnmodified && f.Staged != models.StatusUntracked && f.Unstaged == models.StatusUnmodified {
 		// Only staged → unstage
-		if err := m.git.RestoreStaged(ctx, file.Path); err != nil {
-			m.status.Error = fmt.Sprintf("unstage %s: %v", file.Path, err)
+		if err := m.git.RestoreStaged(ctx, f.Path); err != nil {
+			m.status.Error = fmt.Sprintf("unstage %s: %v", f.Path, err)
 			return
 		}
+		m.status.Status.OptimisticUnstage(f.Path)
 	} else {
 		// Has unstaged or untracked → stage
-		if err := m.git.Add(ctx, gitpkg.AddOptions{}, file.Path); err != nil {
-			m.status.Error = fmt.Sprintf("stage %s: %v", file.Path, err)
+		if err := m.git.Add(ctx, gitpkg.AddOptions{}, f.Path); err != nil {
+			m.status.Error = fmt.Sprintf("stage %s: %v", f.Path, err)
 			return
 		}
+		m.status.Status.OptimisticStage(f.Path)
 	}
 	m.sub.Refresh()
 }
@@ -676,13 +838,14 @@ func (m *Model) stageFile() {
 	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
 		return
 	}
-	file := m.status.Status.Files[m.status.Cursor]
+	f := m.status.Status.Files[m.status.Cursor]
 	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
 	defer cancel()
-	if err := m.git.Add(ctx, gitpkg.AddOptions{}, file.Path); err != nil {
-		m.status.Error = fmt.Sprintf("stage %s: %v", file.Path, err)
+	if err := m.git.Add(ctx, gitpkg.AddOptions{}, f.Path); err != nil {
+		m.status.Error = fmt.Sprintf("stage %s: %v", f.Path, err)
 		return
 	}
+	m.status.Status.OptimisticStage(f.Path)
 	m.sub.Refresh()
 }
 
@@ -690,13 +853,14 @@ func (m *Model) unstageFile() {
 	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
 		return
 	}
-	file := m.status.Status.Files[m.status.Cursor]
+	f := m.status.Status.Files[m.status.Cursor]
 	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
 	defer cancel()
-	if err := m.git.RestoreStaged(ctx, file.Path); err != nil {
-		m.status.Error = fmt.Sprintf("unstage %s: %v", file.Path, err)
+	if err := m.git.RestoreStaged(ctx, f.Path); err != nil {
+		m.status.Error = fmt.Sprintf("unstage %s: %v", f.Path, err)
 		return
 	}
+	m.status.Status.OptimisticUnstage(f.Path)
 	m.sub.Refresh()
 }
 
@@ -704,12 +868,26 @@ func (m *Model) discardFile() {
 	if m.status.Status == nil || m.status.Cursor >= len(m.status.Status.Files) {
 		return
 	}
-	file := m.status.Status.Files[m.status.Cursor]
+	f := m.status.Status.Files[m.status.Cursor]
 	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
 	defer cancel()
-	if err := m.git.Restore(ctx, file.Path); err != nil {
-		m.status.Error = fmt.Sprintf("discard %s: %v", file.Path, err)
+	if err := m.git.Restore(ctx, f.Path); err != nil {
+		m.status.Error = fmt.Sprintf("discard %s: %v", f.Path, err)
 		return
+	}
+	// Remove from local list optimistically
+	for i := range m.status.Status.Files {
+		if m.status.Status.Files[i].Path == f.Path {
+			m.status.Status.Files = append(m.status.Status.Files[:i], m.status.Status.Files[i+1:]...)
+			break
+		}
+	}
+	m.status.Status.Recount()
+	if m.status.Cursor >= len(m.status.Status.Files) {
+		m.status.Cursor = len(m.status.Status.Files) - 1
+		if m.status.Cursor < 0 {
+			m.status.Cursor = 0
+		}
 	}
 	m.sub.Refresh()
 }
@@ -721,6 +899,7 @@ func (m *Model) stageAll() {
 		m.status.Error = fmt.Sprintf("stage all: %v", err)
 		return
 	}
+	m.status.Status.OptimisticStageAll()
 	m.sub.Refresh()
 }
 
@@ -731,6 +910,7 @@ func (m *Model) unstageAll() {
 		m.status.Error = fmt.Sprintf("unstage all: %v", err)
 		return
 	}
+	m.status.Status.OptimisticUnstageAll()
 	m.sub.Refresh()
 }
 
@@ -1107,6 +1287,29 @@ func (m *Model) handleEngineMsg(msg teaMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// AI streaming messages
+	if msg.view == aiStreamViewID {
+		m.handleAIStreamMsg(msg.data)
+		return m, nil
+	}
+
+	// Config validation result
+	if msg.view == configViewID {
+		if res, ok := msg.data.(configResultMsg); ok {
+			m.configDlg.SetResult(res.success, res.msg)
+			if res.success {
+				// Update ghUser from config
+				cfg, err := config.New()
+				if err == nil {
+					m.ghUser = cfg.GetString("github.user")
+				}
+				// Re-init GitHub client with new token
+				m.tryInitGitHub()
+			}
+		}
+		return m, nil
+	}
+
 	switch msg.view {
 	case 0: // status
 		if evt, ok := msg.data.(statusEvent); ok {
@@ -1150,6 +1353,196 @@ func (m *Model) handleEngineMsg(msg teaMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// overlaySidebarPanel overlays the AI sidebar on the right side of the content area.
+func overlaySidebarPanel(content, panel string, termWidth int) string {
+	if panel == "" {
+		return content
+	}
+
+	// Split content into lines, overlay panel on the right
+	contentLines := stringsSplit(content, "\n")
+	panelLines := stringsSplit(panel, "\n")
+
+	panelWidth := 0
+	for _, l := range panelLines {
+		if len(l) > panelWidth {
+			panelWidth = len(l)
+		}
+	}
+	if panelWidth <= 0 {
+		return content
+	}
+
+	// Available width for content = termWidth - panelWidth - 1 (gap)
+	availW := termWidth - panelWidth - 1
+	if availW < 10 {
+		// Not enough room — stack vertically
+		return content + "\n" + panel
+	}
+
+	maxLines := len(contentLines)
+	if len(panelLines) > maxLines {
+		maxLines = len(panelLines)
+	}
+
+	var result []string
+	for i := 0; i < maxLines; i++ {
+		left := ""
+		if i < len(contentLines) {
+			left = contentLines[i]
+		}
+		right := ""
+		if i < len(panelLines) {
+			right = panelLines[i]
+		}
+
+		// Truncate left to fit
+		if len(left) > availW {
+			left = left[:availW]
+		}
+		// Pad left to fill available space
+		if len(left) < availW {
+			left += stringsRepeat(" ", availW-len(left))
+		}
+
+		result = append(result, left+" "+right)
+	}
+
+	return stringsJoin(result, "\n")
+}
+
+// stringsRepeat is a simple version of strings.Repeat.
+func stringsRepeat(s string, count int) string {
+	var r string
+	for i := 0; i < count; i++ {
+		r += s
+	}
+	return r
+}
+
+// stringsJoin is a simple version of strings.Join.
+func stringsJoin(elems []string, sep string) string {
+	if len(elems) == 0 {
+		return ""
+	}
+	var r string
+	for i, e := range elems {
+		if i > 0 {
+			r += sep
+		}
+		r += e
+	}
+	return r
+}
+
+// overlayCenter places a modal string dead-center over a base view string.
+// Strips ANSI from base lines before slicing to prevent broken escape sequences.
+// termWidth and termHeight define the full terminal dimensions used for centering.
+func overlayCenter(base, modal string, termWidth, termHeight int) string {
+	if modal == "" {
+		return base
+	}
+
+	baseLines := strings.Split(base, "\n")
+	modalLines := strings.Split(modal, "\n")
+
+	if len(modalLines) == 0 {
+		return base
+	}
+
+	// Calculate modal visual dimensions
+	modalH := len(modalLines)
+	modalW := 0
+	for _, l := range modalLines {
+		w := lipgloss.Width(l)
+		if w > modalW {
+			modalW = w
+		}
+	}
+
+	if modalW <= 0 || modalH <= 0 {
+		return base
+	}
+
+	// Center coordinates
+	startY := (termHeight - modalH) / 2
+	if startY < 0 {
+		startY = 0
+	}
+	startX := (termWidth - modalW) / 2
+	if startX < 0 {
+		startX = 0
+	}
+
+	result := make([]string, len(baseLines))
+	for i, line := range baseLines {
+		if i >= startY && i < startY+modalH && i < len(baseLines) {
+			// Strip ANSI from base line so slicing never cuts escape codes
+			plain := stripANSI(line)
+			plainRunes := []rune(plain)
+
+			// Pad runes to termWidth so left/right slicing is safe (rune index = visual column for ASCII/narrow chars)
+			if len(plainRunes) < termWidth {
+				padded := make([]rune, termWidth)
+				for i := 0; i < termWidth; i++ {
+					if i < len(plainRunes) {
+						padded[i] = plainRunes[i]
+					} else {
+						padded[i] = ' '
+					}
+				}
+				plainRunes = padded
+			}
+
+			modalLine := modalLines[i-startY]
+			modalWidth := lipgloss.Width(modalLine)
+
+			// Left part (base content before modal) — rune-indexed to avoid multibyte slicing errors
+			left := string(plainRunes[:startX])
+
+			// Right part (base content after modal)
+			rightEnd := startX + modalWidth
+			if rightEnd < len(plainRunes) {
+				right := string(plainRunes[rightEnd:])
+				result[i] = left + modalLine + right
+			} else {
+				result[i] = left + modalLine
+			}
+
+			// Ensure result fills termWidth (modal may be narrower)
+			if w := lipgloss.Width(result[i]); w < termWidth {
+				result[i] += strings.Repeat(" ", termWidth-w)
+			}
+		} else {
+			result[i] = line // keep original styled line
+		}
+	}
+
+	return strings.Join(result, "\n")
+}
+
+// stripANSI removes ANSI escape sequences from a string.
+// ANSI sequences start with \x1b (ESC) followed by '[', parameters, and a letter (a-z, A-Z).
+func stripANSI(s string) string {
+	var out strings.Builder
+	inEscape := false
+	for _, r := range s {
+		if inEscape {
+			// ANSI escape sequence ends on any ASCII letter (a-z, A-Z), tilde, or @
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '~' || r == '@' {
+				inEscape = false
+			}
+			continue
+		}
+		if r == '\x1b' {
+			inEscape = true
+			continue
+		}
+		out.WriteRune(r)
+	}
+	return out.String()
 }
 
 // listenForMessages creates a command that polls the message channel.

@@ -57,7 +57,7 @@ func (m StatusModel) View(width int) string {
 			b.WriteString(sectionTitle(fmt.Sprintf("Staged (%d)", len(staged))))
 			b.WriteString("\n")
 			for i, f := range staged {
-				line := fmt.Sprintf("  %s  %s", statusMark("staged"), truncatePath(f.Path, width-6))
+				line := fmt.Sprintf("  %s  %s", statusMark("staged"), formatFilePath(f.Path, width-6))
 				if i == m.Cursor && m.ShowStaged {
 					b.WriteString(styles.ListItemActiveStyle.Render(line))
 				} else {
@@ -75,7 +75,7 @@ func (m StatusModel) View(width int) string {
 			b.WriteString(sectionTitle(fmt.Sprintf("Unstaged (%d)", len(unstaged))))
 			b.WriteString("\n")
 			for i, f := range unstaged {
-				line := fmt.Sprintf("  %s  %s", statusMark("unstaged"), truncatePath(f.Path, width-6))
+				line := fmt.Sprintf("  %s  %s", statusMark("unstaged"), formatFilePath(f.Path, width-6))
 				if i == m.Cursor && !m.ShowStaged && m.ShowUnstaged {
 					b.WriteString(styles.ListItemActiveStyle.Render(line))
 				} else {
@@ -93,7 +93,7 @@ func (m StatusModel) View(width int) string {
 			b.WriteString(sectionTitle(fmt.Sprintf("Untracked (%d)", len(untracked))))
 			b.WriteString("\n")
 			for _, f := range untracked {
-				line := fmt.Sprintf("  %s  %s", statusMark("untracked"), truncatePath(f.Path, width-6))
+				line := fmt.Sprintf("  %s  %s", statusMark("untracked"), formatFilePath(f.Path, width-6))
 				b.WriteString(styles.ListItemStyle.Render(line))
 				b.WriteString("\n")
 			}
@@ -148,12 +148,95 @@ func statusMark(kind string) string {
 	}
 }
 
-func truncatePath(path string, maxLen int) string {
-	if len(path) <= maxLen {
-		return path
+// formatFilePath renders a path as "filename (dir/)" fitting within maxLen.
+// Always keeps the filename fully visible. Truncates dir with "…" when needed.
+// Falls back to filname-only if dir won't fit.
+func formatFilePath(path string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
 	}
-	if maxLen < 3 {
-		return path[:maxLen]
+
+	// Find last slash to separate dir and filename
+	lastSlash := -1
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '/' {
+			lastSlash = i
+			break
+		}
 	}
-	return "…" + path[len(path)-maxLen+1:]
+
+	if lastSlash < 0 {
+		// Just a filename — no dir
+		if lipgloss.Width(path) <= maxLen {
+			return path
+		}
+		// Truncate rune-aware to avoid cutting multi-byte
+		runes := []rune(path)
+		return string(runes[:maxLen-2]) + "…"
+	}
+
+	filename := path[lastSlash+1:]
+	dir := path[:lastSlash]
+
+	// Format: "filename (dir/)"
+	// Try full format first
+	formatted := fmt.Sprintf("%s (%s/)", filename, dir)
+	if lipgloss.Width(formatted) <= maxLen {
+		return formatted
+	}
+
+	// Try without trailing slash
+	formatted = fmt.Sprintf("%s (%s)", filename, dir)
+	if lipgloss.Width(formatted) <= maxLen {
+		return formatted
+	}
+
+	// Try with truncated dir
+	// Budget for: filename + " (" + dir + ")"
+	// 4 chars overhead: " (./)" minimum
+	dirBudget := maxLen - lipgloss.Width(filename) - 4
+	if dirBudget < 1 {
+		// No room for dir at all — show just filename
+		if lipgloss.Width(filename) <= maxLen {
+			return filename
+		}
+		// Truncate filename rune-aware, keep recognizable start
+		fnRunes := []rune(filename)
+		if maxLen-2 > 0 {
+			return string(fnRunes[:maxLen-2]) + "…"
+		}
+		return string(fnRunes[:maxLen])
+	}
+
+	if lipgloss.Width(dir) > dirBudget {
+		// Truncate dir from left, keep rightmost part
+		dirRunes := []rune(dir)
+		if dirBudget < 3 {
+			// Not enough for "…" + dir — show just filename
+			if lipgloss.Width(filename) <= maxLen {
+				return filename
+			}
+			fnRunes := []rune(filename)
+			if maxLen-2 > 0 {
+				return string(fnRunes[:maxLen-2]) + "…"
+			}
+			return string(fnRunes[:maxLen])
+		}
+		// Truncate: "…" + rightmost dirBudget-1 chars
+		truncDir := "…" + string(dirRunes[len(dirRunes)-(dirBudget-1):])
+		formatted = fmt.Sprintf("%s (%s)", filename, truncDir)
+		if lipgloss.Width(formatted) <= maxLen {
+			return formatted
+		}
+	}
+
+	// Final fallback: show truncated filename only
+	if lipgloss.Width(filename) <= maxLen {
+		return filename
+	}
+	fnRunes := []rune(filename)
+	if maxLen-2 > 0 {
+		return string(fnRunes[:maxLen-2]) + "…"
+	}
+	return string(fnRunes[:maxLen])
 }

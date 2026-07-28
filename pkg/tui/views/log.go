@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/core/models"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
@@ -78,22 +79,38 @@ func (m LogModel) View(width int) string {
 			treeStr = treePrefix[i]
 		}
 
+		// Use lipgloss.Width for visual width (treeStr contains ANSI escape sequences from lipgloss styling)
+		treeWidth := lipgloss.Width(treeStr)
+
 		// Compact: hash(7) + message (no author/date on separate line to save space)
 		hash := c.Hash
 		if len(hash) > 7 {
 			hash = hash[:7]
 		}
 
-		// Available width after tree prefix
-		treeWidth := len(treeStr)
-		availWidth := width - treeWidth - 1
-		if availWidth < 10 {
-			availWidth = 10
-		}
-
-		msg := truncateStr(c.Message, availWidth-9)
 		timeStr := formatTimeCompact(c.Timestamp)
+		timeWidth := lipgloss.Width(timeStr)
+
+		// Available width after tree prefix + space
+		// Format: treeStr + " " + hash(7) + " " + msg + " " + timeStr
+		msgMax := width - treeWidth - 1 - 7 - 1 - 1 - timeWidth
+		if msgMax < 1 {
+			msgMax = 1
+		}
+		msg := truncateStr(c.Message, msgMax)
+
+		// Build line and verify it fits — if ANSI overflow, trim msg further
 		line := fmt.Sprintf("%s %s %s %s", treeStr, hash, msg, timeStr)
+		lineWidth := lipgloss.Width(line)
+		if lineWidth > width {
+			// Overflow — trim msg
+			overflow := lineWidth - width
+			msg = truncateStr(c.Message, msgMax-overflow)
+			if msgMax-overflow < 1 {
+				msg = ""
+			}
+			line = fmt.Sprintf("%s %s %s %s", treeStr, hash, msg, timeStr)
+		}
 
 		if globalIdx == m.Cursor {
 			b.WriteString(styles.ListItemSelectedStyle.Render(line))

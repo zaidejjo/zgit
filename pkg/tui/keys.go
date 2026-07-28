@@ -42,7 +42,10 @@ type KeyMap struct {
 	// Commit
 	Commit     key.Binding
 	CommitPush key.Binding
-	Amend      key.Binding
+
+	// AI
+	AIAgent key.Binding
+	AIAsk   key.Binding
 
 	// Log operations
 	CherryPick  key.Binding
@@ -94,15 +97,18 @@ func DefaultKeyMap() KeyMap {
 		// Commit
 		Commit:     key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "commit")),
 		CommitPush: key.NewBinding(key.WithKeys("P"), key.WithHelp("P", "commit & push")),
-		Amend:      key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "amend")),
+
+		// AI
+		AIAgent: key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("C-e", "AI agent")),
+		AIAsk:   key.NewBinding(key.WithKeys("ctrl+g"), key.WithHelp("C-g", "AI ask")),
 
 		// Log operations
-		CherryPick:  key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "cherry-pick (no commit)")),
+		CherryPick:  key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "cherry-pick")),
 		RebaseStart: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "rebase")),
 
 		// Global
 		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
-		Refresh: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
+		Refresh: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "refresh")),
 		Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	}
 }
@@ -113,9 +119,10 @@ func (k KeyMap) FullHelp() []key.Binding {
 		k.Up, k.Down, k.First, k.Last, k.PageUp, k.PageDown,
 		k.PanelNext, k.PanelPrev,
 		k.ViewPRs, k.ViewIssues,
+		k.AIAgent, k.AIAsk,
 		k.Enter, k.Escape, k.Space,
 		k.Stage, k.Unstage, k.StageAll, k.UnstageAll, k.Discard,
-		k.Commit, k.CommitPush, k.Amend,
+		k.Commit, k.CommitPush,
 		k.CherryPick, k.RebaseStart,
 		k.Checkout, k.BranchNew, k.BranchDel, k.BranchMerge,
 		k.Refresh, k.Help, k.Quit,

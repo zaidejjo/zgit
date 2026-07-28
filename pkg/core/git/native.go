@@ -261,6 +261,11 @@ func (n *NativeExec) Log(ctx context.Context, opts LogOptions) ([]*models.Commit
 
 	data, err := n.run(ctx, args...)
 	if err != nil {
+		// Empty repo / unborn HEAD: git log exits with code 128.
+		var gitErr *GitError
+		if asGitErr(err, &gitErr) && gitErr.ExitCode == 128 {
+			return []*models.Commit{}, nil
+		}
 		return nil, err
 	}
 	return ParseLog(data)
