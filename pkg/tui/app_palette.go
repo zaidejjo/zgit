@@ -79,6 +79,14 @@ func (m *Model) executePaletteCommand(id string) (tea.Model, tea.Cmd) {
 		m.helpView.Input = ""
 		m.helpView.Cursor = 0
 		m.helpView.ShowInput = false
+	case "create-pr":
+		branch := m.currentBranch()
+		if branch == "" {
+			// fallback to palette error mode
+			return m, nil
+		}
+		m.prCreateDlg.Open(branch, "main")
+		m.mode = modePRCreate
 	case "refresh":
 		m.sub.Refresh()
 		m.refreshGitHubData()

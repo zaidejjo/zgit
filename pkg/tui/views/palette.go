@@ -69,6 +69,7 @@ func (m *PaletteModel) SetDefaultCommands() {
 		{ID: "new-branch", Label: "New Branch", Description: "Create a new branch"},
 		{ID: "merge-branch", Label: "Merge Branch", Description: "Merge branch into current"},
 		{ID: "delete-branch", Label: "Delete Branch", Description: "Delete a branch"},
+		{ID: "create-pr", Label: "Create Pull Request", Description: "Create a PR from current branch"},
 
 		// AI
 		{ID: "ai-ask", Label: "AI Ask Sidebar", Description: "Open AI Q&A sidebar", Keys: "C-g"},

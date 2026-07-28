@@ -42,6 +42,8 @@ const (
 	modeDiff
 	modeCommit
 	modeConfig
+	modePRCreate
+	modePRMerge
 )
 
 // Model is the root Bubble Tea model for the zgit TUI.
@@ -70,10 +72,12 @@ type Model struct {
 	helpView views.HelpModel
 
 	// Overlay models
-	diffViewer views.DiffModel
-	commitDlg  views.CommitModel
-	configDlg  views.ConfigModel
-	palette    views.PaletteModel
+	diffViewer  views.DiffModel
+	commitDlg   views.CommitModel
+	configDlg   views.ConfigModel
+	palette     views.PaletteModel
+	prCreateDlg views.PRCreateModel
+	prMergeDlg  views.PRMergeModel
 
 	// Bubble Tea components
 	help     help.Model
@@ -116,6 +120,8 @@ func NewModel(gitExec *gitpkg.NativeExec) *Model {
 		commitDlg:      views.NewCommitModel(),
 		configDlg:      views.NewConfigModel(),
 		palette:        views.NewPaletteModel(),
+		prCreateDlg:    views.NewPRCreateModel(),
+		prMergeDlg:     views.NewPRMergeModel(),
 		help:           help.New(),
 		mode:           modeNormal,
 		focusedPanel:   PanelStatus,
@@ -329,19 +335,18 @@ func (m *Model) calcLayout() {
 
 // Update implements tea.Model.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// If in commit dialog mode, delegate to commit model
-	if m.mode == modeCommit {
+	// Dialog mode dispatch
+	switch m.mode {
+	case modeCommit:
 		return m.updateCommit(msg)
-	}
-
-	// If in diff viewer mode, delegate to diff model
-	if m.mode == modeDiff {
+	case modeDiff:
 		return m.updateDiff(msg)
-	}
-
-	// If in config dialog mode, delegate to config model
-	if m.mode == modeConfig {
+	case modeConfig:
 		return m.updateConfig(msg)
+	case modePRCreate:
+		return m.updatePRCreate(msg)
+	case modePRMerge:
+		return m.updatePRMerge(msg)
 	}
 
 	switch msg := msg.(type) {
@@ -433,6 +438,16 @@ func (m *Model) View() string {
 		}
 	case m.mode == modeConfig:
 		overlay := m.configDlg.View(m.width)
+		if overlay != "" {
+			return overlayCenter(fullLayout, overlay, m.width, m.height)
+		}
+	case m.mode == modePRCreate:
+		overlay := m.prCreateDlg.View(m.width)
+		if overlay != "" {
+			return overlayCenter(fullLayout, overlay, m.width, m.height)
+		}
+	case m.mode == modePRMerge:
+		overlay := m.prMergeDlg.View(m.width)
 		if overlay != "" {
 			return overlayCenter(fullLayout, overlay, m.width, m.height)
 		}
@@ -1057,8 +1072,46 @@ func (m *Model) handlePRKeys(key string) (tea.Model, tea.Cmd) {
 		if m.prs.Cursor < 0 {
 			m.prs.Cursor = 0
 		}
+	case "c", "o":
+		// Create PR — get current branch
+		branch := m.currentBranch()
+		if branch == "" {
+			m.prs.Error = "cannot determine current branch"
+			return m, nil
+		}
+		m.prCreateDlg.Open(branch, "main")
+		m.mode = modePRCreate
+	case "m":
+		// Merge selected PR
+		pr := m.prs.SelectedPR()
+		if pr == nil {
+			m.prs.Error = "no PR selected"
+			return m, nil
+		}
+		if pr.State != models.PRStateOpen {
+			m.prs.Error = "only open PRs can be merged"
+			return m, nil
+		}
+		m.prMergeDlg.Open(pr)
+		m.mode = modePRMerge
+	case "r":
+		go m.fetchPRs()
 	}
 	return m, nil
+}
+
+// currentBranch returns the current git branch name.
+func (m *Model) currentBranch() string {
+	if m.status.Status != nil && m.status.Status.Branch != "" {
+		return m.status.Status.Branch
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5e9)
+	defer cancel()
+	branch, err := m.git.CurrentBranch(ctx)
+	if err != nil {
+		return ""
+	}
+	return branch
 }
 
 func (m *Model) handleIssueKeys(key string) (tea.Model, tea.Cmd) {
@@ -1262,6 +1315,156 @@ func (m *Model) updateDiff(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// --- PR Create Dialog ---
+
+func (m *Model) updatePRCreate(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "enter" {
+		if m.prCreateDlg.State == views.PRCreateConfirming {
+			m.prCreateDlg.State = views.PRCreateResult
+			m.prCreateDlg.Result = views.PRCreateResultInfo{Success: true}
+			go m.executeCreatePR()
+			return m, nil
+		}
+	}
+
+	updated, cmd := m.prCreateDlg.Update(msg)
+	m.prCreateDlg = *updated
+
+	if !m.prCreateDlg.Active() {
+		m.mode = modeNormal
+		return m, nil
+	}
+
+	if m.prCreateDlg.State == views.PRCreateResult {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			switch keyMsg.String() {
+			case "enter", "esc":
+				m.prCreateDlg.Close()
+				m.mode = modeNormal
+				go m.fetchPRs() // refresh list
+				return m, nil
+			}
+		}
+	}
+
+	return m, cmd
+}
+
+func (m *Model) executeCreatePR() {
+	if m.gh == nil || !m.ghDetected {
+		m.msgs <- teaMsg{view: -4, data: prCreateResultEvent{
+			Result: views.PRCreateResultInfo{
+				Success: false,
+				Error:   "GitHub not authenticated",
+			},
+		}}
+		return
+	}
+
+	req := m.prCreateDlg.GetRequest()
+	ctx, cancel := context.WithTimeout(context.Background(), 30e9)
+	defer cancel()
+
+	pr, err := m.gh.CreatePullRequest(ctx, m.ghOwner, m.ghRepo, req)
+	if err != nil {
+		m.msgs <- teaMsg{view: -4, data: prCreateResultEvent{
+			Result: views.PRCreateResultInfo{
+				Success: false,
+				Error:   err.Error(),
+			},
+		}}
+		return
+	}
+
+	m.msgs <- teaMsg{view: -4, data: prCreateResultEvent{
+		Result: views.PRCreateResultInfo{
+			Success: true,
+			Number:  pr.Number,
+			URL:     fmt.Sprintf("https://github.com/%s/%s/pull/%d", m.ghOwner, m.ghRepo, pr.Number),
+		},
+	}}
+}
+
+// --- PR Merge Dialog ---
+
+func (m *Model) updatePRMerge(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "enter" {
+		if m.prMergeDlg.State == views.PRMergeConfirming {
+			m.prMergeDlg.State = views.PRMergeResult
+			m.prMergeDlg.Result = views.PRMergeResultInfo{Success: true}
+			go m.executeMergePR()
+			return m, nil
+		}
+	}
+
+	updated, cmd := m.prMergeDlg.Update(msg)
+	m.prMergeDlg = *updated
+
+	if !m.prMergeDlg.Active() {
+		m.mode = modeNormal
+		return m, nil
+	}
+
+	if m.prMergeDlg.State == views.PRMergeResult {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			switch keyMsg.String() {
+			case "enter", "esc":
+				m.prMergeDlg.Close()
+				m.mode = modeNormal
+				go m.fetchPRs() // refresh list
+				return m, nil
+			}
+		}
+	}
+
+	return m, cmd
+}
+
+func (m *Model) executeMergePR() {
+	if m.gh == nil || !m.ghDetected {
+		m.msgs <- teaMsg{view: -5, data: prMergeResultEvent{
+			Result: views.PRMergeResultInfo{
+				Success: false,
+				Error:   "GitHub not authenticated",
+			},
+		}}
+		return
+	}
+
+	pr := m.prMergeDlg.PR
+	if pr == nil {
+		m.msgs <- teaMsg{view: -5, data: prMergeResultEvent{
+			Result: views.PRMergeResultInfo{
+				Success: false,
+				Error:   "no PR selected",
+			},
+		}}
+		return
+	}
+
+	method := m.prMergeDlg.Strategy.APIValue()
+	ctx, cancel := context.WithTimeout(context.Background(), 30e9)
+	defer cancel()
+
+	err := m.gh.MergePullRequest(ctx, m.ghOwner, m.ghRepo, pr.Number, method)
+	if err != nil {
+		m.msgs <- teaMsg{view: -5, data: prMergeResultEvent{
+			Result: views.PRMergeResultInfo{
+				Success: false,
+				Error:   err.Error(),
+			},
+		}}
+		return
+	}
+
+	m.msgs <- teaMsg{view: -5, data: prMergeResultEvent{
+		Result: views.PRMergeResultInfo{
+			Success: true,
+			Message: fmt.Sprintf("PR #%d merged via %s", pr.Number, m.prMergeDlg.Strategy.String()),
+		},
+	}}
+}
+
 // --- Event types ---
 
 type prEvent struct {
@@ -1274,12 +1477,36 @@ type issueEvent struct {
 	err    error
 }
 
+type prCreateResultEvent struct {
+	Result views.PRCreateResultInfo
+}
+
+type prMergeResultEvent struct {
+	Result views.PRMergeResultInfo
+}
+
 // handleEngineMsg processes messages from the background subscriber.
 func (m *Model) handleEngineMsg(msg teaMsg) (tea.Model, tea.Cmd) {
 	if msg.view == -1 {
 		if evt, ok := msg.data.(commitResultEvent); ok {
 			m.commitDlg.Result = evt.Result
 			m.commitDlg.State = views.CommitResult
+		}
+		return m, nil
+	}
+
+	if msg.view == -4 {
+		if evt, ok := msg.data.(prCreateResultEvent); ok {
+			m.prCreateDlg.Result = evt.Result
+			m.prCreateDlg.State = views.PRCreateResult
+		}
+		return m, nil
+	}
+
+	if msg.view == -5 {
+		if evt, ok := msg.data.(prMergeResultEvent); ok {
+			m.prMergeDlg.Result = evt.Result
+			m.prMergeDlg.State = views.PRMergeResult
 		}
 		return m, nil
 	}

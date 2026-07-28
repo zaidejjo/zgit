@@ -63,10 +63,19 @@ func allSections() []helpSection {
 			},
 		},
 		{
-			title: "Full-Screen Views",
+			title: "Pull Requests (PR view)",
 			keys: []helpEntry{
-				{"3", "Pull Requests"},
-				{"4", "Issues"},
+				{"3", "Open Pull Requests view"},
+				{"c / o", "Create new PR"},
+				{"m", "Merge selected PR"},
+				{"r", "Refresh PR list"},
+				{"Tab / Esc", "Back to panels"},
+			},
+		},
+		{
+			title: "Issues (full-screen)",
+			keys: []helpEntry{
+				{"4", "Open Issues view"},
 				{"Tab / Esc", "Back to panels"},
 			},
 		},
