@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.zaidejjo.zgit</id>
+  <metadata_license>Apache-2.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>Zgit</name>
+  <summary>A modern, fast Git &amp; GitHub client</summary>
+  <description>
+    <p>
+      Zgit combines local Git operations with GitHub CLI/API features
+      (PRs, Issues, Actions, Reviews) into a clean, non-cluttered interface.
+      It ships as both a terminal UI (TUI) and a desktop application.
+    </p>
+    <ul>
+      <li>Full Git integration — status, log, branches, tags, remotes</li>
+      <li>Commit management with conventional commit tags</li>
+      <li>Interactive rebase, cherry-pick, and 3-way merge editor</li>
+      <li>GitHub PR, Issue, and Actions management</li>
+      <li>AI-powered commit message generation and chat assistant</li>
+      <li>Dual UI: terminal (Bubble Tea) and desktop (Wails + React)</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.zaidejjo.zgit.desktop</launchable>
+  <url type="homepage">https://github.com/zaidejjo/zgit</url>
+  <url type="bugtracker">https://github.com/zaidejjo/zgit/issues</url>
+  <url type="vcs-browser">https://github.com/zaidejjo/zgit</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/zaidejjo/zgit/main/docs/screenshots/tui-status.png</image>
+      <caption>Terminal UI — status panel</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/zaidejjo/zgit/main/docs/screenshots/desktop-commit.png</image>
+      <caption>Desktop app — commit view</caption>
+    </screenshot>
+  </screenshots>
+  <provides>
+    <binary>zgit</binary>
+    <binary>zgit-desktop</binary>
+  </provides>
+  <categories>
+    <category>Development</category>
+    <category>VersionControl</category>
+  </categories>
+  <releases>
+    <release version="0.1.0" date="__RELEASE_DATE__"/>
+  </releases>
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-cartoon">none</content_attribute>
+    <content_attribute id="violence-fantasy">none</content_attribute>
+    <content_attribute id="violence-realistic">none</content_attribute>
+    <content_attribute id="violence-bloodshed">none</content_attribute>
+    <content_attribute id="violence-sexual">none</content_attribute>
+    <content_attribute id="violence-desecration">none</content_attribute>
+    <content_attribute id="violence-slavery">none</content_attribute>
+    <content_attribute id="violence-worship">none</content_attribute>
+    <content_attribute id="drugs-alcohol">none</content_attribute>
+    <content_attribute id="drugs-narcotics">none</content_attribute>
+    <content_attribute id="drugs-tobacco">none</content_attribute>
+    <content_attribute id="sex-nudes">none</content_attribute>
+    <content_attribute id="sex-themes">none</content_attribute>
+    <content_attribute id="sex-homosexuality">none</content_attribute>
+    <content_attribute id="sex-prostitution">none</content_attribute>
+    <content_attribute id="sex-adultery">none</content_attribute>
+    <content_attribute id="sex-appearance">none</content_attribute>
+    <content_attribute id="language-profanity">none</content_attribute>
+    <content_attribute id="language-humor">none</content_attribute>
+    <content_attribute id="language-discrimination">none</content_attribute>
+    <content_attribute id="social-chat">none</content_attribute>
+    <content_attribute id="social-links">none</content_attribute>
+    <content_attribute id="social-audio">none</content_attribute>
+    <content_attribute id="social-contacts">none</content_attribute>
+    <content_attribute id="money-purchasing">none</content_attribute>
+    <content_attribute id="money-gambling">none</content_attribute>
+    <content_attribute id="money-donation">none</content_attribute>
+  </content_rating>
+  <developer_name>zaidejjo</developer_name>
+</component>

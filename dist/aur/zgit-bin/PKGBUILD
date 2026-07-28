@@ -1,0 +1,25 @@
+# Maintainer: zaidejjo <zaid@ejjo.me>
+# Contributor: zaidejjo <zaid@ejjo.me>
+# shellcheck shell=bash
+
+pkgname=zgit-bin
+pkgver=__VERSION__
+pkgrel=1
+pkgdesc="A modern, fast Git & GitHub client — TUI binary"
+arch=('x86_64' 'aarch64')
+url="https://github.com/zaidejjo/zgit"
+license=('Apache')
+depends=('git' 'glibc')
+makedepends=()
+provides=("${pkgname%-bin}=${pkgver}")
+conflicts=("${pkgname%-bin}")
+source_x86_64=("${url}/releases/download/v${pkgver}/zgit-v${pkgver}-linux-amd64.tar.gz")
+source_aarch64=("${url}/releases/download/v${pkgver}/zgit-v${pkgver}-linux-arm64.tar.gz")
+sha256sums_x86_64=('__SHA256SUM_X86_64__')
+sha256sums_aarch64=('__SHA256SUM_AARCH64__')
+
+package() {
+  install -Dm755 "zgit-v${pkgver}-linux-${CARCH}/zgit" "${pkgdir}/usr/bin/zgit"
+}
+
+# vim:set ts=2 sw=2 et:
