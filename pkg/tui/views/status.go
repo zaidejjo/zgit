@@ -97,7 +97,8 @@ func (m StatusModel) View(width int) string {
 			line := fmt.Sprintf("  %s  %s", statusMark("staged"), formatFilePath(f.Path, width-6))
 			localIdx := stagedOffset + i
 			if localIdx == m.Cursor {
-				b.WriteString(styles.ListItemActiveStyle.Render(line))
+				// Replace first space with ❯ prefix. First byte is always ASCII space (safe byte slice).
+				b.WriteString(styles.ListItemActiveStyle.Render("❯" + line[1:]))
 			} else {
 				b.WriteString(styles.ListItemStyle.Render(line))
 			}
@@ -113,7 +114,7 @@ func (m StatusModel) View(width int) string {
 			line := fmt.Sprintf("  %s  %s", statusMark("unstaged"), formatFilePath(f.Path, width-6))
 			localIdx := unstagedOffset + i
 			if localIdx == m.Cursor {
-				b.WriteString(styles.ListItemActiveStyle.Render(line))
+				b.WriteString(styles.ListItemActiveStyle.Render("❯" + line[1:]))
 			} else {
 				b.WriteString(styles.ListItemStyle.Render(line))
 			}
@@ -129,7 +130,7 @@ func (m StatusModel) View(width int) string {
 			line := fmt.Sprintf("  %s  %s", statusMark("untracked"), formatFilePath(f.Path, width-6))
 			localIdx := untrackedOffset + i
 			if localIdx == m.Cursor {
-				b.WriteString(styles.ListItemActiveStyle.Render(line))
+				b.WriteString(styles.ListItemActiveStyle.Render("❯" + line[1:]))
 			} else {
 				b.WriteString(styles.ListItemStyle.Render(line))
 			}
@@ -185,15 +186,18 @@ func statusMark(kind string) string {
 	}
 }
 
-// formatFilePath renders a path as "filename (dir/)" fitting within maxLen.
-// Always keeps the filename fully visible. Truncates dir with "…" when needed.
-// Falls back to filname-only if dir won't fit.
+// formatFilePath renders path as "filename.ext (dir/path/)" fitting maxLen.
+// Priority order:
+//  1. filename (dir/)       — full format
+//  2. filename (…/right/)   — dir truncated with "…/" prefix + trailing /
+//  3. filename              — dir dropped entirely
+//  4. filename…             — filename truncated (only if terminal is too narrow)
 func formatFilePath(path string, maxLen int) string {
 	if maxLen <= 0 {
 		return ""
 	}
 
-	// Find last slash to separate dir and filename
+	// Find last slash -> filename / dir
 	lastSlash := -1
 	for i := len(path) - 1; i >= 0; i-- {
 		if path[i] == '/' {
@@ -202,78 +206,76 @@ func formatFilePath(path string, maxLen int) string {
 		}
 	}
 
+	// No dir — just filename
 	if lastSlash < 0 {
-		// Just a filename — no dir
 		if lipgloss.Width(path) <= maxLen {
 			return path
 		}
-		// Truncate rune-aware to avoid cutting multi-byte
+		// Filename alone too wide — truncate rune-aware
 		runes := []rune(path)
-		return string(runes[:maxLen-2]) + "…"
+		if maxLen-1 > 0 {
+			return string(runes[:maxLen-1]) + "…"
+		}
+		return string(runes[:maxLen])
 	}
 
 	filename := path[lastSlash+1:]
+	fnWidth := lipgloss.Width(filename)
 	dir := path[:lastSlash]
 
-	// Format: "filename (dir/)"
-	// Try full format first
-	formatted := fmt.Sprintf("%s (%s/)", filename, dir)
-	if lipgloss.Width(formatted) <= maxLen {
-		return formatted
-	}
-
-	// Try without trailing slash
-	formatted = fmt.Sprintf("%s (%s)", filename, dir)
-	if lipgloss.Width(formatted) <= maxLen {
-		return formatted
-	}
-
-	// Try with truncated dir
-	// Budget for: filename + " (" + dir + ")"
-	// 4 chars overhead: " (./)" minimum
-	dirBudget := maxLen - lipgloss.Width(filename) - 4
-	if dirBudget < 1 {
-		// No room for dir at all — show just filename
-		if lipgloss.Width(filename) <= maxLen {
-			return filename
+	// Helper: truncate dir with "…/" prefix + trailing / inside (parens).
+	// budget = total chars available for truncated dir including overhead.
+	// Overhead: "…/" = 2, trailing "/" = 1 → 3 chars.
+	// keep = budget - 3 = chars from right of dir to preserve.
+	truncateDir := func(budget int) string {
+		if budget < 4 { // "…/X/" minimum: 2+1+1 = 4
+			return ""
 		}
-		// Truncate filename rune-aware, keep recognizable start
-		fnRunes := []rune(filename)
-		if maxLen-2 > 0 {
-			return string(fnRunes[:maxLen-2]) + "…"
-		}
-		return string(fnRunes[:maxLen])
-	}
-
-	if lipgloss.Width(dir) > dirBudget {
-		// Truncate dir from left, keep rightmost part
 		dirRunes := []rune(dir)
-		if dirBudget < 3 {
-			// Not enough for "…" + dir — show just filename
-			if lipgloss.Width(filename) <= maxLen {
-				return filename
-			}
-			fnRunes := []rune(filename)
-			if maxLen-2 > 0 {
-				return string(fnRunes[:maxLen-2]) + "…"
-			}
-			return string(fnRunes[:maxLen])
+		keep := budget - 3 // -3 for "…/" prefix + trailing /
+		if keep < 1 {
+			return ""
 		}
-		// Truncate: "…" + rightmost dirBudget-1 chars
-		truncDir := "…" + string(dirRunes[len(dirRunes)-(dirBudget-1):])
-		formatted = fmt.Sprintf("%s (%s)", filename, truncDir)
-		if lipgloss.Width(formatted) <= maxLen {
-			return formatted
+		if len(dirRunes) <= keep {
+			return "…/" + dir + "/"
+		}
+		return "…/" + string(dirRunes[len(dirRunes)-keep:]) + "/"
+	}
+
+	// Priority 1: full format "filename (dir/)"
+	// overhead: " (" + "/)" = 2 + 2 = 4
+	if fnWidth+4+lipgloss.Width(dir) <= maxLen {
+		return fmt.Sprintf("%s (%s/)", filename, dir)
+	}
+	// Priority 1b: "filename (dir)" — try without trailing slash
+	// overhead: " (" + ")" = 2 + 1 = 3
+	if fnWidth+3+lipgloss.Width(dir) <= maxLen {
+		return fmt.Sprintf("%s (%s)", filename, dir)
+	}
+
+	// Priority 2: "filename (…/right/)"
+	// 3 chars overhead: " (" + ")" = space + parens
+	// truncated dir format: "…/X/" = 2 (…/) + keep + 1 (/) = 3 + keep
+	dirBudget := maxLen - fnWidth - 3
+	if dirBudget >= 4 {
+		truncDir := truncateDir(dirBudget)
+		if truncDir != "" {
+			formatted := fmt.Sprintf("%s (%s)", filename, truncDir)
+			if lipgloss.Width(formatted) <= maxLen {
+				return formatted
+			}
 		}
 	}
 
-	// Final fallback: show truncated filename only
-	if lipgloss.Width(filename) <= maxLen {
+	// Priority 3: filename only
+	if fnWidth <= maxLen {
 		return filename
 	}
-	fnRunes := []rune(filename)
-	if maxLen-2 > 0 {
-		return string(fnRunes[:maxLen-2]) + "…"
+
+	// Priority 4: truncated filename — only when terminal is too narrow
+	runes := []rune(filename)
+	if maxLen-1 > 0 {
+		return string(runes[:maxLen-1]) + "…"
 	}
-	return string(fnRunes[:maxLen])
+	return string(runes[:maxLen])
 }

@@ -59,8 +59,20 @@ func (p Panel) View() string {
 	var bodyLines []string
 	for _, line := range lines {
 		trimmed := line
-		if len(trimmed) > innerW {
-			trimmed = trimmed[:innerW]
+		// Use visual width (lipgloss.Width) not byte length (len).
+		// len() overcounts because:
+		//   - Multi-byte Unicode (● = 3 bytes, 1 visual col)
+		//   - lipgloss ANSI codes (only present in TUI context)
+		// → byte check falsely triggers truncation on fitting lines.
+		// → byte-slicing breaks ANSI sequences and multi-byte chars.
+		//
+		// Visual width always ≤ innerW because views calculate content
+		// to fit.  This check is a safety net — should never trigger.
+		if lipgloss.Width(trimmed) > innerW {
+			// Instead of byte-level truncation (corrupts ANSI/Unicode)
+			// or Style.Width (wraps lines with newlines), we leave
+			// overflow lines intact.  This is vanishingly rare since
+			// views already bound content width.
 		}
 		bodyLines = append(bodyLines, trimmed)
 	}
