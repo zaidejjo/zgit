@@ -1198,17 +1198,26 @@ func (m *Model) openCommitDialog() {
 }
 
 func (m *Model) updateCommit(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "enter" {
-		if m.commitDlg.State == views.CommitConfirming {
-			m.commitDlg.State = views.CommitResult
-			m.commitDlg.Result = views.CommitResultInfo{
-				Success: true,
-				Message: m.commitDlg.GetMessage(),
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		switch keyMsg.String() {
+		case "enter":
+			if m.commitDlg.State == views.CommitConfirming {
+				m.commitDlg.State = views.CommitResult
+				m.commitDlg.Result = views.CommitResultInfo{
+					Success: true,
+					Message: m.commitDlg.GetMessage(),
+				}
+				doPush := m.pushAfterCommit
+				m.pushAfterCommit = false
+				go m.executeCommit(m.commitDlg.GetMessage(), doPush)
+				return m, nil
 			}
-			doPush := m.pushAfterCommit
-			m.pushAfterCommit = false
-			go m.executeCommit(m.commitDlg.GetMessage(), doPush)
-			return m, nil
+		case "ctrl+g":
+			// AI generate commit message from staged diff
+			if m.commitDlg.State == views.CommitInputSubject || m.commitDlg.State == views.CommitInputBody {
+				go m.generateAICommitMsg()
+				return m, nil
+			}
 		}
 	}
 
@@ -1491,6 +1500,22 @@ func (m *Model) handleEngineMsg(msg teaMsg) (tea.Model, tea.Cmd) {
 		if evt, ok := msg.data.(commitResultEvent); ok {
 			m.commitDlg.Result = evt.Result
 			m.commitDlg.State = views.CommitResult
+		}
+		return m, nil
+	}
+
+	// AI commit message generation result
+	if msg.view == aiCommitMsgViewID {
+		if evt, ok := msg.data.(aiCommitMsgResult); ok {
+			if evt.Success {
+				m.populateCommitFromAI(evt.Message)
+			} else {
+				m.commitDlg.Result = views.CommitResultInfo{
+					Success: false,
+					Error:   evt.Error,
+				}
+				m.commitDlg.State = views.CommitResult
+			}
 		}
 		return m, nil
 	}

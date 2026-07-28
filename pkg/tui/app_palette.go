@@ -2,6 +2,7 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/zaidejjo/zgit/pkg/core/config"
 	"github.com/zaidejjo/zgit/pkg/tui/views"
 )
 
@@ -68,7 +69,26 @@ func (m *Model) executePaletteCommand(id string) (tea.Model, tea.Cmd) {
 		m.aiData.Sidebar.Width = 44
 		m.aiData.Sidebar.Height = m.contentHeight
 	case "open-config":
-		m.configDlg.OpenGitHubToken()
+		cfg, err := config.New()
+		providers := []string{}
+		if err == nil {
+			providers = cfg.GetProviderKeys()
+			// Ensure active top-level provider is listed even if not in providers map yet
+			activeProvider := cfg.GetString("ai.provider")
+			if activeProvider != "" {
+				found := false
+				for _, p := range providers {
+					if p == activeProvider {
+						found = true
+						break
+					}
+				}
+				if !found {
+					providers = append([]string{activeProvider}, providers...)
+				}
+			}
+		}
+		m.configDlg.OpenAIProviderList(providers)
 		m.mode = modeConfig
 	case "next-panel":
 		m.focusedPanel = (m.focusedPanel + 1) % panelCount
@@ -79,6 +99,11 @@ func (m *Model) executePaletteCommand(id string) (tea.Model, tea.Cmd) {
 		m.helpView.Input = ""
 		m.helpView.Cursor = 0
 		m.helpView.ShowInput = false
+	case "ai-commit":
+		// Open commit dialog first, then trigger AI generation
+		m.openCommitDialog()
+		go m.generateAICommitMsg()
+		return m, nil
 	case "create-pr":
 		branch := m.currentBranch()
 		if branch == "" {

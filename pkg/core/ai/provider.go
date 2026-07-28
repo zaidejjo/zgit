@@ -10,11 +10,14 @@ import (
 type ProviderKind string
 
 const (
-	ProviderOpenAI     ProviderKind = "openai"
-	ProviderAnthropic  ProviderKind = "anthropic"
-	ProviderDeepSeek   ProviderKind = "deepseek"
-	ProviderOpenRouter ProviderKind = "openrouter"
-	ProviderCustom     ProviderKind = "custom"
+	ProviderOpenAI      ProviderKind = "openai"
+	ProviderAnthropic   ProviderKind = "anthropic"
+	ProviderDeepSeek    ProviderKind = "deepseek"
+	ProviderOpenRouter  ProviderKind = "openrouter"
+	ProviderGroq        ProviderKind = "groq"
+	ProviderOllama      ProviderKind = "ollama"
+	ProviderOpenCodeZen ProviderKind = "opencodezen"
+	ProviderCustom      ProviderKind = "custom"
 )
 
 // Config holds AI provider settings.
@@ -31,20 +34,26 @@ const DefaultMaxTurns = 10
 
 // DefaultModels maps providers to their default model names.
 var DefaultModels = map[ProviderKind]string{
-	ProviderOpenAI:     "gpt-4o-mini",
-	ProviderAnthropic:  "claude-sonnet-4-20250514",
-	ProviderDeepSeek:   "deepseek-chat",
-	ProviderOpenRouter: "openai/gpt-4o-mini",
-	ProviderCustom:     "",
+	ProviderOpenAI:      "gpt-4o-mini",
+	ProviderAnthropic:   "claude-sonnet-4-20250514",
+	ProviderDeepSeek:    "deepseek/deepseek-v4-flash",
+	ProviderOpenRouter:  "openai/gpt-4o-mini",
+	ProviderGroq:        "llama-3.1-8b-instant",
+	ProviderOllama:      "llama3.2",
+	ProviderOpenCodeZen: "",
+	ProviderCustom:      "",
 }
 
 // DefaultEndpoints maps providers to their API endpoints.
 var DefaultEndpoints = map[ProviderKind]string{
-	ProviderOpenAI:     "https://api.openai.com/v1/chat/completions",
-	ProviderAnthropic:  "https://api.anthropic.com/v1/messages",
-	ProviderDeepSeek:   "https://api.deepseek.com/chat/completions",
-	ProviderOpenRouter: "https://openrouter.ai/api/v1/chat/completions",
-	ProviderCustom:     "",
+	ProviderOpenAI:      "https://api.openai.com/v1/chat/completions",
+	ProviderAnthropic:   "https://api.anthropic.com/v1/messages",
+	ProviderDeepSeek:    "https://api.deepseek.com/chat/completions",
+	ProviderOpenRouter:  "https://openrouter.ai/api/v1/chat/completions",
+	ProviderGroq:        "https://api.groq.com/openai/v1/chat/completions",
+	ProviderOllama:      "http://localhost:11434/v1/chat/completions",
+	ProviderOpenCodeZen: "",
+	ProviderCustom:      "",
 }
 
 // Generator generates commit messages from diffs.
@@ -56,7 +65,7 @@ type Generator interface {
 // NewGenerator creates the appropriate provider based on config.
 func NewGenerator(cfg Config) (Generator, error) {
 	switch cfg.Provider {
-	case ProviderOpenAI, ProviderDeepSeek, ProviderOpenRouter, ProviderCustom:
+	case ProviderOpenAI, ProviderDeepSeek, ProviderOpenRouter, ProviderGroq, ProviderOllama, ProviderOpenCodeZen, ProviderCustom:
 		return NewOpenAI(cfg), nil
 	case ProviderAnthropic:
 		return NewAnthropic(cfg), nil
@@ -78,7 +87,7 @@ type AskProvider interface {
 // NewAskProvider creates the appropriate AskProvider based on config.
 func NewAskProvider(cfg Config) (AskProvider, error) {
 	switch cfg.Provider {
-	case ProviderOpenAI, ProviderDeepSeek, ProviderOpenRouter, ProviderCustom:
+	case ProviderOpenAI, ProviderDeepSeek, ProviderOpenRouter, ProviderGroq, ProviderOllama, ProviderOpenCodeZen, ProviderCustom:
 		return NewOpenAI(cfg), nil
 	case ProviderAnthropic:
 		return NewAnthropic(cfg), nil

@@ -53,7 +53,7 @@ func allSections() []helpSection {
 			keys: []helpEntry{
 				{"C-g", "Ask AI a question about the repo"},
 				{"C-e", "AI Agent panel (git commands)"},
-				{"/cmd", "Slash commands: /models, /chats, /new"},
+				{"/cmd", "Slash commands: /models, /providers, /key, /clear, /new, /chats, /help"},
 			},
 		},
 		{
@@ -112,6 +112,7 @@ func allSections() []helpSection {
 			keys: []helpEntry{
 				{"enter", "Next field / Confirm"},
 				{"Ctrl+D", "Finish description"},
+				{"Ctrl+G", "Generate AI commit message from staged diff"},
 				{"Esc", "Cancel / Close"},
 			},
 		},

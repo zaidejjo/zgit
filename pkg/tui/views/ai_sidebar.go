@@ -143,10 +143,18 @@ func (m *AISidebarModel) ProcessSlashCommand(cmd string) bool {
 	case "/models":
 		m.State = SBSModels
 		return true
+	case "/providers":
+		m.AddMessage("system", "Configured providers: set via Ctrl+P → Open Config")
+		m.State = SBSInput
+		return true
+	case "/key":
+		m.AddMessage("system", "To set API key, use Ctrl+P → Open Config and select a provider.")
+		m.State = SBSInput
+		return true
 	case "/chats":
 		m.State = SBSChats
 		return true
-	case "/new":
+	case "/clear", "/new":
 		m.ClearMessages()
 		m.AddMessage("system", "Started new session.")
 		m.State = SBSInput
@@ -162,6 +170,10 @@ func (m *AISidebarModel) ProcessSlashCommand(cmd string) bool {
 		m.State = SBSInput
 		m.Input = ""
 		m.Cursor = 0
+		return true
+	case "/help":
+		m.AddMessage("system", "Commands: /models /providers /key /chats /clear /new /rename /help")
+		m.State = SBSInput
 		return true
 	}
 	return false
@@ -438,7 +450,7 @@ func (m *AISidebarModel) helpHint() string {
 	switch m.State {
 	case SBSInput:
 		if m.SlashCmdActive() {
-			return "/models /chats /new /rename"
+			return "/models /providers /key /clear /new /chats /help"
 		}
 		if m.Mode == ModeAgent {
 			return "agent mode — git commands"
