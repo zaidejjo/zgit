@@ -915,6 +915,11 @@ func (n *NativeExec) RemoteRename(ctx context.Context, oldName, newName string) 
 	return err
 }
 
+func (n *NativeExec) RemoteSetURL(ctx context.Context, name, url string) error {
+	_, err := n.run(ctx, "remote", "set-url", name, url)
+	return err
+}
+
 // --- Sync ---
 
 func (n *NativeExec) Fetch(ctx context.Context, remote string, prune bool) error {

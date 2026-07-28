@@ -143,7 +143,9 @@ export function ReRunWorkflow(arg1:number):Promise<void>;
 export function RebaseSequence(arg1:string,arg2:string):Promise<models.RebaseResult>;
 
 export function RemoveRemote(arg1:string):Promise<void>;
+
 export function RenameRemote(arg1:string,arg2:string):Promise<void>;
+export function SetRemoteURL(arg1:string,arg2:string):Promise<void>;
 
 export function ResetCommit(arg1:string,arg2:string):Promise<void>;
 
@@ -170,6 +172,8 @@ export function SessionRename(arg1:string,arg2:string):Promise<void>;
 export function SessionSwitch(arg1:string):Promise<ai.SessionSummary>;
 
 export function SetAIConfig(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function SetRemoteURL(arg1:string,arg2:string):Promise<void>;
 
 export function StageAll():Promise<void>;
 

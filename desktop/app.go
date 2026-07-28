@@ -370,6 +370,13 @@ func (a *App) RenameRemote(oldName, newName string) error {
 	return a.engine.Git.RemoteRename(ctx, oldName, newName)
 }
 
+// SetRemoteURL updates the URL of a remote.
+func (a *App) SetRemoteURL(name, url string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.RemoteSetURL(ctx, name, url)
+}
+
 // GetAheadCommits returns commits ahead of the remote tracking branch.
 // Uses `git log origin/<branch>..HEAD` to list unpushed commits.
 func (a *App) GetAheadCommits() ([]*models.Commit, error) {

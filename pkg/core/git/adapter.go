@@ -130,6 +130,7 @@ type GitAdapter interface {
 	RemoteAdd(ctx context.Context, name, url string) error
 	RemoteRemove(ctx context.Context, name string) error
 	RemoteRename(ctx context.Context, oldName, newName string) error
+	RemoteSetURL(ctx context.Context, name, url string) error
 
 	// Sync
 	Fetch(ctx context.Context, remote string, prune bool) error

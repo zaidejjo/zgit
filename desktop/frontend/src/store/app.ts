@@ -320,6 +320,7 @@ declare global {
           AddRemote(name: string, url: string): Promise<void>;
           RemoveRemote(name: string): Promise<void>;
           RenameRemote(oldName: string, newName: string): Promise<void>;
+          SetRemoteURL(name: string, url: string): Promise<void>;
           GetAheadCommits(): Promise<Commit[]>;
           StartDeviceFlow(): Promise<DeviceFlowCode>;
           PollDeviceFlow(deviceCode: string): Promise<string>;
@@ -624,6 +625,7 @@ interface AppState {
   addRemote: (name: string, url: string) => Promise<void>;
   removeRemote: (name: string) => Promise<void>;
   renameRemote: (oldName: string, newName: string) => Promise<void>;
+  setRemoteUrl: (name: string, url: string) => Promise<void>;
 
   // Push confirmation
   requestPush: () => Promise<void>;
@@ -1032,6 +1034,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       await get().fetchRemotes();
     } catch (e: any) {
       set({ error: e.message || `Failed to rename remote ${oldName}` });
+    }
+  },
+
+  setRemoteUrl: async (name, url) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.SetRemoteURL(name, url);
+      await get().fetchRemotes();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to set URL for remote ${name}` });
     }
   },
 

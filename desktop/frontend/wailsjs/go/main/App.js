@@ -286,6 +286,10 @@ export function RenameRemote(arg1, arg2) {
   return window['go']['main']['App']['RenameRemote'](arg1, arg2);
 }
 
+export function SetRemoteURL(arg1, arg2) {
+  return window['go']['main']['App']['SetRemoteURL'](arg1, arg2);
+}
+
 export function ResetCommit(arg1, arg2) {
   return window['go']['main']['App']['ResetCommit'](arg1, arg2);
 }
@@ -336,6 +340,10 @@ export function SessionSwitch(arg1) {
 
 export function SetAIConfig(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SetAIConfig'](arg1, arg2, arg3, arg4);
+}
+
+export function SetRemoteURL(arg1, arg2) {
+  return window['go']['main']['App']['SetRemoteURL'](arg1, arg2);
 }
 
 export function StageAll() {
