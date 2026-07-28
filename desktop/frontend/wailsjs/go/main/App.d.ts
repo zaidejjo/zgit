@@ -143,6 +143,7 @@ export function ReRunWorkflow(arg1:number):Promise<void>;
 export function RebaseSequence(arg1:string,arg2:string):Promise<models.RebaseResult>;
 
 export function RemoveRemote(arg1:string):Promise<void>;
+export function RenameRemote(arg1:string,arg2:string):Promise<void>;
 
 export function ResetCommit(arg1:string,arg2:string):Promise<void>;
 

@@ -910,6 +910,11 @@ func (n *NativeExec) RemoteRemove(ctx context.Context, name string) error {
 	return err
 }
 
+func (n *NativeExec) RemoteRename(ctx context.Context, oldName, newName string) error {
+	_, err := n.run(ctx, "remote", "rename", oldName, newName)
+	return err
+}
+
 // --- Sync ---
 
 func (n *NativeExec) Fetch(ctx context.Context, remote string, prune bool) error {
