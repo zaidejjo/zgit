@@ -735,7 +735,7 @@ var _ AskProvider = (*Anthropic)(nil)
 // NewToolCallingProvider returns the correct provider for the given config.
 func NewToolCallingProvider(cfg Config) (ToolCallingProvider, error) {
 	switch cfg.Provider {
-	case ProviderOpenAI, ProviderDeepSeek, ProviderOpenRouter, ProviderCustom:
+	case ProviderOpenAI, ProviderDeepSeek, ProviderOpenRouter, ProviderGroq, ProviderOllama, ProviderOpenCodeZen, ProviderCustom:
 		return NewOpenAI(cfg), nil
 	case ProviderAnthropic:
 		return NewAnthropic(cfg), nil

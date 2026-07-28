@@ -4,6 +4,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/zaidejjo/zgit/pkg/core/config"
@@ -48,7 +49,11 @@ Supports both CLI commands and an interactive TUI.`,
 		if path == "" {
 			path = "."
 		}
-		if err := gitExec.Open(path); err != nil {
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("resolve repo path: %w", err)
+		}
+		if err := gitExec.Open(absPath); err != nil {
 			return fmt.Errorf("open repo: %w", err)
 		}
 		return nil

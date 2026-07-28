@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/core/models"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
@@ -70,17 +71,41 @@ func (m BranchModel) View(width int) string {
 			trackInfo = styles.SubtitleStyle.Render(fmt.Sprintf(" [%s%s]", br.Upstream, track))
 		}
 
+		// Calculate available width for message: marker (2) + " " + name + trackInfo + " " + msg
+		markerWidth := lipgloss.Width(marker)
+		trackWidth := lipgloss.Width(trackInfo)
+		nameWidth := lipgloss.Width(br.Name)
+		msgMax := width - markerWidth - 1 - nameWidth - 1 - trackWidth - 1
+		if msgMax < 0 {
+			msgMax = 0
+		}
+
 		msg := ""
-		if br.LatestMsg != "" {
-			msg = styles.SubtitleStyle.Render(" " + truncateStr(br.LatestMsg, width-40))
+		if br.LatestMsg != "" && msgMax > 0 {
+			trimmed := truncateStr(br.LatestMsg, msgMax)
+			msg = styles.SubtitleStyle.Render(" " + trimmed)
 		}
 
 		line := fmt.Sprintf(" %s %s%s%s", marker, br.Name, trackInfo, msg)
 
+		// Verify line fits panel width — if not, strip msg entirely
+		if lipgloss.Width(line) > width {
+			msg = ""
+			line = fmt.Sprintf(" %s %s%s", marker, br.Name, trackInfo)
+			// If still too wide, truncate name
+			if lipgloss.Width(line) > width {
+				availName := width - markerWidth - 1 - trackWidth - 1
+				if availName < 1 {
+					availName = 1
+				}
+				truncName := truncateStr(br.Name, availName)
+				line = fmt.Sprintf(" %s %s%s", marker, truncName, trackInfo)
+			}
+		}
+
 		if globalIdx == m.Cursor {
-			b.WriteString(styles.ListItemActiveStyle.Render(line))
-		} else if br.IsHead {
-			b.WriteString(styles.ListItemStyle.Render(line))
+			// Replace leading space with ❯ prefix
+			b.WriteString(styles.ListItemActiveStyle.Render("❯" + line[1:]))
 		} else {
 			b.WriteString(styles.ListItemStyle.Render(line))
 		}

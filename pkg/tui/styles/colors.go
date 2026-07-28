@@ -28,4 +28,8 @@ const (
 	Info      = Blue
 	Accent    = Mauve
 	Selection = lipgloss.Color("#45475a")
+
+	// Panel border colors
+	ActivePanelBorderColor   = Accent
+	InactivePanelBorderColor = Overlay0
 )

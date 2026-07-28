@@ -261,6 +261,11 @@ func (n *NativeExec) Log(ctx context.Context, opts LogOptions) ([]*models.Commit
 
 	data, err := n.run(ctx, args...)
 	if err != nil {
+		// Empty repo / unborn HEAD: git log exits with code 128.
+		var gitErr *GitError
+		if asGitErr(err, &gitErr) && gitErr.ExitCode == 128 {
+			return []*models.Commit{}, nil
+		}
 		return nil, err
 	}
 	return ParseLog(data)
@@ -522,6 +527,12 @@ func (n *NativeExec) RebaseSequence(ctx context.Context, opts models.RebaseSeque
 
 func (n *NativeExec) CherryPick(ctx context.Context, sha string) error {
 	_, err := n.run(ctx, "cherry-pick", sha)
+	return err
+}
+
+// CherryPickNoCommit stages changes from a commit without creating a commit.
+func (n *NativeExec) CherryPickNoCommit(ctx context.Context, sha string) error {
+	_, err := n.run(ctx, "cherry-pick", "--no-commit", sha)
 	return err
 }
 

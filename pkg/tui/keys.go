@@ -13,12 +13,13 @@ type KeyMap struct {
 	PageUp   key.Binding
 	PageDown key.Binding
 
-	// View switching
-	TabNext   key.Binding
-	TabPrev   key.Binding
-	TabStatus key.Binding
-	TabLog    key.Binding
-	TabBranch key.Binding
+	// Panel focus
+	PanelNext key.Binding
+	PanelPrev key.Binding
+
+	// Full-screen views
+	ViewPRs    key.Binding
+	ViewIssues key.Binding
 
 	// Actions
 	Enter  key.Binding
@@ -39,8 +40,16 @@ type KeyMap struct {
 	BranchMerge key.Binding
 
 	// Commit
-	Commit key.Binding
-	Amend  key.Binding
+	Commit     key.Binding
+	CommitPush key.Binding
+
+	// AI
+	AIAgent key.Binding
+	AIAsk   key.Binding
+
+	// Log operations
+	CherryPick  key.Binding
+	RebaseStart key.Binding
 
 	// Global
 	Help    key.Binding
@@ -59,12 +68,13 @@ func DefaultKeyMap() KeyMap {
 		PageUp:   key.NewBinding(key.WithKeys("pgup", "ctrl+b"), key.WithHelp("PgUp", "page up")),
 		PageDown: key.NewBinding(key.WithKeys("pgdown", "ctrl+f"), key.WithHelp("PgDn", "page down")),
 
-		// View switching
-		TabNext:   key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "next view")),
-		TabPrev:   key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("S-tab", "prev view")),
-		TabStatus: key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "status")),
-		TabLog:    key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "log")),
-		TabBranch: key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "branches")),
+		// Panel focus
+		PanelNext: key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "next panel")),
+		PanelPrev: key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("S-tab", "prev panel")),
+
+		// Full-screen views
+		ViewPRs:    key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "PRs")),
+		ViewIssues: key.NewBinding(key.WithKeys("4"), key.WithHelp("4", "issues")),
 
 		// Actions
 		Enter:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select")),
@@ -85,12 +95,20 @@ func DefaultKeyMap() KeyMap {
 		BranchMerge: key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "merge")),
 
 		// Commit
-		Commit: key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "commit")),
-		Amend:  key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "amend")),
+		Commit:     key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "commit")),
+		CommitPush: key.NewBinding(key.WithKeys("P"), key.WithHelp("P", "commit & push")),
+
+		// AI
+		AIAgent: key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("C-e", "AI agent")),
+		AIAsk:   key.NewBinding(key.WithKeys("ctrl+g"), key.WithHelp("C-g", "AI ask")),
+
+		// Log operations
+		CherryPick:  key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "cherry-pick")),
+		RebaseStart: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "rebase")),
 
 		// Global
 		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
-		Refresh: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
+		Refresh: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "refresh")),
 		Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	}
 }
@@ -99,10 +117,13 @@ func DefaultKeyMap() KeyMap {
 func (k KeyMap) FullHelp() []key.Binding {
 	return []key.Binding{
 		k.Up, k.Down, k.First, k.Last, k.PageUp, k.PageDown,
-		k.TabNext, k.TabPrev,
+		k.PanelNext, k.PanelPrev,
+		k.ViewPRs, k.ViewIssues,
+		k.AIAgent, k.AIAsk,
 		k.Enter, k.Escape, k.Space,
 		k.Stage, k.Unstage, k.StageAll, k.UnstageAll, k.Discard,
-		k.Commit, k.Amend,
+		k.Commit, k.CommitPush,
+		k.CherryPick, k.RebaseStart,
 		k.Checkout, k.BranchNew, k.BranchDel, k.BranchMerge,
 		k.Refresh, k.Help, k.Quit,
 	}

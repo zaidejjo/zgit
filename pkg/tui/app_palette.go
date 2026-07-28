@@ -1,0 +1,122 @@
+package tui
+
+import (
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/zaidejjo/zgit/pkg/core/config"
+	"github.com/zaidejjo/zgit/pkg/tui/views"
+)
+
+// updatePalette handles the command palette lifecycle.
+func (m *Model) updatePalette(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		key := msg.String()
+		handled := m.palette.HandleKey(key)
+		if !handled {
+			return m, nil
+		}
+
+		// On enter, execute selected command
+		if key == "enter" {
+			cmd := m.palette.SelectedCommand()
+			if cmd != nil {
+				m.palette.Close()
+				m.mode = modeNormal
+				return m.executePaletteCommand(cmd.ID)
+			}
+			return m, nil
+		}
+
+		// If palette was closed
+		if !m.palette.Active() {
+			m.mode = modeNormal
+		}
+	}
+
+	return m, nil
+}
+
+// executePaletteCommand translates a command ID into an action and returns a tea.Cmd.
+func (m *Model) executePaletteCommand(id string) (tea.Model, tea.Cmd) {
+	switch id {
+	case "stage-all":
+		m.stageAll()
+	case "unstage-all":
+		m.unstageAll()
+	case "commit":
+		m.openCommitDialog()
+	case "commit-push":
+		m.pushAfterCommit = true
+		m.openCommitDialog()
+	case "cherry-pick":
+		// Switch to log panel first
+		m.focusedPanel = PanelLog
+		if m.log.Cursor >= 0 && m.log.Cursor < len(m.log.Commits) {
+			m.cherryPickCommit()
+		}
+	case "new-branch":
+		m.focusedPanel = PanelBranch
+	case "merge-branch":
+		m.focusedPanel = PanelBranch
+	case "delete-branch":
+		m.focusedPanel = PanelBranch
+	case "ai-ask":
+		m.aiData.Sidebar.Open(views.ModeAsk)
+		m.calcLayout()
+	case "ai-agent":
+		m.aiData.Sidebar.Open(views.ModeAgent)
+		m.calcLayout()
+	case "open-config":
+		cfg, err := config.New()
+		providers := []string{}
+		if err == nil {
+			providers = cfg.GetProviderKeys()
+			// Ensure active top-level provider is listed even if not in providers map yet
+			activeProvider := cfg.GetString("ai.provider")
+			if activeProvider != "" {
+				found := false
+				for _, p := range providers {
+					if p == activeProvider {
+						found = true
+						break
+					}
+				}
+				if !found {
+					providers = append([]string{activeProvider}, providers...)
+				}
+			}
+		}
+		m.configDlg.OpenAIProviderList(providers)
+		m.mode = modeConfig
+	case "next-panel":
+		m.focusedPanel = (m.focusedPanel + 1) % panelCount
+	case "prev-panel":
+		m.focusedPanel = (m.focusedPanel - 1 + panelCount) % panelCount
+	case "help":
+		m.showHelp = true
+		m.helpView.Input = ""
+		m.helpView.Cursor = 0
+		m.helpView.ShowInput = false
+	case "ai-commit":
+		// Open commit dialog first, then trigger AI generation
+		m.openCommitDialog()
+		go m.generateAICommitMsg()
+		return m, nil
+	case "create-pr":
+		branch := m.currentBranch()
+		if branch == "" {
+			// fallback to palette error mode
+			return m, nil
+		}
+		m.prCreateDlg.Open(branch, "main")
+		m.mode = modePRCreate
+	case "refresh":
+		m.sub.Refresh()
+		m.refreshGitHubData()
+	case "quit":
+		m.quitting = true
+		m.sub.Stop()
+		return m, tea.Quit
+	}
+	return m, nil
+}
