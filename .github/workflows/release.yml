@@ -34,7 +34,7 @@ jobs:
         with:
           distribution: goreleaser
           version: latest
-          args: release --clean --dirty
+          args: release --clean --skip=validate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -74,7 +74,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist
-          cp desktop/build/bin/zgit-desktop "dist/zgit-desktop-v${VERSION}-linux-amd64"
+          cp desktop/build/bin/zgit "dist/zgit-desktop-v${VERSION}-linux-amd64"
           cp images/logo_512.png dist/zgit.png
           cp dist/aur/zgit-desktop-bin/zgit.desktop dist/
           cp dist/flatpak/com.zaidejjo.zgit.metainfo.xml dist/
