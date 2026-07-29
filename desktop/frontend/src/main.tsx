@@ -5,12 +5,13 @@ import router from "./router";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import "./index.css";
 
-// Initialize theme from localStorage (must happen before first render)
+// Initialize theme: explicit preference → system preference → dark
 const savedTheme = localStorage.getItem("zgit-theme");
 if (savedTheme) {
   document.documentElement.dataset.theme = savedTheme;
 } else {
-  document.documentElement.dataset.theme = "dark";
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = prefersDark ? "dark" : "light";
 }
 
 /**

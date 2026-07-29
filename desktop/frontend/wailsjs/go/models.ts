@@ -233,6 +233,22 @@ export namespace models {
 	        this.endpoint = source["endpoint"];
 	    }
 	}
+	export class AppearanceConfig {
+	    theme: string;
+	    accent_color: string;
+	    brightness: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppearanceConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.theme = source["theme"];
+	        this.accent_color = source["accent_color"];
+	        this.brightness = source["brightness"];
+	    }
+	}
 	export class Branch {
 	    name: string;
 	    full_ref: string;
@@ -1083,6 +1099,38 @@ export namespace models {
 	        this.following = source["following"];
 	        this.public_repos = source["public_repos"];
 	    }
+	}
+	export class UserPreferences {
+	    appearance: AppearanceConfig;
+	    keybindings: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new UserPreferences(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.appearance = this.convertValues(source["appearance"], AppearanceConfig);
+	        this.keybindings = source["keybindings"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class WorkflowRun {
 	    id: number;

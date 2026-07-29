@@ -33,10 +33,12 @@ const bottomNavItems = [
 export default function AppLayout() {
   const {
     activeTab, setActiveTab, error, setError,
+    successMessage, setSuccessMessage,
     fetchStatus, checkGitHubAuth, ghAuthenticated, ghUser, setLoginDialogOpen,
     repoPath, recentRepos, openRepo, selectAndOpenRepo, fetchRecentRepos, refreshAll,
     toggleAIPanel, aiPanelOpen, currentBranch, status,
     theme, setTheme,
+    loadUserPreferences, userPreferences,
   } = useAppStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -52,6 +54,7 @@ export default function AppLayout() {
     fetchStatus();
     checkGitHubAuth();
     fetchRecentRepos();
+    loadUserPreferences();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -74,30 +77,58 @@ export default function AppLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keyboard shortcuts
+  // Parse a shortcut string like "Ctrl+K" or "Ctrl+Shift+A" into a matcher function
+  const matchShortcut = useCallback((shortcut: string | undefined, e: KeyboardEvent): boolean => {
+    if (!shortcut) return false;
+    const parts = shortcut.split("+").map((p) => p.trim());
+    const needsCtrl = parts.includes("Ctrl");
+    const needsAlt = parts.includes("Alt");
+    const needsShift = parts.includes("Shift");
+    const key = parts.find((p) => p !== "Ctrl" && p !== "Alt" && p !== "Shift");
+
+    const modMatch = (needsCtrl === (e.ctrlKey || e.metaKey))
+      && (needsAlt === e.altKey)
+      && (needsShift === e.shiftKey);
+    if (!modMatch) return false;
+
+    if (key) {
+      const pressedKey = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+      return pressedKey === key;
+    }
+    return true;
+  }, []);
+
+  // Keyboard shortcuts — reads from userPreferences for overridable bindings
   useEffect(() => {
+    const bindings = userPreferences?.keybindings || {};
+
     const handler = (e: KeyboardEvent) => {
-      // Cmd+K / Ctrl+K — Command Palette
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      // Command Palette
+      if (matchShortcut(bindings.command_palette || "Ctrl+K", e)) {
         e.preventDefault();
         setCommandPaletteOpen(true);
+        return;
       }
-      if (e.ctrlKey && e.shiftKey && e.key === "A") {
+      // Toggle AI Panel
+      if (matchShortcut(bindings.toggle_ai_panel || "Ctrl+Shift+A", e)) {
         e.preventDefault();
         if (location.pathname === "/ai") {
           navigate({ to: "/" });
           return;
         }
         toggleAIPanel();
+        return;
       }
-      if (e.ctrlKey && e.shiftKey && e.key === "F") {
+      // Fullscreen AI Chat
+      if (matchShortcut(bindings.fullscreen_ai || "Ctrl+Shift+F", e)) {
         e.preventDefault();
         navigate({ to: "/ai" });
+        return;
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [toggleAIPanel, navigate, location.pathname]);
+  }, [toggleAIPanel, navigate, location.pathname, matchShortcut, userPreferences?.keybindings]);
 
   // Close repo dropdown on outside click
   useEffect(() => {
@@ -301,6 +332,45 @@ export default function AppLayout() {
             );
           })}
         </div>
+
+        {/* GitHub Auth status */}
+        <div className="px-3 py-2 border-t border-border/30">
+          {ghAuthenticated && ghUser ? (
+            <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-accent/30 transition-colors group">
+              <img
+                src={ghUser.avatar_url}
+                alt={ghUser.login}
+                className="w-6 h-6 rounded-full ring-1 ring-border shrink-0"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate">{ghUser.login}</p>
+                <p className="text-[10px] text-muted-foreground truncate">
+                  {ghUser.name || "GitHub user"}
+                </p>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  useAppStore.getState().logoutGitHub();
+                }}
+                className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all text-[10px]"
+                title="Disconnect GitHub"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setLoginDialogOpen(true)}
+              className="sidebar-item w-full text-xs"
+            >
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+              </svg>
+              <span>Sign in with GitHub</span>
+            </button>
+          )}
+        </div>
       </aside>
 
       {/* ─── Main Area ─── */}
@@ -399,11 +469,30 @@ export default function AppLayout() {
 
         {/* Error toast */}
         {error && (
-          <div className="fixed top-4 right-4 z-50 max-w-md glass text-foreground px-4 py-3 rounded-xl shadow-2xl text-sm flex items-center gap-2 animate-in slide-in-from-right-2">
-            <span className="flex-1">{error}</span>
+          <div className="fixed top-4 right-4 z-50 max-w-md glass text-foreground px-4 py-3 rounded-xl shadow-2xl text-sm flex items-center gap-2 border border-destructive/30 animate-in slide-in-from-right-2 fade-in">
+            <svg className="w-4 h-4 text-destructive shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span className="flex-1 text-xs">{error}</span>
             <button
               className="text-muted-foreground hover:text-foreground shrink-0 press-scale"
               onClick={() => setError(null)}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Success toast */}
+        {successMessage && (
+          <div className="fixed top-4 right-20 z-50 max-w-md glass text-foreground px-4 py-3 rounded-xl shadow-2xl text-sm flex items-center gap-2 border border-success/30 animate-in slide-in-from-right-2 fade-in">
+            <svg className="w-4 h-4 text-success shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            <span className="flex-1 text-xs">{successMessage}</span>
+            <button
+              className="text-muted-foreground hover:text-foreground shrink-0 press-scale"
+              onClick={() => setSuccessMessage(null)}
             >
               <X className="w-3.5 h-3.5" />
             </button>

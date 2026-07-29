@@ -4,81 +4,84 @@
 
 @layer base {
   /*
-   * ─── Theme: Dark (Deep Slate — Default) ───
-   * Background: #0F172A  → hsl(222.2 84% 4.9%)
-   * Accent:     #22C55E  → hsl(142 71% 45%)
+   * ─── Theme: Dark (Midnight Black — Default) ───
+   * Background: #050508 / #090d16  → deep near-black with blue tint
+   * Accent:     #22C55E            → hsl(142 71% 45%) crisp green
    */
   :root,
   [data-theme="dark"] {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 47% 11.2%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 47% 11.2%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 142 71% 45%;
+    --background: 230 20% 5%;        /* #0a0d14 */
+    --foreground: 210 40% 96%;       /* #f0f4f8 */
+    --card: 230 15% 9%;              /* #0f1219 */
+    --card-foreground: 210 40% 96%;
+    --popover: 230 15% 9%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 142 71% 45%;          /* #22C55E */
     --primary-foreground: 0 0% 100%;
-    --secondary: 217 33% 17.3%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 17.3%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 22%;
-    --accent-foreground: 210 40% 98%;
+    --secondary: 230 12% 14%;        /* #1a1e28 */
+    --secondary-foreground: 210 40% 96%;
+    --muted: 230 12% 14%;
+    --muted-foreground: 215 12% 60%; /* #8792a7 */
+    --accent: 230 12% 18%;           /* #222736 */
+    --accent-foreground: 210 40% 96%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
-    --border: 217 33% 17.3%;
-    --input: 217 33% 17.3%;
+    --border: 230 10% 18%;           /* #262b38 */
+    --input: 230 10% 18%;
     --ring: 142 71% 45%;
     --radius: 0.5rem;
 
     --git-added: 142 71% 45%;
     --git-modified: 38 92% 50%;
     --git-deleted: 0 84% 60%;
-    --git-untracked: 215 20% 65%;
+    --git-untracked: 215 12% 60%;
     --pr-open: 142 71% 45%;
     --pr-closed: 0 84% 60%;
     --pr-merged: 271 81% 66%;
     --pr-draft: 38 92% 50%;
 
-    --glass-bg: 222.2 47% 11.2% / 0.6;
-    --glass-border: 217 33% 22% / 0.5;
-    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+    --glass-bg: 230 15% 9% / 0.75;
+    --glass-border: 230 10% 22% / 0.5;
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 
-    --selection-bg: 142 71% 45% / 0.3;
-    --scrollbar-thumb: 217 33% 25%;
-    --scrollbar-track: 222.2 47% 8%;
+    --selection-bg: 142 71% 45% / 0.25;
+    --scrollbar-thumb: 230 10% 22%;
+    --scrollbar-track: 230 20% 4%;
 
     color-scheme: dark;
   }
 
   /*
-   * ─── Theme: Catppuccin Mocha ───
-   * Palette: https://catppuccin.com/palette
+   * ─── Theme: Catppuccin Mocha (exact palette) ───
+   * Base: #1e1e2e → hsl(240 21% 15%)
+   * Text: #cdd6f4 → hsl(226 64% 88%)
+   * Mauve: #cba6f7 → hsl(267 84% 81%)
+   * See https://catppuccin.com/palette
    */
   [data-theme="catppuccin"] {
-    --background: 240 21% 15%;     /* #1e1e2e */
-    --foreground: 226 64% 88%;     /* #cdd6f4 */
-    --card: 240 21% 12%;           /* #181825 */
+    --background: 240 21% 15%;     /* #1e1e2e base */
+    --foreground: 226 64% 88%;     /* #cdd6f4 text */
+    --card: 240 21% 12%;           /* #181825 mantle */
     --card-foreground: 226 64% 88%;
     --popover: 240 21% 12%;
     --popover-foreground: 226 64% 88%;
-    --primary: 267 84% 81%;        /* mauve  #cba6f7 */
+    --primary: 267 84% 81%;        /* #cba6f7 mauve */
     --primary-foreground: 240 21% 12%;
-    --secondary: 240 16% 18%;      /* surface0  #313244 */
+    --secondary: 240 16% 18%;      /* #313244 surface0 */
     --secondary-foreground: 226 64% 88%;
     --muted: 240 16% 18%;
-    --muted-foreground: 231 11% 57%; /* overlay0 #9399b2 */
-    --accent: 240 16% 23%;         /* surface1 #45475a */
+    --muted-foreground: 231 11% 57%; /* #9399b2 overlay0 */
+    --accent: 240 16% 23%;         /* #45475a surface1 */
     --accent-foreground: 226 64% 88%;
-    --destructive: 347 87% 78%;    /* red #f38ba8 */
+    --destructive: 347 87% 78%;    /* #f38ba8 red */
     --destructive-foreground: 240 21% 12%;
-    --success: 115 54% 76%;        /* green #a6e3a1 */
+    --success: 115 54% 76%;        /* #a6e3a1 green */
     --success-foreground: 240 21% 12%;
-    --warning: 41 86% 83%;         /* yellow #f9e2af */
+    --warning: 41 86% 83%;         /* #f9e2af yellow */
     --warning-foreground: 240 21% 12%;
     --border: 240 16% 21%;         /* surface0-ish */
     --input: 240 16% 21%;
@@ -95,7 +98,7 @@
     --pr-merged: 267 84% 81%;
     --pr-draft: 41 86% 83%;
 
-    --glass-bg: 240 21% 15% / 0.7;
+    --glass-bg: 240 21% 15% / 0.75;
     --glass-border: 240 16% 23% / 0.5;
     --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
 

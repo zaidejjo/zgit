@@ -9,17 +9,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/zaidejjo/zgit/pkg/core"
 	"github.com/zaidejjo/zgit/pkg/core/ai"
+	"github.com/zaidejjo/zgit/pkg/core/config"
 	"github.com/zaidejjo/zgit/pkg/core/git"
 	"github.com/zaidejjo/zgit/pkg/core/github"
 	"github.com/zaidejjo/zgit/pkg/core/models"
@@ -36,9 +39,11 @@ type App struct {
 	agent       *ai.Agent
 	agentMu     sync.Mutex
 
-	sessionManager *ai.SessionManager
-	askCancel      context.CancelFunc
-	askCancelMu    sync.Mutex
+	sessionManager   *ai.SessionManager
+	askCancel        context.CancelFunc
+	askCancelMu      sync.Mutex
+	devicePollCancel context.CancelFunc
+	devicePollMu     sync.Mutex
 }
 
 // NewApp creates a new App with the given engine.
@@ -171,7 +176,7 @@ func (a *App) restartFileWatcher() {
 					continue
 				}
 				lastEvent = now
-				runtime.EventsEmit(a.ctx, "fs:status-changed", event.Name)
+				wailsRuntime.EventsEmit(a.ctx, "fs:status-changed", event.Name)
 			case err, ok := <-watcher.Errors:
 				if !ok {
 					return
@@ -583,6 +588,33 @@ func (a *App) GetAIConfig() (models.AIConfig, error) {
 	}, nil
 }
 
+// GetUserPreferences returns the current user preferences (appearance + keybindings).
+func (a *App) GetUserPreferences() models.UserPreferences {
+	cfg := a.engine.Config.GetUserPreferences()
+	return models.UserPreferences{
+		Appearance: models.AppearanceConfig{
+			Theme:       cfg.Appearance.Theme,
+			AccentColor: cfg.Appearance.AccentColor,
+			Brightness:  cfg.Appearance.Brightness,
+		},
+		Keybindings: cfg.Keybindings,
+	}
+}
+
+// SetUserPreferences saves user preferences (appearance + keybindings) to disk.
+func (a *App) SetUserPreferences(prefs models.UserPreferences) error {
+	cfg := a.engine.Config
+	cp := config.UserPreferences{
+		Appearance: config.AppearanceConfig{
+			Theme:       prefs.Appearance.Theme,
+			AccentColor: prefs.Appearance.AccentColor,
+			Brightness:  prefs.Appearance.Brightness,
+		},
+		Keybindings: prefs.Keybindings,
+	}
+	return cfg.SetUserPreferences(cp)
+}
+
 // SetAIConfig saves the AI provider configuration.
 func (a *App) SetAIConfig(provider, apiKey, model, endpoint string) error {
 	cfg := a.engine.Config
@@ -911,17 +943,17 @@ func (a *App) AskChat(message string) (string, error) {
 func (a *App) AskChatStream(message string) error {
 	aiCfg := a.getAskConfig()
 	if aiCfg.Provider == "" {
-		runtime.EventsEmit(a.ctx, "ai:error", "AI provider not configured — go to Settings to set up AI")
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", "AI provider not configured — go to Settings to set up AI")
 		return nil
 	}
 	if aiCfg.APIKey == "" {
-		runtime.EventsEmit(a.ctx, "ai:error", "API key not configured — go to Settings to set your API key")
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", "API key not configured — go to Settings to set your API key")
 		return nil
 	}
 
 	provider, err := ai.NewAskProvider(aiCfg)
 	if err != nil {
-		runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("create ask provider: %s", err.Error()))
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("create ask provider: %s", err.Error()))
 		return nil
 	}
 
@@ -930,20 +962,20 @@ func (a *App) AskChatStream(message string) error {
 	if session == nil || session.Mode != "ask" {
 		session, err = a.sessionManager.Create("Ask Session", "ask")
 		if err != nil {
-			runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("create session: %s", err.Error()))
+			wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("create session: %s", err.Error()))
 			return nil
 		}
 	}
 
 	// Add user message
 	if err := a.sessionManager.AddMessage(session.ID, ai.Message{Role: "user", Content: message}); err != nil {
-		runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("add message: %s", err.Error()))
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("add message: %s", err.Error()))
 		return nil
 	}
 
 	messages, err := a.sessionManager.GetMessages(session.ID)
 	if err != nil {
-		runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("get messages: %s", err.Error()))
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("get messages: %s", err.Error()))
 		return nil
 	}
 
@@ -961,20 +993,20 @@ func (a *App) AskChatStream(message string) error {
 		defer cancel()
 
 		resp, err := provider.AskStream(ctx, messages, func(token string) {
-			runtime.EventsEmit(a.ctx, "ai:token", token)
+			wailsRuntime.EventsEmit(a.ctx, "ai:token", token)
 		})
 		if err != nil {
-			runtime.EventsEmit(a.ctx, "ai:error", err.Error())
+			wailsRuntime.EventsEmit(a.ctx, "ai:error", err.Error())
 			return
 		}
 
 		// Add assistant response to session
 		if err := a.sessionManager.AddMessage(session.ID, resp); err != nil {
-			runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("save response: %s", err.Error()))
+			wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("save response: %s", err.Error()))
 			return
 		}
 
-		runtime.EventsEmit(a.ctx, "ai:done", resp.Content)
+		wailsRuntime.EventsEmit(a.ctx, "ai:done", resp.Content)
 	}()
 
 	return nil
@@ -1121,6 +1153,24 @@ func (a *App) AuthenticateGitHub(token string) error {
 	return a.engine.AuthenticateGitHub(token)
 }
 
+// SaveGitHubToken saves a GitHub token without validating it.
+// Returns immediately — no network calls. Use ValidateGitHubToken separately.
+func (a *App) SaveGitHubToken(token string) error {
+	return a.engine.SaveGitHubToken(token)
+}
+
+// ValidateGitHubToken fetches the authenticated GitHub user to validate the token.
+// Call this after SaveGitHubToken if you need the user profile.
+// Returns the user on success, or an error if validation fails.
+func (a *App) ValidateGitHubToken() (*models.User, error) {
+	if !a.engine.IsGitHubAuthenticated() {
+		return nil, fmt.Errorf("GitHub not authenticated — save a token first")
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.GitHub.GetAuthenticatedUser(ctx)
+}
+
 // StartDeviceFlow initiates GitHub OAuth Device Flow.
 // Returns the device code, user code, verification URI, and polling interval.
 func (a *App) StartDeviceFlow() (*models.DeviceFlowCode, error) {
@@ -1156,16 +1206,70 @@ func (a *App) PollDeviceFlow(deviceCode string) (string, error) {
 		clientID = github.DefaultDeviceFlowClientID
 	}
 
-	token, err := github.PollDeviceFlow(ctx, clientID, deviceCode)
-	if err != nil {
-		// If it's an authorization_pending error, return empty string — caller retries
-		errStr := err.Error()
-		if strings.Contains(errStr, "authorization_pending") {
-			return "", nil
-		}
-		return "", err
+	// github.PollDeviceFlow returns ("", nil) for authorization_pending internally.
+	return github.PollDeviceFlow(ctx, clientID, deviceCode)
+}
+
+// PollDeviceFlowWithRetry polls GitHub for device flow authorization with automatic retry.
+// It respects the poll interval, handles slow_down by increasing interval, and blocks until
+// the user authorizes, the device code expires, or 10 minutes elapses.
+// The interval parameter comes from the StartDeviceFlow response.
+func (a *App) PollDeviceFlowWithRetry(deviceCode string, interval int) (string, error) {
+	// Create cancellable context — CancelDeviceFlow can stop this early
+	ctx, cancel := context.WithCancel(a.getContext())
+	a.devicePollMu.Lock()
+	if a.devicePollCancel != nil {
+		a.devicePollCancel()
 	}
-	return token, nil
+	a.devicePollCancel = cancel
+	a.devicePollMu.Unlock()
+
+	clientID := a.engine.Config.GetString("github.device_flow_client_id")
+	if clientID == "" {
+		clientID = github.DefaultDeviceFlowClientID
+	}
+
+	token, err := github.PollDeviceFlowWithRetry(ctx, clientID, deviceCode, interval)
+	// Clean up cancel func after poll completes
+	a.devicePollMu.Lock()
+	a.devicePollCancel = nil
+	a.devicePollMu.Unlock()
+	return token, err
+}
+
+// CancelDeviceFlow cancels an in-flight PollDeviceFlowWithRetry call.
+func (a *App) CancelDeviceFlow() {
+	a.devicePollMu.Lock()
+	defer a.devicePollMu.Unlock()
+	if a.devicePollCancel != nil {
+		a.devicePollCancel()
+		a.devicePollCancel = nil
+	}
+}
+
+// OpenURL opens the given URL in the system browser without blocking the Wails bridge.
+// Uses os/exec with .Start() (detached) instead of Wails' synchronous BrowserOpenURL,
+// which can block on Linux when xdg-open waits for the browser process.
+func (a *App) OpenURL(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	// Detach so the Go process doesn't wait for the browser/xdg-open to finish
+	if cmd != nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		if err := cmd.Start(); err == nil {
+			return nil
+		}
+	}
+	// Fallback: Wails runtime (may block on xdg-open but works everywhere)
+	wailsRuntime.BrowserOpenURL(a.ctx, url)
+	return nil
 }
 
 // GetGitHubUser returns the authenticated GitHub user.
@@ -1176,6 +1280,11 @@ func (a *App) GetGitHubUser() (*models.User, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.GitHub.GetAuthenticatedUser(ctx)
+}
+
+// LogoutGitHub clears the GitHub token and client.
+func (a *App) LogoutGitHub() error {
+	return a.engine.LogoutGitHub()
 }
 
 // getGitHubClient returns the GitHub client or an error if not authenticated.
@@ -1374,7 +1483,7 @@ func (a *App) OpenRepo(path string) error {
 	a.restartFileWatcher()
 	// Notify frontend
 	if a.ctx != nil {
-		runtime.EventsEmit(a.ctx, "repo:switched", resolved)
+		wailsRuntime.EventsEmit(a.ctx, "repo:switched", resolved)
 	}
 	return nil
 }
@@ -1390,7 +1499,7 @@ func (a *App) PickDirectory() (string, error) {
 	if a.ctx == nil {
 		return "", fmt.Errorf("app context not ready")
 	}
-	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+	dir, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
 		Title: "Select Git Repository",
 	})
 	if err != nil {

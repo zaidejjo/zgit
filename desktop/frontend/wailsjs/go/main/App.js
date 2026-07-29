@@ -54,6 +54,10 @@ export function AuthenticateGitHub(arg1) {
   return window['go']['main']['App']['AuthenticateGitHub'](arg1);
 }
 
+export function CancelDeviceFlow() {
+  return window['go']['main']['App']['CancelDeviceFlow']();
+}
+
 export function CancelWorkflowRun(arg1) {
   return window['go']['main']['App']['CancelWorkflowRun'](arg1);
 }
@@ -210,6 +214,10 @@ export function GetStatus() {
   return window['go']['main']['App']['GetStatus']();
 }
 
+export function GetUserPreferences() {
+  return window['go']['main']['App']['GetUserPreferences']();
+}
+
 export function GetWorkflowJobLogs(arg1) {
   return window['go']['main']['App']['GetWorkflowJobLogs'](arg1);
 }
@@ -254,6 +262,10 @@ export function ListWorkflowRuns() {
   return window['go']['main']['App']['ListWorkflowRuns']();
 }
 
+export function LogoutGitHub() {
+  return window['go']['main']['App']['LogoutGitHub']();
+}
+
 export function MergePullRequest(arg1, arg2) {
   return window['go']['main']['App']['MergePullRequest'](arg1, arg2);
 }
@@ -262,12 +274,20 @@ export function OpenRepo(arg1) {
   return window['go']['main']['App']['OpenRepo'](arg1);
 }
 
+export function OpenURL(arg1) {
+  return window['go']['main']['App']['OpenURL'](arg1);
+}
+
 export function PickDirectory() {
   return window['go']['main']['App']['PickDirectory']();
 }
 
 export function PollDeviceFlow(arg1) {
   return window['go']['main']['App']['PollDeviceFlow'](arg1);
+}
+
+export function PollDeviceFlowWithRetry(arg1, arg2) {
+  return window['go']['main']['App']['PollDeviceFlowWithRetry'](arg1, arg2);
 }
 
 export function ReRunWorkflow(arg1) {
@@ -300,6 +320,10 @@ export function RevertCommit(arg1) {
 
 export function Run(arg1) {
   return window['go']['main']['App']['Run'](arg1);
+}
+
+export function SaveGitHubToken(arg1) {
+  return window['go']['main']['App']['SaveGitHubToken'](arg1);
 }
 
 export function SessionActiveID() {
@@ -340,6 +364,10 @@ export function SetAIConfig(arg1, arg2, arg3, arg4) {
 
 export function SetRemoteURL(arg1, arg2) {
   return window['go']['main']['App']['SetRemoteURL'](arg1, arg2);
+}
+
+export function SetUserPreferences(arg1) {
+  return window['go']['main']['App']['SetUserPreferences'](arg1);
 }
 
 export function StageAll() {
@@ -404,4 +432,8 @@ export function UnstageAll() {
 
 export function UnstageFile(arg1) {
   return window['go']['main']['App']['UnstageFile'](arg1);
+}
+
+export function ValidateGitHubToken() {
+  return window['go']['main']['App']['ValidateGitHubToken']();
 }

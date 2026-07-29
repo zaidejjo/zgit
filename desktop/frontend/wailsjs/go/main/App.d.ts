@@ -30,6 +30,8 @@ export function AskChatStream(arg1:string):Promise<void>;
 
 export function AuthenticateGitHub(arg1:string):Promise<void>;
 
+export function CancelDeviceFlow():Promise<void>;
+
 export function CancelWorkflowRun(arg1:number):Promise<void>;
 
 export function CheckoutBranch(arg1:string):Promise<void>;
@@ -108,6 +110,8 @@ export function GetRepository():Promise<models.Repo>;
 
 export function GetStatus():Promise<models.Status>;
 
+export function GetUserPreferences():Promise<models.UserPreferences>;
+
 export function GetWorkflowJobLogs(arg1:number):Promise<string>;
 
 export function GitFetch():Promise<void>;
@@ -130,13 +134,19 @@ export function ListWorkflowJobs(arg1:number):Promise<Array<models.Job>>;
 
 export function ListWorkflowRuns():Promise<Array<models.WorkflowRun>>;
 
+export function LogoutGitHub():Promise<void>;
+
 export function MergePullRequest(arg1:number,arg2:string):Promise<void>;
 
 export function OpenRepo(arg1:string):Promise<void>;
 
+export function OpenURL(arg1:string):Promise<void>;
+
 export function PickDirectory():Promise<string>;
 
 export function PollDeviceFlow(arg1:string):Promise<string>;
+
+export function PollDeviceFlowWithRetry(arg1:string,arg2:number):Promise<string>;
 
 export function ReRunWorkflow(arg1:number):Promise<void>;
 
@@ -153,6 +163,8 @@ export function ResolveGitRoot(arg1:string):Promise<string>;
 export function RevertCommit(arg1:string):Promise<void>;
 
 export function Run(arg1:embed.FS):Promise<void>;
+
+export function SaveGitHubToken(arg1:string):Promise<void>;
 
 export function SessionActiveID():Promise<string>;
 
@@ -173,6 +185,8 @@ export function SessionSwitch(arg1:string):Promise<ai.SessionSummary>;
 export function SetAIConfig(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function SetRemoteURL(arg1:string,arg2:string):Promise<void>;
+
+export function SetUserPreferences(arg1:models.UserPreferences):Promise<void>;
 
 export function StageAll():Promise<void>;
 
@@ -205,3 +219,5 @@ export function UndoLastAction():Promise<string>;
 export function UnstageAll():Promise<void>;
 
 export function UnstageFile(arg1:string):Promise<void>;
+
+export function ValidateGitHubToken():Promise<models.User>;
