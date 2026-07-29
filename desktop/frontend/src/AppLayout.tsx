@@ -503,10 +503,14 @@ export default function AppLayout() {
         <UndoBanner />
 
         {/* Main content */}
-        <main className="flex-1 overflow-auto">
-          <div className="p-5">
+        <main className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          {location.pathname === "/ai" ? (
             <Outlet />
-          </div>
+          ) : (
+            <div className="flex-1 overflow-auto p-5">
+              <Outlet />
+            </div>
+          )}
         </main>
       </div>
 

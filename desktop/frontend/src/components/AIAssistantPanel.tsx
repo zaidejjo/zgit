@@ -46,6 +46,15 @@ export default function AIAssistantPanel() {
     }
   }, [aiPanelOpen]);
 
+  // Auto-activate Ask mode when panel opens — shows input area immediately
+  useEffect(() => {
+    if (aiPanelOpen && !aiSessionActive) {
+      if (aiMode === "ask") {
+        useAppStore.setState({ aiSessionActive: true });
+      }
+    }
+  }, [aiPanelOpen, aiSessionActive, aiMode]);
+
   const handleSend = async () => {
     const msg = input.trim();
     if (!msg || aiThinking) return;

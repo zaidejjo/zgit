@@ -225,7 +225,7 @@ function parseMarkdown(text: string): ReactNode[] {
       nodes.push(
         <pre
           key={`code-${i}`}
-          className="bg-black/20 dark:bg-black/40 rounded-md p-2.5 text-xs font-mono overflow-x-auto border border-border/30 my-1"
+          className="bg-muted/30 rounded-md p-2.5 text-xs font-mono overflow-x-auto border border-border/30 my-1"
         >
           {lang && (
             <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-1 -mt-0.5">
@@ -304,7 +304,7 @@ function renderInlineContent(text: string): ReactNode[] {
       nodes.push(
         <code
           key={key++}
-          className="bg-black/20 dark:bg-black/40 px-1 py-0.5 rounded text-xs font-mono"
+          className="bg-muted/30 px-1 py-0.5 rounded text-xs font-mono"
         >
           {part.slice(1, -1)}
         </code>
