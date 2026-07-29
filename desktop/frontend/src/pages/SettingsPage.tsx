@@ -133,7 +133,7 @@ export default function SettingsPage() {
                     placeholder={placeholder}
                     autoFocus
                   />
-                  <button className="p-1 text-green-600 hover:bg-green-500/10 rounded" onClick={saveEdit} title="Save">
+                  <button className="p-1 text-success hover:bg-success/10 rounded" onClick={saveEdit} title="Save">
                     <Save className="w-3.5 h-3.5" />
                   </button>
                   <button className="p-1 text-muted-foreground hover:text-foreground rounded" onClick={() => setEditingKey(null)} title="Cancel">

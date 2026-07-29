@@ -4,67 +4,84 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 47% 11.2%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 47% 11.2%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 142 71% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 17.3%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17.3%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 22%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --border: 217 33% 17.3%;
+    --input: 217 33% 17.3%;
+    --ring: 142 71% 45%;
     --radius: 0.5rem;
 
     /* zgit semantic colors */
     --git-added: 142 71% 45%;
     --git-modified: 38 92% 50%;
     --git-deleted: 0 84% 60%;
-    --git-untracked: 240 4% 65%;
+    --git-untracked: 215 20% 65%;
     --pr-open: 142 71% 45%;
     --pr-closed: 0 84% 60%;
     --pr-merged: 271 81% 66%;
     --pr-draft: 38 92% 50%;
+
+    /* glassmorphism */
+    --glass-bg: 222.2 47% 11.2% / 0.6;
+    --glass-border: 217 33% 22% / 0.5;
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 47% 11.2%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 47% 11.2%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 142 71% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 17.3%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17.3%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 22%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --border: 217 33% 17.3%;
+    --input: 217 33% 17.3%;
+    --ring: 142 71% 45%;
 
     --git-added: 142 71% 45%;
     --git-modified: 38 92% 50%;
     --git-deleted: 0 84% 60%;
-    --git-untracked: 240 4% 65%;
+    --git-untracked: 215 20% 65%;
     --pr-open: 142 71% 45%;
     --pr-closed: 0 84% 60%;
     --pr-merged: 271 81% 66%;
     --pr-draft: 38 92% 50%;
+
+    --glass-bg: 222.2 47% 11.2% / 0.6;
+    --glass-border: 217 33% 22% / 0.5;
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
   }
 }
 
@@ -73,7 +90,78 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
-    font-family: system-ui, -apple-system, sans-serif;
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer utilities {
+  /* Glassmorphism utility */
+  .glass {
+    background: hsl(var(--glass-bg));
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    border: 1px solid hsl(var(--glass-border));
+    box-shadow: var(--glass-shadow);
+  }
+
+  .glass-hover {
+    transition: background 200ms ease, border-color 200ms ease;
+  }
+  .glass-hover:hover {
+    background: hsl(222.2 47% 16% / 0.7);
+    border-color: hsl(217 33% 28% / 0.6);
+  }
+
+  /* Subtle glow for accents */
+  .glow-green {
+    box-shadow: 0 0 20px hsl(142 71% 45% / 0.15);
+  }
+  .glow-red {
+    box-shadow: 0 0 20px hsl(0 84% 60% / 0.15);
+  }
+
+  /* Micro-interaction scale press */
+  .press-scale {
+    transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .press-scale:active {
+    transform: scale(0.97);
+  }
+
+  /* Command palette overlay */
+  .command-overlay {
+    background: hsl(0 0% 0% / 0.6);
+    backdrop-filter: blur(4px);
+  }
+
+  /* Sidebar item */
+  .sidebar-item {
+    @apply flex items-center gap-2.5 w-full px-3 py-2 text-sm rounded-lg
+           transition-all duration-150 ease-out
+           text-muted-foreground hover:text-foreground hover:bg-accent/50
+           cursor-pointer select-none;
+  }
+
+  .sidebar-item.active {
+    @apply bg-primary/10 text-primary font-medium;
+    box-shadow: inset 2px 0 0 hsl(var(--primary));
+  }
+
+  /* File row polish */
+  .file-row {
+    @apply flex items-center gap-2 px-3 py-2 border-l-2 cursor-pointer
+           transition-all duration-150 ease-out text-sm;
+  }
+  .file-row:hover {
+    @apply bg-accent/30;
+  }
+  .file-row.selected {
+    @apply bg-accent/40;
+  }
+
+  /* Badge status dot */
+  .status-dot {
+    @apply w-2 h-2 rounded-full shrink-0;
   }
 }
