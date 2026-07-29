@@ -18,24 +18,16 @@ builds:
       - CGO_ENABLED=0
     goos:
       - linux
-      - darwin
-      - windows
     goarch:
       - amd64
-      - arm64
     goarm:
       - "7"
-    ignore:
-      - goos: windows
-        goarch: arm64
+    ignore: []
 
 archives:
   - id: tarball
-    name_template: >-
-      {{ .ProjectName }}-v{{ .Version }}-{{ if eq .Os "darwin" }}darwin{{ else }}{{ .Os }}{{ end }}-{{ .Arch }}
-    format_overrides:
-      - goos: windows
-        format: zip
+    name_template: "{{ .ProjectName }}-v{{ .Version }}-linux-amd64"
+    format: tar.gz
     files:
       - LICENSE
       - README.md
@@ -60,6 +52,9 @@ changelog:
       - Merge remote-tracking branch
 
 release:
+  github:
+    owner: zaidejjo
+    name: zgit
   # Assets uploaded via separate desktop jobs; goreleaser only handles TUI.
   header: |
     ## zgit {{ .Version }} — Release Notes

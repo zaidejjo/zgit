@@ -6,22 +6,20 @@ pkgname=zgit-desktop-bin
 pkgver=__VERSION__
 pkgrel=1
 pkgdesc="A modern, fast Git & GitHub client — Desktop app (Wails)"
-arch=('x86_64' 'aarch64')
+arch=('x86_64')
 url="https://github.com/zaidejjo/zgit"
 license=('Apache')
-depends=('git' 'webkit2gtk-4.0' 'gtk3' 'libayatana-appindicator')
+depends=('git' 'webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator')
 makedepends=()
 provides=("${pkgname%-bin}=${pkgver}")
 conflicts=("${pkgname%-bin}")
-source_x86_64=("${url}/releases/download/v${pkgver}/zgit-desktop-v${pkgver}-linux-amd64.tar.gz")
-source_aarch64=("${url}/releases/download/v${pkgver}/zgit-desktop-v${pkgver}-linux-arm64.tar.gz")
-sha256sums_x86_64=('__SHA256SUM_X86_64__')
-sha256sums_aarch64=('__SHA256SUM_AARCH64__')
+source=("${url}/releases/download/v${pkgver}/zgit-desktop-v${pkgver}-linux-amd64.tar.gz")
+sha256sums=('__SHA256SUM__')
 
 package() {
   local _destdir="${pkgdir}/opt/zgit-desktop"
   install -d "${_destdir}"
-  tar -xzf "${srcdir}/zgit-desktop-v${pkgver}-linux-${CARCH}.tar.gz" -C "${_destdir}"
+  tar -xzf "${srcdir}/zgit-desktop-v${pkgver}-linux-amd64.tar.gz" -C "${_destdir}"
 
   # Binary
   install -Dm755 "${_destdir}/zgit-desktop" "${pkgdir}/usr/bin/zgit-desktop"
