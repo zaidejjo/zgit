@@ -3,9 +3,9 @@ import { Outlet, useNavigate, useLocation } from "@tanstack/react-router";
 import {
   GitCommitHorizontal, History, GitBranch, GitPullRequest,
   CircleDot, Play, Globe, Tag, Settings, FolderOpen, Folder,
-  X, Sparkles, Command, Search, ChevronDown, GitFork,
+  X, Sparkles, Command, Search, ChevronDown, GitFork, Palette,
 } from "lucide-react";
-import { useAppStore } from "@/store/app";
+import { useAppStore, type Theme, THEMES } from "@/store/app";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import LoginDialog from "@/components/LoginDialog";
@@ -36,17 +36,19 @@ export default function AppLayout() {
     fetchStatus, checkGitHubAuth, ghAuthenticated, ghUser, setLoginDialogOpen,
     repoPath, recentRepos, openRepo, selectAndOpenRepo, fetchRecentRepos, refreshAll,
     toggleAIPanel, aiPanelOpen, currentBranch, status,
+    theme, setTheme,
   } = useAppStore();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [repoMenuOpen, setRepoMenuOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const repoMenuRef = useRef<HTMLDivElement>(null);
+  const themeMenuRef = useRef<HTMLDivElement>(null);
 
   // Initialize
   useEffect(() => {
-    document.documentElement.classList.add("dark");
     fetchStatus();
     checkGitHubAuth();
     fetchRecentRepos();
@@ -109,6 +111,19 @@ export default function AppLayout() {
       return () => document.removeEventListener("mousedown", handler);
     }
   }, [repoMenuOpen]);
+
+  // Close theme menu on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
+        setThemeMenuOpen(false);
+      }
+    };
+    if (themeMenuOpen) {
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+    }
+  }, [themeMenuOpen]);
 
   // Auto-dismiss error
   useEffect(() => {
@@ -340,6 +355,38 @@ export default function AppLayout() {
               >
                 <Sparkles className="w-4 h-4" />
               </button>
+
+              {/* Theme selector */}
+              <div className="relative" ref={themeMenuRef}>
+                <button
+                  onClick={() => setThemeMenuOpen(!themeMenuOpen)}
+                  className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-all duration-150 press-scale"
+                  title="Change theme"
+                >
+                  <Palette className="w-4 h-4" />
+                </button>
+
+                {themeMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1 z-50 w-48 rounded-xl glass shadow-2xl py-1.5">
+                    {THEMES.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => { setTheme(t.id); setThemeMenuOpen(false); }}
+                        className={cn(
+                          "flex items-center gap-3 w-full px-3 py-2 text-xs transition-colors hover:bg-accent/30",
+                          theme === t.id ? "text-primary font-medium" : "text-muted-foreground"
+                        )}
+                      >
+                        <span className="text-base">{t.icon}</span>
+                        <span>{t.label}</span>
+                        {theme === t.id && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary ml-auto" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Command palette hint */}
               <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-muted/30 text-[10px] text-muted-foreground font-mono">

@@ -4,9 +4,9 @@ import {
   CircleDot, Play, Globe, Tag, Settings,
   Upload, Download, RotateCcw, Archive, Undo2,
   Sparkles, Search, ArrowRight, GitFork,
-  FileText, Star, Plus, Trash2, Merge,
+  FileText, Star, Plus, Trash2, Merge, Palette,
 } from "lucide-react";
-import { useAppStore } from "@/store/app";
+import { useAppStore, type Theme, THEMES } from "@/store/app";
 import { cn } from "@/lib/utils";
 
 interface Command {
@@ -33,7 +33,7 @@ export default function CommandPalette({ open, onClose, onNavigate }: CommandPal
     fetchReflog, undoLastAction, undoDescription,
     toggleAIPanel,
     fetchStashes, stashPop, stashApply, stashDrop,
-    stashes,
+    stashes, theme, setTheme,
   } = useAppStore();
 
   const [query, setQuery] = useState("");
@@ -83,7 +83,18 @@ export default function CommandPalette({ open, onClose, onNavigate }: CommandPal
 
     // AI
     { id: "ai-panel",    label: "Toggle AI Assistant", description: "Open or close AI panel", icon: <Sparkles className="w-4 h-4" />, action: () => { toggleAIPanel(); onClose(); }, category: "AI", shortcut: "Ctrl+Shift+A" },
-  ], [onNavigate, onClose, gitFetch, gitPull, gitPush, stageAll, unstageAll, stashPush, undoLastAction, undoDescription, toggleAIPanel]);
+
+    // Theme switching
+    ...THEMES.map((t) => ({
+      id: `theme-${t.id}`,
+      label: `Theme: ${t.label}`,
+      description: `Switch to ${t.label} theme`,
+      icon: <Palette className="w-4 h-4" />,
+      action: () => { setTheme(t.id); onClose(); },
+      category: "Appearance",
+      shortcut: theme === t.id ? "active" : undefined,
+    })),
+  ], [onNavigate, onClose, gitFetch, gitPull, gitPush, stageAll, unstageAll, stashPush, undoLastAction, undoDescription, toggleAIPanel, theme, setTheme]);
 
   // Filter commands by query
   const filtered = useMemo(() => {

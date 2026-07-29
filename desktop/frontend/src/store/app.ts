@@ -466,6 +466,17 @@ export interface ChatSession {
   updated_at: string;
 }
 
+// Theme type
+export type Theme = "dark" | "catppuccin" | "tokyonight" | "light" | "dracula";
+
+export const THEMES: { id: Theme; label: string; icon: string }[] = [
+  { id: "dark",       label: "Deep Slate",  icon: "🌑" },
+  { id: "catppuccin", label: "Catppuccin",  icon: "🌸" },
+  { id: "tokyonight", label: "Tokyo Night", icon: "🌃" },
+  { id: "light",      label: "Clean Light", icon: "☀️" },
+  { id: "dracula",    label: "Dracula",     icon: "🧛" },
+];
+
 // App state store
 interface AppState {
   // Git state
@@ -551,11 +562,13 @@ interface AppState {
   error: string | null;
   activeTab: string;
   darkMode: boolean;
+  theme: Theme;
   loginDialogOpen: boolean;
 
   // Actions
   setActiveTab: (tab: string) => void;
   toggleDarkMode: () => void;
+  setTheme: (theme: Theme) => void;
   fetchStatus: () => Promise<void>;
   fetchLog: (count?: number) => Promise<void>;
   fetchGraphLog: (count?: number) => Promise<void>;
@@ -808,14 +821,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   error: null,
   activeTab: "status",
   darkMode: true,
+  theme: (localStorage.getItem("zgit-theme") as Theme) || "dark",
   loginDialogOpen: false,
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
   toggleDarkMode: () => {
     const next = !get().darkMode;
-    document.documentElement.classList.toggle("dark", next);
-    set({ darkMode: next });
+    const theme: Theme = next ? "dark" : "light";
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("zgit-theme", theme);
+    set({ darkMode: next, theme });
+  },
+
+  setTheme: (theme: Theme) => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("zgit-theme", theme);
+    set({ theme, darkMode: theme !== "light" });
   },
 
   fetchStatus: async () => {
