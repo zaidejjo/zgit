@@ -74,10 +74,16 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist
-          cp desktop/build/bin/zgit "dist/zgit-desktop-v${VERSION}-linux-amd64"
+          
+          # تحديد اسم الملف المخرَج ديناميكياً لتجنب مشكلة اختطاف اسم الملف
+          BUILT_BIN=$(ls desktop/build/bin/ | head -n 1)
+          echo "Found compiled binary: ${BUILT_BIN}"
+          
+          cp "desktop/build/bin/${BUILT_BIN}" "dist/zgit-desktop-v${VERSION}-linux-amd64"
           cp images/logo_512.png dist/zgit.png
           cp dist/aur/zgit-desktop-bin/zgit.desktop dist/
           cp dist/flatpak/com.zaidejjo.zgit.metainfo.xml dist/
+          
           cd dist
           tar czf "zgit-desktop-v${VERSION}-linux-amd64.tar.gz" \
             "zgit-desktop-v${VERSION}-linux-amd64" \
