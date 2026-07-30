@@ -105,6 +105,7 @@ export default function SettingsPage() {
           onSetConfig={setGitConfig}
           onRefresh={validateGitHubToken}
           onLogin={() => setLoginDialogOpen(true)}
+          onLogout={logoutGitHub}
         />
       )}
       {activeTab === "general" && (
@@ -128,11 +129,6 @@ export default function SettingsPage() {
         <GitTab
           gitConfig={gitConfig}
           onSetConfig={setGitConfig}
-          ghAuthenticated={ghAuthenticated}
-          ghUser={ghUser}
-          repository={repository}
-          onLogout={logoutGitHub}
-          onLogin={() => setLoginDialogOpen(true)}
         />
       )}
       {activeTab === "ai" && (
@@ -422,16 +418,9 @@ const EDITOR_PRESETS = [
 
 function GitTab({
   gitConfig, onSetConfig,
-  ghAuthenticated, ghUser, repository,
-  onLogout, onLogin,
 }: {
   gitConfig: Record<string, string>;
   onSetConfig: (key: string, value: string) => Promise<void>;
-  ghAuthenticated: boolean;
-  ghUser: any;
-  repository: any;
-  onLogout: () => void;
-  onLogin: () => void;
 }) {
   const [saving, setSaving] = useState<string | null>(null);
 
@@ -464,50 +453,6 @@ function GitTab({
           <span className="text-xs font-medium">Git Configuration</span>
         </div>
         <div className="p-4 space-y-5">
-          {/* user.name */}
-          <div>
-            <span className="text-xs text-muted-foreground font-medium block mb-1.5">User Name</span>
-            <div className="flex items-center gap-1.5">
-              <Input
-                className="h-7 text-xs flex-1"
-                value={gitConfig["user.name"] || ""}
-                onChange={(e) => handleSet("user.name", e.target.value)}
-                placeholder="Your Name"
-              />
-              {gitConfig["user.name"] && (
-                <button
-                  onClick={() => handleSet("user.name", "")}
-                  className="h-7 px-2 text-[10px] rounded border border-border/30 text-muted-foreground hover:text-foreground transition-colors"
-                  title="Clear"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* user.email */}
-          <div>
-            <span className="text-xs text-muted-foreground font-medium block mb-1.5">User Email</span>
-            <div className="flex items-center gap-1.5">
-              <Input
-                className="h-7 text-xs flex-1"
-                value={gitConfig["user.email"] || ""}
-                onChange={(e) => handleSet("user.email", e.target.value)}
-                placeholder="user@example.com"
-              />
-              {gitConfig["user.email"] && (
-                <button
-                  onClick={() => handleSet("user.email", "")}
-                  className="h-7 px-2 text-[10px] rounded border border-border/30 text-muted-foreground hover:text-foreground transition-colors"
-                  title="Clear"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          </div>
-
           {/* core.autocrlf — OS-aware dropdown */}
           <div>
             <span className="text-xs text-muted-foreground font-medium block mb-1.5">
@@ -618,83 +563,6 @@ function GitTab({
                 : "Not set — new repos will default to main"}
             </p>
           </div>
-        </div>
-      </div>
-
-      {/* GitHub Connection */}
-      <div className="glass rounded-xl overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-border/20 flex items-center gap-2">
-          <Github className="w-4 h-4 text-muted-foreground" />
-          <span className="text-xs font-medium">GitHub Connection</span>
-        </div>
-        <div className="p-4">
-          {ghAuthenticated && ghUser ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <img
-                  src={ghUser.avatar_url}
-                  alt={ghUser.login}
-                  className="w-9 h-9 rounded-full ring-1 ring-border"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{ghUser.name || ghUser.login}</p>
-                  <p className="text-xs text-muted-foreground">{ghUser.login}</p>
-                </div>
-                <button
-                  onClick={onLogout}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all press-scale"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  Disconnect
-                </button>
-              </div>
-              {repository && (
-                <>
-                  <div className="h-px bg-border/20" />
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <span className="text-muted-foreground">Repository</span>
-                      <p className="font-medium truncate">
-                        {repository.full_name || repository.name || "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Default branch</span>
-                      <p className="font-mono">{repository.default_branch || "—"}</p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Visibility</span>
-                      <p>{repository.is_private ? "Private" : "Public"}</p>
-                    </div>
-                  </div>
-                  {repository.description && (
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {repository.description}
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <User className="w-6 h-6 text-muted-foreground" />
-                <div>
-                  <p className="text-xs font-medium">Not connected</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Connect to GitHub for PRs, issues & more
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={onLogin}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:brightness-110 transition-all press-scale"
-              >
-                <Github className="w-3.5 h-3.5" />
-                Sign In
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -947,7 +815,7 @@ function ShortcutsTab({
 
 function ProfileTab({
   ghUser, ghAuthenticated, gitConfig,
-  onSetConfig, onRefresh, onLogin,
+  onSetConfig, onRefresh, onLogin, onLogout,
 }: {
   ghUser: GitHubUser | null;
   ghAuthenticated: boolean;
@@ -955,6 +823,7 @@ function ProfileTab({
   onSetConfig: (key: string, value: string) => Promise<void>;
   onRefresh: () => Promise<GitHubUser | null>;
   onLogin: () => void;
+  onLogout: () => void;
 }) {
   const [refreshing, setRefreshing] = useState(false);
   const [displayName, setDisplayName] = useState("");
@@ -1060,16 +929,25 @@ function ProfileTab({
               </p>
             )}
           </div>
-          <a
-            href={profileURL}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => { e.preventDefault(); OpenURL(profileURL); }}
-            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-border/30 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all press-scale"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">View on GitHub</span>
-          </a>
+          <div className="flex flex-col gap-1.5 shrink-0">
+            <a
+              href={profileURL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => { e.preventDefault(); OpenURL(profileURL); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-border/30 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all press-scale"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">View on GitHub</span>
+            </a>
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-border/30 text-muted-foreground hover:text-destructive hover:border-destructive/30 hover:bg-destructive/10 transition-all press-scale"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Disconnect</span>
+            </button>
+          </div>
         </div>
       </div>
 
