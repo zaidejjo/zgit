@@ -138,6 +138,10 @@ export function GeneratePRDescription(arg1, arg2) {
   return window['go']['main']['App']['GeneratePRDescription'](arg1, arg2);
 }
 
+export function GeneratePRMetadata(arg1, arg2) {
+  return window['go']['main']['App']['GeneratePRMetadata'](arg1, arg2);
+}
+
 export function GetAIConfig() {
   return window['go']['main']['App']['GetAIConfig']();
 }

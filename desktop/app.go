@@ -932,6 +932,89 @@ Return ONLY the PR title and description. No extra commentary.`
 	return msg, nil
 }
 
+// GeneratePRMetadata generates a PR title and description from the diff between base and head branches.
+// Uses three-dot diff (base...head) to show only commits unique to head.
+// Returns structured output: "PR Title: ..." followed by description body.
+func (a *App) GeneratePRMetadata(base, head string) (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 120e9)
+	defer cancel()
+
+	if head == "" {
+		return "", fmt.Errorf("head branch is required")
+	}
+	if base == "" {
+		base = "main"
+	}
+
+	// Three-dot diff: shows only commits in head not in base
+	diff, err := a.engine.Git.Diff(ctx, git.DiffOptions{
+		A:       base + "..." + head,
+		Unified: true,
+	})
+	if err != nil {
+		return "", fmt.Errorf("get branch diff: %w", err)
+	}
+	if diff == nil || len(diff.Files) == 0 {
+		return "", fmt.Errorf("no differences between %s and %s", base, head)
+	}
+
+	summary := ai.SummarizeDiff(diff)
+	diffText := summary.Summary
+
+	// Get recent commits for richer context
+	var logContext string
+	log, logErr := a.engine.Git.Log(ctx, git.LogOptions{Count: 10, Branch: head})
+	if logErr == nil && len(log) > 0 {
+		var sb strings.Builder
+		sb.WriteString("\nRecent commits on " + head + ":\n")
+		for _, c := range log {
+			sb.WriteString("  " + c.Hash[:7] + " " + c.Message + "\n")
+		}
+		logContext = sb.String()
+	}
+
+	diffText = fmt.Sprintf("Stats: %d files changed (%d lockfile/binary filtered).\n%s\n\n%s",
+		summary.ChangedFiles, summary.Filtered, logContext, diffText)
+
+	aiCfg := a.aiConfig()
+	if aiCfg.Provider == "" {
+		return "", fmt.Errorf("AI provider not configured — go to Settings first")
+	}
+	if aiCfg.APIKey == "" {
+		return "", fmt.Errorf("API key not configured — go to Settings to set your API key")
+	}
+
+	generator, err := ai.NewGenerator(aiCfg)
+	if err != nil {
+		return "", err
+	}
+
+	prompt := `Act as a Senior Developer. Summarize this diff into a professional PR Title and a structured Description with bullet points.
+
+Format:
+PR Title: <concise title following conventional commits>
+
+## Summary
+<2-3 sentence overview of what this PR does and why>
+
+## Key Changes
+- <change 1 description>
+- <change 2 description>
+- <change 3 description>
+
+## Test Plan
+<suggestions for testing>
+
+Return ONLY the PR title and description. No extra commentary.`
+
+	msg, err := generator.GenerateCommitMessage(ctx, fmt.Sprintf("%s\n\nBranch diff to review:\n\n```\n%s\n```", prompt, diffText), aiCfg)
+	if err != nil {
+		return "", fmt.Errorf("AI generation failed: %w", err)
+	}
+
+	return msg, nil
+}
+
 // aiConfig extracts AI provider config from the engine settings.
 func (a *App) aiConfig() ai.Config {
 	return ai.Config{

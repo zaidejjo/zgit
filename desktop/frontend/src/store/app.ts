@@ -729,6 +729,7 @@ interface AppState {
   fetchProviderModelsAction: (provider: string, apiKey?: string) => Promise<string[]>;
   generateCommitMessage: () => Promise<string | null>;
   generatePRDescription: (head: string, base?: string) => Promise<string | null>;
+  generatePRMetadata: (base: string, head: string) => Promise<string | null>;
 
   // Agentic AI Assistant — Dual Mode
   toggleAIPanel: () => void;
@@ -2147,6 +2148,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       return result;
     } catch (e: any) {
       set({ error: e.message || "Failed to generate PR description" });
+      set({ aiGenerating: false });
+      return null;
+    }
+  },
+
+  generatePRMetadata: async (base, head) => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      set({ aiGenerating: true });
+      const result: string = await backend.GeneratePRMetadata(base, head);
+      set({ aiGenerating: false });
+      return result;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to generate PR metadata" });
       set({ aiGenerating: false });
       return null;
     }

@@ -72,6 +72,8 @@ export function GenerateCommitMessage():Promise<string>;
 
 export function GeneratePRDescription(arg1:string,arg2:string):Promise<string>;
 
+export function GeneratePRMetadata(arg1:string,arg2:string):Promise<string>;
+
 export function GetAIConfig():Promise<models.AIConfig>;
 
 export function GetAheadCommits():Promise<Array<models.Commit>>;
