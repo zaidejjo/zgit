@@ -5,7 +5,7 @@ import {
   Save, X, Palette, Keyboard,
   Check, ChevronRight, Sun,
   LogOut, Github, Terminal, Sliders,
-  RotateCcw,
+  RotateCcw, Monitor,
 } from "lucide-react";
 import { useAppStore, type Theme, THEMES, type UserPreferences } from "@/store/app";
 import { Input } from "@/components/ui/input";
@@ -23,15 +23,6 @@ const SETTINGS_TABS = [
 ] as const;
 
 type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
-
-/* ─── Git config keys ─── */
-const CONFIG_KEYS = [
-  { key: "user.name", label: "User Name", placeholder: "Your Name" },
-  { key: "user.email", label: "User Email", placeholder: "user@example.com" },
-  { key: "core.autocrlf", label: "Auto CRLF", placeholder: "true / false / input" },
-  { key: "core.editor", label: "Editor", placeholder: "code --wait" },
-  { key: "init.defaultBranch", label: "Default Branch", placeholder: "main" },
-];
 
 /* ─── AI providers ─── */
 const AI_PROVIDERS = [
@@ -73,8 +64,6 @@ export default function SettingsPage() {
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || "general");
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
 
   // AI form
   const [aiProvider, setAiProvider] = useState("");
@@ -100,17 +89,6 @@ export default function SettingsPage() {
     }
   }, [aiConfig]);
 
-  const startEdit = (key: string) => {
-    setEditingKey(key);
-    setEditValue(gitConfig[key] || "");
-  };
-
-  const saveEdit = async () => {
-    if (!editingKey) return;
-    await setGitConfig(editingKey, editValue);
-    setEditingKey(null);
-  };
-
   const repoName = repoPath ? repoPath.split("/").pop() || repoPath : "No repository";
 
   const tabContent = (
@@ -135,12 +113,7 @@ export default function SettingsPage() {
       {activeTab === "git" && (
         <GitTab
           gitConfig={gitConfig}
-          editingKey={editingKey}
-          editValue={editValue}
-          onStartEdit={startEdit}
-          onEditValueChange={setEditValue}
-          onSaveEdit={saveEdit}
-          onCancelEdit={() => setEditingKey(null)}
+          onSetConfig={setGitConfig}
           ghAuthenticated={ghAuthenticated}
           ghUser={ghUser}
           repository={repository}
@@ -419,25 +392,49 @@ function AppearanceTab({
 
 /* ═══════════════════════ Git & GitHub Tab ═══════════════════════ */
 
+const AUTOCRLF_OPTIONS = [
+  { value: "input", label: "input", desc: "LF → LF (Recommended for Linux/macOS)" },
+  { value: "true", label: "true", desc: "CRLF → LF on commit, LF → CRLF on checkout (Windows)" },
+  { value: "false", label: "false", desc: "No line-ending conversion" },
+] as const;
+
+const EDITOR_PRESETS = [
+  { label: "VS Code", value: "code --wait" },
+  { label: "Zed", value: "zed --wait" },
+  { label: "Neovim", value: "nvim" },
+  { label: "Vim", value: "vim" },
+  { label: "Nano", value: "nano" },
+] as const;
+
 function GitTab({
-  gitConfig, editingKey, editValue,
-  onStartEdit, onEditValueChange, onSaveEdit, onCancelEdit,
+  gitConfig, onSetConfig,
   ghAuthenticated, ghUser, repository,
   onLogout, onLogin,
 }: {
   gitConfig: Record<string, string>;
-  editingKey: string | null;
-  editValue: string;
-  onStartEdit: (key: string) => void;
-  onEditValueChange: (v: string) => void;
-  onSaveEdit: () => void;
-  onCancelEdit: () => void;
+  onSetConfig: (key: string, value: string) => Promise<void>;
   ghAuthenticated: boolean;
   ghUser: any;
   repository: any;
   onLogout: () => void;
   onLogin: () => void;
 }) {
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const handleSet = async (key: string, value: string) => {
+    setSaving(key);
+    try {
+      await onSetConfig(key, value);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const autocrlf = gitConfig["core.autocrlf"] || "";
+  const editor = gitConfig["core.editor"] || "";
+  const defaultBranch = gitConfig["init.defaultBranch"] || "";
+  const isWindows = typeof navigator !== "undefined" && navigator.userAgent.includes("Windows");
+
   return (
     <div className="space-y-5">
       <Section icon={<GitBranch className="w-4 h-4" />} title="Git & GitHub">
@@ -452,47 +449,161 @@ function GitTab({
           <Terminal className="w-4 h-4 text-muted-foreground" />
           <span className="text-xs font-medium">Git Configuration</span>
         </div>
-        <div className="p-4 space-y-3">
-          {CONFIG_KEYS.map(({ key, label, placeholder }) => (
-            <div key={key} className="flex items-center gap-3 text-sm">
-              <span className="w-28 text-muted-foreground shrink-0 text-xs">{label}</span>
-              {editingKey === key ? (
-                <div className="flex-1 flex items-center gap-1.5">
-                  <Input
-                    className="h-7 text-xs flex-1"
-                    value={editValue}
-                    onChange={(e) => onEditValueChange(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") onSaveEdit();
-                      if (e.key === "Escape") onCancelEdit();
-                    }}
-                    placeholder={placeholder}
-                    autoFocus
-                  />
-                  <button className="p-1 text-success hover:bg-success/10 rounded transition-colors press-scale" onClick={onSaveEdit} title="Save">
-                    <Save className="w-3.5 h-3.5" />
-                  </button>
-                  <button className="p-1 text-muted-foreground hover:text-foreground rounded transition-colors press-scale" onClick={onCancelEdit} title="Cancel">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <div
-                  className="flex-1 flex items-center gap-2 cursor-pointer group"
-                  onClick={() => onStartEdit(key)}
+        <div className="p-4 space-y-5">
+          {/* user.name */}
+          <div>
+            <span className="text-xs text-muted-foreground font-medium block mb-1.5">User Name</span>
+            <div className="flex items-center gap-1.5">
+              <Input
+                className="h-7 text-xs flex-1"
+                value={gitConfig["user.name"] || ""}
+                onChange={(e) => handleSet("user.name", e.target.value)}
+                placeholder="Your Name"
+              />
+              {gitConfig["user.name"] && (
+                <button
+                  onClick={() => handleSet("user.name", "")}
+                  className="h-7 px-2 text-[10px] rounded border border-border/30 text-muted-foreground hover:text-foreground transition-colors"
+                  title="Clear"
                 >
-                  <code className="font-mono text-xs bg-muted/30 px-2 py-1 rounded border border-border/20 group-hover:border-border/60 transition-colors">
-                    {gitConfig[key] || (
-                      <span className="italic text-muted-foreground/50">not set</span>
-                    )}
-                  </code>
-                  <span className="text-[10px] text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                    Click to edit
-                  </span>
-                </div>
+                  <X className="w-3 h-3" />
+                </button>
               )}
             </div>
-          ))}
+          </div>
+
+          {/* user.email */}
+          <div>
+            <span className="text-xs text-muted-foreground font-medium block mb-1.5">User Email</span>
+            <div className="flex items-center gap-1.5">
+              <Input
+                className="h-7 text-xs flex-1"
+                value={gitConfig["user.email"] || ""}
+                onChange={(e) => handleSet("user.email", e.target.value)}
+                placeholder="user@example.com"
+              />
+              {gitConfig["user.email"] && (
+                <button
+                  onClick={() => handleSet("user.email", "")}
+                  className="h-7 px-2 text-[10px] rounded border border-border/30 text-muted-foreground hover:text-foreground transition-colors"
+                  title="Clear"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* core.autocrlf — OS-aware dropdown */}
+          <div>
+            <span className="text-xs text-muted-foreground font-medium block mb-1.5">
+              Auto CRLF
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {AUTOCRLF_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => handleSet("core.autocrlf", autocrlf === opt.value ? "" : opt.value)}
+                  className={cn(
+                    "text-xs px-2.5 py-1.5 rounded-lg border font-medium transition-all press-scale",
+                    saving === "core.autocrlf" && "opacity-50 pointer-events-none",
+                    autocrlf === opt.value
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border/50 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                  )}
+                  title={opt.desc}
+                >
+                  {opt.label}
+                  {autocrlf === opt.value && <Check className="w-3 h-3 inline ml-1" />}
+                </button>
+              ))}
+              {autocrlf && !AUTOCRLF_OPTIONS.some((o) => o.value === autocrlf) && (
+                <code className="text-xs px-2 py-1 rounded bg-muted/30 border border-border text-muted-foreground self-center">
+                  {autocrlf}
+                </code>
+              )}
+              <button
+                onClick={() => handleSet("core.autocrlf", isWindows ? "true" : "input")}
+                className="text-[10px] px-2 py-1 rounded border border-dashed border-border/40 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors press-scale"
+                title={`Detected OS: ${isWindows ? "Windows" : "Linux/macOS"}`}
+              >
+                <Monitor className="w-3 h-3 inline mr-1" />
+                Recommended for {isWindows ? "Windows" : "Linux/macOS"}
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground/40 mt-1">
+              {autocrlf ? `Current: ${autocrlf}` : "Not set — click a value above to set"}
+            </p>
+          </div>
+
+          {/* core.editor — Editor Picker */}
+          <div>
+            <span className="text-xs text-muted-foreground font-medium block mb-1.5">
+              Default Editor
+            </span>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {EDITOR_PRESETS.map((preset) => (
+                <button
+                  key={preset.value}
+                  onClick={() => handleSet("core.editor", editor === preset.value ? "" : preset.value)}
+                  className={cn(
+                    "text-xs px-2.5 py-1.5 rounded-lg border font-medium transition-all press-scale",
+                    saving === "core.editor" && "opacity-50 pointer-events-none",
+                    editor === preset.value
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border/50 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                  )}
+                >
+                  {preset.label}
+                  {editor === preset.value && <Check className="w-3 h-3 inline ml-1" />}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Input
+                className="h-7 text-xs font-mono flex-1"
+                value={editor}
+                onChange={(e) => handleSet("core.editor", e.target.value)}
+                placeholder="Custom editor command (e.g. /usr/local/bin/nvim)"
+              />
+              {editor && (
+                <button
+                  onClick={() => handleSet("core.editor", "")}
+                  className="h-7 px-2 text-[10px] rounded border border-border/30 text-muted-foreground hover:text-foreground transition-colors"
+                  title="Clear"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* init.defaultBranch */}
+          <div>
+            <span className="text-xs text-muted-foreground font-medium block mb-1.5">
+              Default Branch Name
+            </span>
+            <div className="flex items-center gap-1.5">
+              <Input
+                className="h-7 text-xs font-mono flex-1"
+                value={defaultBranch}
+                onChange={(e) => handleSet("init.defaultBranch", e.target.value)}
+                placeholder="main"
+              />
+              <button
+                onClick={() => handleSet("init.defaultBranch", "main")}
+                className="h-7 px-2.5 text-[10px] rounded border border-border/30 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors press-scale shrink-0"
+                title='Reset default branch to "main"'
+              >
+                Reset to "main"
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground/40 mt-1">
+              {defaultBranch
+                ? `Current: ${defaultBranch}`
+                : "Not set — new repos will default to main"}
+            </p>
+          </div>
         </div>
       </div>
 
