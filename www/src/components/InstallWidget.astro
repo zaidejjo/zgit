@@ -1,0 +1,144 @@
+---
+
+const osOptions = [
+  {
+    id: 'linux',
+    label: 'Linux',
+    commands: [
+      { label: 'Universal (curl)', cmd: 'curl -fsSL https://zgit.pages.dev/install | bash' },
+      { label: 'Arch (AUR)', cmd: 'yay -S zgit-bin' },
+      { label: 'Homebrew (Linux)', cmd: 'brew install zgit' },
+      { label: 'Go Install', cmd: 'go install github.com/zaidejjo/zgit/cmd/zgit@latest' },
+    ],
+  },
+  {
+    id: 'macos',
+    label: 'macOS',
+    commands: [
+      { label: 'Homebrew', cmd: 'brew install zaidejjo/tap/zgit' },
+      { label: 'Universal (curl)', cmd: 'curl -fsSL https://zgit.pages.dev/install | bash' },
+      { label: 'Go Install', cmd: 'go install github.com/zaidejjo/zgit/cmd/zgit@latest' },
+    ],
+  },
+  {
+    id: 'windows',
+    label: 'Windows',
+    commands: [
+      { label: 'Scoop', cmd: 'scoop bucket add zgit https://github.com/zaidejjo/scoop-zgit\nscoop install zgit' },
+      { label: 'Winget', cmd: 'winget install zgit' },
+      { label: 'Go Install', cmd: 'go install github.com/zaidejjo/zgit/cmd/zgit@latest' },
+    ],
+  },
+];
+---
+
+<section id="install" class="py-24 md:py-32 bg-white/[0.01]">
+  <div class="container-main">
+    <div class="max-w-2xl mx-auto text-center mb-12">
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight">
+        Install in <span class="gradient-text">seconds</span>
+      </h2>
+      <p class="mt-4 text-foreground-secondary text-lg">
+        Choose your platform and get started with a single command.
+      </p>
+    </div>
+
+    <!-- OS Tabs -->
+    <div class="max-w-xl mx-auto">
+      <div class="flex justify-center gap-1 p-1 rounded-xl bg-background/40 border border-white/10 backdrop-blur-sm" role="tablist">
+        {
+          osOptions.map((os, i) => (
+            <button
+              class={`install-tab px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+                i === 0 ? 'bg-white/10 text-foreground' : 'text-foreground-muted hover:text-foreground'
+              }`}
+              role="tab"
+              aria-selected={i === 0 ? 'true' : 'false'}
+              data-tab={os.id}
+            >
+              {os.label}
+            </button>
+          ))
+        }
+      </div>
+
+      <!-- Tab panels -->
+      {
+        osOptions.map((os, i) => (
+          <div
+            class={`install-panel mt-6 ${i !== 0 ? 'hidden' : ''}`}
+            data-panel={os.id}
+            role="tabpanel"
+          >
+            <div class="space-y-3">
+              {
+                os.commands.map(cmd => (
+                  <div class="flex items-center justify-between border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm rounded-xl p-3.5 group hover:border-white/[0.14] transition-colors">
+                    <div class="min-w-0 flex-1">
+                      <div class="text-xs text-foreground-muted font-medium mb-1">{cmd.label}</div>
+                      <code class="font-mono text-sm text-foreground-secondary block whitespace-pre-wrap break-all">
+                        <span class="text-primary">$</span> {cmd.cmd}
+                      </code>
+                    </div>
+                    <button
+                      class="cmd-copy-btn flex-shrink-0 ml-3 p-2 rounded-lg text-foreground-muted hover:text-foreground hover:bg-white/[0.06] transition-all opacity-0 group-hover:opacity-100"
+                      aria-label={`Copy ${cmd.label} command`}
+                      data-cmd={cmd.cmd}
+                    >
+                      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                      </svg>
+                    </button>
+                  </div>
+                ))
+              }
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<script>
+  const tabs = document.querySelectorAll('.install-tab');
+  const panels = document.querySelectorAll('.install-panel');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.getAttribute('data-tab');
+      
+      tabs.forEach(t => {
+        t.classList.remove('bg-white/10', 'text-foreground');
+        t.classList.add('text-foreground-muted');
+        t.setAttribute('aria-selected', 'false');
+      });
+      tab.classList.remove('text-foreground-muted');
+      tab.classList.add('bg-white/10', 'text-foreground');
+      tab.setAttribute('aria-selected', 'true');
+
+      panels.forEach(p => {
+        p.classList.toggle('hidden', p.getAttribute('data-panel') !== target);
+      });
+    });
+  });
+
+  document.querySelectorAll('.cmd-copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const cmd = btn.getAttribute('data-cmd');
+      if (cmd) {
+        try {
+          await navigator.clipboard.writeText(cmd);
+          const svg = btn.querySelector('svg');
+          if (svg) {
+            svg.innerHTML = '<polyline points="20 6 9 17 4 12" stroke-linecap="round" stroke-linejoin="round"/>';
+            setTimeout(() => {
+              svg.innerHTML = '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>';
+            }, 2000);
+          }
+        } catch {}
+      }
+    });
+  });
+</script>

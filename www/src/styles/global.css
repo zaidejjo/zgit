@@ -1,0 +1,98 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --color-background: #070709;
+  --color-surface: rgba(255, 255, 255, 0.025);
+  --color-surface-raised: rgba(255, 255, 255, 0.05);
+  --color-border: rgba(255, 255, 255, 0.06);
+  --color-border-hover: rgba(255, 255, 255, 0.12);
+
+  --color-primary: #4f8cff;
+  --color-primary-hover: #3b75e0;
+  --color-primary-muted: rgba(79, 140, 255, 0.10);
+
+  --color-accent: #818cf8;
+  --color-accent-glow: rgba(129, 140, 248, 0.15);
+
+  --color-foreground: #e2e8f0;
+  --color-foreground-secondary: #94a3b8;
+  --color-foreground-muted: #64748b;
+
+  --color-destructive: #f87171;
+  --color-warning: #fbbf24;
+  --color-info: #4f8cff;
+
+  --color-gradient-start: #4f8cff;
+  --color-gradient-end: #818cf8;
+
+  --color-code-bg: rgba(255, 255, 255, 0.03);
+  --color-code-border: rgba(255, 255, 255, 0.06);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: var(--color-primary-muted);
+    color: var(--color-primary);
+  }
+}
+
+@utility container-main {
+  max-width: 80rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+@utility gradient-text {
+  background-image: linear-gradient(to right, var(--color-gradient-start), var(--color-accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility glow-sm {
+  box-shadow: 0 0 20px var(--color-accent-glow);
+}
+
+@utility glass-card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  backdrop-filter: blur(16px);
+  transition-property: border-color, box-shadow, transform;
+  transition-duration: 250ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@utility glass-card-hover {
+  &:hover {
+    border-color: rgba(129, 140, 248, 0.25);
+    box-shadow: 0 0 24px rgba(129, 140, 248, 0.08), 0 8px 32px rgba(0, 0, 0, 0.4);
+    transform: translateY(-2px);
+  }
+}
+
+@utility grid-bg {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
