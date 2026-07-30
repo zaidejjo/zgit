@@ -9,17 +9,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/zaidejjo/zgit/pkg/core"
 	"github.com/zaidejjo/zgit/pkg/core/ai"
+	"github.com/zaidejjo/zgit/pkg/core/config"
 	"github.com/zaidejjo/zgit/pkg/core/git"
 	"github.com/zaidejjo/zgit/pkg/core/github"
 	"github.com/zaidejjo/zgit/pkg/core/models"
@@ -36,9 +39,11 @@ type App struct {
 	agent       *ai.Agent
 	agentMu     sync.Mutex
 
-	sessionManager *ai.SessionManager
-	askCancel      context.CancelFunc
-	askCancelMu    sync.Mutex
+	sessionManager   *ai.SessionManager
+	askCancel        context.CancelFunc
+	askCancelMu      sync.Mutex
+	devicePollCancel context.CancelFunc
+	devicePollMu     sync.Mutex
 }
 
 // NewApp creates a new App with the given engine.
@@ -68,10 +73,36 @@ func (a *App) Run(assets embed.FS) error {
 	})
 }
 
+// chatsFilePath returns the path to the AI sessions JSON file.
+func (a *App) chatsFilePath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".config", "zgit", "chats.json")
+}
+
 // startup is called by Wails when the app starts.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	// Load persisted chat sessions
+	if path := a.chatsFilePath(); path != "" {
+		if err := a.sessionManager.LoadFromFile(path); err != nil {
+			log.Printf("load chats: %v", err)
+		}
+	}
 	a.restartFileWatcher()
+}
+
+// saveChats persists sessions to disk. Called after every session mutation.
+func (a *App) saveChats() {
+	path := a.chatsFilePath()
+	if path == "" {
+		return
+	}
+	if err := a.sessionManager.SaveToFile(path); err != nil {
+		log.Printf("save chats: %v", err)
+	}
 }
 
 // getGitDir uses git rev-parse to locate the actual .git directory.
@@ -171,7 +202,7 @@ func (a *App) restartFileWatcher() {
 					continue
 				}
 				lastEvent = now
-				runtime.EventsEmit(a.ctx, "fs:status-changed", event.Name)
+				wailsRuntime.EventsEmit(a.ctx, "fs:status-changed", event.Name)
 			case err, ok := <-watcher.Errors:
 				if !ok {
 					return
@@ -573,24 +604,209 @@ func (a *App) CheckoutTheirs(file string) error {
 // --- AI Commit Message Generator ---
 
 // GetAIConfig returns the current AI configuration.
+// API keys are masked — never sent in plaintext to the frontend.
 func (a *App) GetAIConfig() (models.AIConfig, error) {
 	cfg := a.engine.Config
+	cfgDir := cfg.ConfigPath()
+
+	// Gather per-provider key status
+	providers := cfg.GetProviderKeys()
+	ps := make([]models.ProviderStatus, 0, len(providers))
+	for _, p := range providers {
+		pc := cfg.GetProviderConfig(p)
+		status := models.ProviderStatus{
+			Provider: p,
+			HasKey:   pc.APIKey != "",
+			Model:    pc.Model,
+			Endpoint: pc.Endpoint,
+		}
+		if pc.APIKey != "" {
+			// Try decrypt to get last 4 chars for masking
+			plaintext, err := ai.DecryptAPIKey(pc.APIKey, cfgDir)
+			if err == nil && len(plaintext) >= 4 {
+				prefix := plaintext[:min(4, len(plaintext))]
+				if len(plaintext) > 4 {
+					status.KeyMasked = prefix + "..." + plaintext[len(plaintext)-4:]
+				} else {
+					status.KeyMasked = prefix + "..." + plaintext
+				}
+			} else if err == nil {
+				status.KeyMasked = "(saved)"
+			} else {
+				// Fallback: show stored format
+				status.HasKey = false
+				status.KeyMasked = ""
+			}
+		}
+		ps = append(ps, status)
+	}
+
+	// Top-level config (provider may be set but key may be in per-provider storage)
+	activeProvider := cfg.GetString("ai.provider")
+	var activeKeyMasked string
+	topLevelKey := cfg.GetString("ai.api_key")
+	if topLevelKey != "" {
+		plaintext, err := ai.DecryptAPIKey(topLevelKey, cfgDir)
+		if err == nil {
+			if len(plaintext) >= 8 {
+				activeKeyMasked = plaintext[:4] + "..." + plaintext[len(plaintext)-4:]
+			} else {
+				activeKeyMasked = "(saved)"
+			}
+		}
+	}
+	// Also check per-provider config for the active provider
+	if activeKeyMasked == "" {
+		for _, p := range ps {
+			if p.Provider == activeProvider {
+				activeKeyMasked = p.KeyMasked
+				break
+			}
+		}
+	}
+
 	return models.AIConfig{
-		Provider: cfg.GetString("ai.provider"),
-		APIKey:   cfg.GetString("ai.api_key"),
-		Model:    cfg.GetString("ai.model"),
-		Endpoint: cfg.GetString("ai.endpoint"),
+		Provider:  activeProvider,
+		APIKey:    activeKeyMasked,
+		Model:     cfg.GetString("ai.model"),
+		Endpoint:  cfg.GetString("ai.endpoint"),
+		Providers: ps,
 	}, nil
 }
 
+// GetUserPreferences returns the current user preferences (appearance + keybindings).
+func (a *App) GetUserPreferences() models.UserPreferences {
+	cfg := a.engine.Config.GetUserPreferences()
+	return models.UserPreferences{
+		Appearance: models.AppearanceConfig{
+			Theme:       cfg.Appearance.Theme,
+			AccentColor: cfg.Appearance.AccentColor,
+			Brightness:  cfg.Appearance.Brightness,
+		},
+		Keybindings: cfg.Keybindings,
+	}
+}
+
+// SetUserPreferences saves user preferences (appearance + keybindings) to disk.
+func (a *App) SetUserPreferences(prefs models.UserPreferences) error {
+	cfg := a.engine.Config
+	cp := config.UserPreferences{
+		Appearance: config.AppearanceConfig{
+			Theme:       prefs.Appearance.Theme,
+			AccentColor: prefs.Appearance.AccentColor,
+			Brightness:  prefs.Appearance.Brightness,
+		},
+		Keybindings: prefs.Keybindings,
+	}
+	return cfg.SetUserPreferences(cp)
+}
+
 // SetAIConfig saves the AI provider configuration.
+// The API key is encrypted before being stored in the config file.
 func (a *App) SetAIConfig(provider, apiKey, model, endpoint string) error {
 	cfg := a.engine.Config
+	cfgDir := cfg.ConfigPath()
+
+	if err := encryptAndSetProviderKey(cfg, cfgDir, provider, apiKey); err != nil {
+		return err
+	}
+
 	cfg.Set("ai.provider", provider)
-	cfg.Set("ai.api_key", apiKey)
 	cfg.Set("ai.model", model)
 	cfg.Set("ai.endpoint", endpoint)
+
+	// Also update the per-provider config
+	pc := cfg.GetProviderConfig(provider)
+	pc.Model = model
+	if endpoint != "" {
+		pc.Endpoint = endpoint
+	}
+	cfg.SetProviderConfig(provider, pc)
+
 	return cfg.Save()
+}
+
+// SetProviderAIConfig saves config for a specific AI provider.
+// The API key is encrypted before being stored.
+func (a *App) SetProviderAIConfig(provider, apiKey, model, endpoint string) error {
+	cfg := a.engine.Config
+	cfgDir := cfg.ConfigPath()
+
+	if err := encryptAndSetProviderKey(cfg, cfgDir, provider, apiKey); err != nil {
+		return err
+	}
+
+	cfg.SetProviderConfig(provider, config.ProviderConfig{
+		APIKey:   cfg.GetString("ai.providers." + provider + ".api_key"),
+		Model:    model,
+		Endpoint: endpoint,
+	})
+
+	// If this is the active provider, also update top-level fields
+	if cfg.GetString("ai.provider") == provider {
+		cfg.Set("ai.model", model)
+		if endpoint != "" {
+			cfg.Set("ai.endpoint", endpoint)
+		}
+	}
+
+	return cfg.Save()
+}
+
+// encryptAndSetProviderKey encrypts and stores the API key for the given provider.
+// If apiKey is empty, it deletes the stored key.
+func encryptAndSetProviderKey(cfg *config.Manager, cfgDir, provider, apiKey string) error {
+	if apiKey == "" {
+		// Clear the key for this provider
+		cfg.Set("ai.providers."+provider+".api_key", "")
+		cfg.Set("ai.api_key", "")
+		return nil
+	}
+
+	encrypted, err := ai.EncryptAPIKey(apiKey, cfgDir)
+	if err != nil {
+		return fmt.Errorf("encrypt API key: %w", err)
+	}
+
+	// Store encrypted key both top-level (for backward compat) and per-provider
+	cfg.Set("ai.api_key", encrypted)
+	cfg.Set("ai.providers."+provider+".api_key", encrypted)
+	return nil
+}
+
+// DeleteProviderAIConfig removes all config for a specific provider (key, model, endpoint).
+func (a *App) DeleteProviderAIConfig(provider string) error {
+	cfg := a.engine.Config
+	cfg.DeleteProviderConfig(provider)
+
+	// If this was the active provider, also clear top-level AI fields
+	if cfg.GetString("ai.provider") == provider {
+		cfg.Set("ai.provider", "")
+		cfg.Set("ai.api_key", "")
+		cfg.Set("ai.model", "")
+		cfg.Set("ai.endpoint", "")
+	}
+
+	return cfg.Save()
+}
+
+// FetchProviderModels queries the provider's /models API and returns available model IDs.
+// apiKey is required for OpenAI, OpenRouter, Groq; optional for Ollama.
+func (a *App) FetchProviderModels(provider, apiKey string) ([]string, error) {
+	// If no apiKey provided, try the stored encrypted key
+	if apiKey == "" {
+		cfg := a.engine.Config
+		cfgDir := cfg.ConfigPath()
+		pc := cfg.GetProviderConfig(provider)
+		if pc.APIKey != "" {
+			decrypted, err := ai.DecryptAPIKey(pc.APIKey, cfgDir)
+			if err == nil {
+				apiKey = decrypted
+			}
+		}
+	}
+
+	return ai.FetchProviderModels(provider, apiKey)
 }
 
 // GenerateCommitMessage reads the staged diff and returns an AI-generated conventional commit message.
@@ -702,6 +918,89 @@ PR Title: <concise title following conventional commits>
 - <change 1>
 - <change 2>
 - <change 3>
+
+## Test Plan
+<suggestions for testing>
+
+Return ONLY the PR title and description. No extra commentary.`
+
+	msg, err := generator.GenerateCommitMessage(ctx, fmt.Sprintf("%s\n\nBranch diff to review:\n\n```\n%s\n```", prompt, diffText), aiCfg)
+	if err != nil {
+		return "", fmt.Errorf("AI generation failed: %w", err)
+	}
+
+	return msg, nil
+}
+
+// GeneratePRMetadata generates a PR title and description from the diff between base and head branches.
+// Uses three-dot diff (base...head) to show only commits unique to head.
+// Returns structured output: "PR Title: ..." followed by description body.
+func (a *App) GeneratePRMetadata(base, head string) (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 120e9)
+	defer cancel()
+
+	if head == "" {
+		return "", fmt.Errorf("head branch is required")
+	}
+	if base == "" {
+		base = "main"
+	}
+
+	// Three-dot diff: shows only commits in head not in base
+	diff, err := a.engine.Git.Diff(ctx, git.DiffOptions{
+		A:       base + "..." + head,
+		Unified: true,
+	})
+	if err != nil {
+		return "", fmt.Errorf("get branch diff: %w", err)
+	}
+	if diff == nil || len(diff.Files) == 0 {
+		return "", fmt.Errorf("no differences between %s and %s", base, head)
+	}
+
+	summary := ai.SummarizeDiff(diff)
+	diffText := summary.Summary
+
+	// Get recent commits for richer context
+	var logContext string
+	log, logErr := a.engine.Git.Log(ctx, git.LogOptions{Count: 10, Branch: head})
+	if logErr == nil && len(log) > 0 {
+		var sb strings.Builder
+		sb.WriteString("\nRecent commits on " + head + ":\n")
+		for _, c := range log {
+			sb.WriteString("  " + c.Hash[:7] + " " + c.Message + "\n")
+		}
+		logContext = sb.String()
+	}
+
+	diffText = fmt.Sprintf("Stats: %d files changed (%d lockfile/binary filtered).\n%s\n\n%s",
+		summary.ChangedFiles, summary.Filtered, logContext, diffText)
+
+	aiCfg := a.aiConfig()
+	if aiCfg.Provider == "" {
+		return "", fmt.Errorf("AI provider not configured — go to Settings first")
+	}
+	if aiCfg.APIKey == "" {
+		return "", fmt.Errorf("API key not configured — go to Settings to set your API key")
+	}
+
+	generator, err := ai.NewGenerator(aiCfg)
+	if err != nil {
+		return "", err
+	}
+
+	prompt := `Act as a Senior Developer. Summarize this diff into a professional PR Title and a structured Description with bullet points.
+
+Format:
+PR Title: <concise title following conventional commits>
+
+## Summary
+<2-3 sentence overview of what this PR does and why>
+
+## Key Changes
+- <change 1 description>
+- <change 2 description>
+- <change 3 description>
 
 ## Test Plan
 <suggestions for testing>
@@ -903,6 +1202,7 @@ func (a *App) AskChat(message string) (string, error) {
 		return "", fmt.Errorf("add response: %w", err)
 	}
 
+	a.saveChats()
 	return resp.Content, nil
 }
 
@@ -911,17 +1211,17 @@ func (a *App) AskChat(message string) (string, error) {
 func (a *App) AskChatStream(message string) error {
 	aiCfg := a.getAskConfig()
 	if aiCfg.Provider == "" {
-		runtime.EventsEmit(a.ctx, "ai:error", "AI provider not configured — go to Settings to set up AI")
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", "AI provider not configured — go to Settings to set up AI")
 		return nil
 	}
 	if aiCfg.APIKey == "" {
-		runtime.EventsEmit(a.ctx, "ai:error", "API key not configured — go to Settings to set your API key")
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", "API key not configured — go to Settings to set your API key")
 		return nil
 	}
 
 	provider, err := ai.NewAskProvider(aiCfg)
 	if err != nil {
-		runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("create ask provider: %s", err.Error()))
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("create ask provider: %s", err.Error()))
 		return nil
 	}
 
@@ -930,20 +1230,20 @@ func (a *App) AskChatStream(message string) error {
 	if session == nil || session.Mode != "ask" {
 		session, err = a.sessionManager.Create("Ask Session", "ask")
 		if err != nil {
-			runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("create session: %s", err.Error()))
+			wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("create session: %s", err.Error()))
 			return nil
 		}
 	}
 
 	// Add user message
 	if err := a.sessionManager.AddMessage(session.ID, ai.Message{Role: "user", Content: message}); err != nil {
-		runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("add message: %s", err.Error()))
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("add message: %s", err.Error()))
 		return nil
 	}
 
 	messages, err := a.sessionManager.GetMessages(session.ID)
 	if err != nil {
-		runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("get messages: %s", err.Error()))
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("get messages: %s", err.Error()))
 		return nil
 	}
 
@@ -961,20 +1261,21 @@ func (a *App) AskChatStream(message string) error {
 		defer cancel()
 
 		resp, err := provider.AskStream(ctx, messages, func(token string) {
-			runtime.EventsEmit(a.ctx, "ai:token", token)
+			wailsRuntime.EventsEmit(a.ctx, "ai:token", token)
 		})
 		if err != nil {
-			runtime.EventsEmit(a.ctx, "ai:error", err.Error())
+			wailsRuntime.EventsEmit(a.ctx, "ai:error", err.Error())
 			return
 		}
 
 		// Add assistant response to session
 		if err := a.sessionManager.AddMessage(session.ID, resp); err != nil {
-			runtime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("save response: %s", err.Error()))
+			wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("save response: %s", err.Error()))
 			return
 		}
 
-		runtime.EventsEmit(a.ctx, "ai:done", resp.Content)
+		a.saveChats()
+		wailsRuntime.EventsEmit(a.ctx, "ai:done", resp.Content)
 	}()
 
 	return nil
@@ -1010,6 +1311,7 @@ func (a *App) SessionCreate(name, mode string) (*ai.SessionSummary, error) {
 	if err != nil {
 		return nil, err
 	}
+	a.saveChats()
 	return &ai.SessionSummary{
 		ID:           s.ID,
 		Name:         s.Name,
@@ -1027,12 +1329,20 @@ func (a *App) SessionList() ([]ai.SessionSummary, error) {
 
 // SessionRename renames a session.
 func (a *App) SessionRename(id, name string) error {
-	return a.sessionManager.Rename(id, name)
+	if err := a.sessionManager.Rename(id, name); err != nil {
+		return err
+	}
+	a.saveChats()
+	return nil
 }
 
 // SessionDelete deletes a session.
 func (a *App) SessionDelete(id string) error {
-	return a.sessionManager.Delete(id)
+	if err := a.sessionManager.Delete(id); err != nil {
+		return err
+	}
+	a.saveChats()
+	return nil
 }
 
 // SessionSwitch switches the active session.
@@ -1058,7 +1368,20 @@ func (a *App) SessionGetMessages(id string) ([]ai.Message, error) {
 
 // SessionClearMessages clears a session's messages (keeps system prompt).
 func (a *App) SessionClearMessages(id string) error {
-	return a.sessionManager.ClearMessages(id)
+	if err := a.sessionManager.ClearMessages(id); err != nil {
+		return err
+	}
+	a.saveChats()
+	return nil
+}
+
+// SessionSetMode changes the mode of a session ("ask" or "agent").
+func (a *App) SessionSetMode(id, mode string) error {
+	if err := a.sessionManager.SetMode(id, mode); err != nil {
+		return err
+	}
+	a.saveChats()
+	return nil
 }
 
 // SessionActiveID returns the ID of the currently active session.
@@ -1121,6 +1444,24 @@ func (a *App) AuthenticateGitHub(token string) error {
 	return a.engine.AuthenticateGitHub(token)
 }
 
+// SaveGitHubToken saves a GitHub token without validating it.
+// Returns immediately — no network calls. Use ValidateGitHubToken separately.
+func (a *App) SaveGitHubToken(token string) error {
+	return a.engine.SaveGitHubToken(token)
+}
+
+// ValidateGitHubToken fetches the authenticated GitHub user to validate the token.
+// Call this after SaveGitHubToken if you need the user profile.
+// Returns the user on success, or an error if validation fails.
+func (a *App) ValidateGitHubToken() (*models.User, error) {
+	if !a.engine.IsGitHubAuthenticated() {
+		return nil, fmt.Errorf("GitHub not authenticated — save a token first")
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.GitHub.GetAuthenticatedUser(ctx)
+}
+
 // StartDeviceFlow initiates GitHub OAuth Device Flow.
 // Returns the device code, user code, verification URI, and polling interval.
 func (a *App) StartDeviceFlow() (*models.DeviceFlowCode, error) {
@@ -1156,16 +1497,70 @@ func (a *App) PollDeviceFlow(deviceCode string) (string, error) {
 		clientID = github.DefaultDeviceFlowClientID
 	}
 
-	token, err := github.PollDeviceFlow(ctx, clientID, deviceCode)
-	if err != nil {
-		// If it's an authorization_pending error, return empty string — caller retries
-		errStr := err.Error()
-		if strings.Contains(errStr, "authorization_pending") {
-			return "", nil
-		}
-		return "", err
+	// github.PollDeviceFlow returns ("", nil) for authorization_pending internally.
+	return github.PollDeviceFlow(ctx, clientID, deviceCode)
+}
+
+// PollDeviceFlowWithRetry polls GitHub for device flow authorization with automatic retry.
+// It respects the poll interval, handles slow_down by increasing interval, and blocks until
+// the user authorizes, the device code expires, or 10 minutes elapses.
+// The interval parameter comes from the StartDeviceFlow response.
+func (a *App) PollDeviceFlowWithRetry(deviceCode string, interval int) (string, error) {
+	// Create cancellable context — CancelDeviceFlow can stop this early
+	ctx, cancel := context.WithCancel(a.getContext())
+	a.devicePollMu.Lock()
+	if a.devicePollCancel != nil {
+		a.devicePollCancel()
 	}
-	return token, nil
+	a.devicePollCancel = cancel
+	a.devicePollMu.Unlock()
+
+	clientID := a.engine.Config.GetString("github.device_flow_client_id")
+	if clientID == "" {
+		clientID = github.DefaultDeviceFlowClientID
+	}
+
+	token, err := github.PollDeviceFlowWithRetry(ctx, clientID, deviceCode, interval)
+	// Clean up cancel func after poll completes
+	a.devicePollMu.Lock()
+	a.devicePollCancel = nil
+	a.devicePollMu.Unlock()
+	return token, err
+}
+
+// CancelDeviceFlow cancels an in-flight PollDeviceFlowWithRetry call.
+func (a *App) CancelDeviceFlow() {
+	a.devicePollMu.Lock()
+	defer a.devicePollMu.Unlock()
+	if a.devicePollCancel != nil {
+		a.devicePollCancel()
+		a.devicePollCancel = nil
+	}
+}
+
+// OpenURL opens the given URL in the system browser without blocking the Wails bridge.
+// Uses os/exec with .Start() (detached) instead of Wails' synchronous BrowserOpenURL,
+// which can block on Linux when xdg-open waits for the browser process.
+func (a *App) OpenURL(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	// Detach so the Go process doesn't wait for the browser/xdg-open to finish
+	if cmd != nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		if err := cmd.Start(); err == nil {
+			return nil
+		}
+	}
+	// Fallback: Wails runtime (may block on xdg-open but works everywhere)
+	wailsRuntime.BrowserOpenURL(a.ctx, url)
+	return nil
 }
 
 // GetGitHubUser returns the authenticated GitHub user.
@@ -1176,6 +1571,11 @@ func (a *App) GetGitHubUser() (*models.User, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.GitHub.GetAuthenticatedUser(ctx)
+}
+
+// LogoutGitHub clears the GitHub token and client.
+func (a *App) LogoutGitHub() error {
+	return a.engine.LogoutGitHub()
 }
 
 // getGitHubClient returns the GitHub client or an error if not authenticated.
@@ -1374,7 +1774,7 @@ func (a *App) OpenRepo(path string) error {
 	a.restartFileWatcher()
 	// Notify frontend
 	if a.ctx != nil {
-		runtime.EventsEmit(a.ctx, "repo:switched", resolved)
+		wailsRuntime.EventsEmit(a.ctx, "repo:switched", resolved)
 	}
 	return nil
 }
@@ -1390,7 +1790,7 @@ func (a *App) PickDirectory() (string, error) {
 	if a.ctx == nil {
 		return "", fmt.Errorf("app context not ready")
 	}
-	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+	dir, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
 		Title: "Select Git Repository",
 	})
 	if err != nil {

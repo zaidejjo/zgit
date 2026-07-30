@@ -139,27 +139,27 @@ function DiffViewer({ file, defaultCollapsed = false }: DiffViewerProps) {
   const fileName = file.new_path || file.old_path || "";
 
   return (
-    <div className="mb-3 border rounded-lg overflow-hidden bg-card">
+    <div className="mb-2 rounded-lg overflow-hidden border border-border/30 bg-card/30">
       {/* File header */}
       <div
-        className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-b cursor-pointer hover:bg-muted/50 transition-colors select-none"
+        className="flex items-center gap-2 px-3 py-2 bg-muted/10 border-b border-border/20 cursor-pointer hover:bg-muted/20 transition-all duration-150 select-none"
         onClick={() => setCollapsed(!collapsed)}
       >
-        <button className="shrink-0 text-muted-foreground hover:text-foreground">
+        <button className="shrink-0 text-muted-foreground hover:text-foreground transition-colors">
           {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         </button>
         <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-        <span className="text-xs font-mono flex-1 truncate">{fileName}</span>
-        <span className="text-xs text-green-600 font-medium">+{file.additions}</span>
-        <span className="text-xs text-red-600 font-medium">-{file.deletions}</span>
+        <span className="text-xs font-mono flex-1 truncate text-foreground/80">{fileName}</span>
+        <span className="text-[11px] text-success font-medium">+{file.additions}</span>
+        <span className="text-[11px] text-destructive font-medium">-{file.deletions}</span>
         {/* View mode toggle */}
         <div className="flex gap-0.5 ml-2" onClick={(e) => e.stopPropagation()}>
           <button
             className={cn(
               "p-1 rounded transition-colors",
               viewMode === "unified"
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-accent/60 text-accent-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-accent/30"
             )}
             onClick={() => setViewMode("unified")}
             title="Unified view"
@@ -170,8 +170,8 @@ function DiffViewer({ file, defaultCollapsed = false }: DiffViewerProps) {
             className={cn(
               "p-1 rounded transition-colors",
               viewMode === "split"
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-accent/60 text-accent-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-accent/30"
             )}
             onClick={() => setViewMode("split")}
             title="Split view"
@@ -205,15 +205,15 @@ function UnifiedView({
   onStageHunk: (raw: string) => void;
 }) {
   return (
-    <div className="divide-y divide-border/50">
+    <div className="divide-y divide-border/20">
       {hunks.map((hunk, hunkIdx) => (
         <div key={hunkIdx} className="relative group">
           {/* Hunk header */}
-          <div className="flex items-center gap-2 px-3 py-1 bg-blue-500/5 text-blue-600 dark:text-blue-400 text-[10px] font-semibold border-b border-blue-500/10">
+          <div className="flex items-center gap-2 px-3 py-1 bg-blue-500/[0.04] text-blue-500 text-[10px] font-semibold border-b border-blue-500/10">
             <span>{hunk.header}</span>
             <div className="flex-1" />
             <button
-              className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-green-600 hover:bg-green-500/10 border border-transparent hover:border-green-500/30"
+              className="opacity-0 group-hover:opacity-100 transition-all duration-150 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-success hover:bg-success/10 border border-transparent hover:border-success/30 press-scale"
               onClick={() => onStageHunk(hunk.raw)}
               title="Stage this hunk"
             >
@@ -238,28 +238,28 @@ function UnifiedLine({ line }: { line: HunkLine }) {
   return (
     <div
       className={cn(
-        "flex items-stretch min-h-[1.25rem] border-l-2",
-        isAdd && "bg-green-500/10 border-l-green-500",
-        isDel && "bg-red-500/10 border-l-red-500",
-        line.type === "context" && "border-l-transparent"
+        "flex items-stretch min-h-[1.375rem]",
+        isAdd && "bg-success/[0.06] border-l-2 border-l-success/60",
+        isDel && "bg-destructive/[0.06] border-l-2 border-l-destructive/60",
+        line.type === "context" && "border-l-2 border-l-transparent"
       )}
     >
       {/* Line number */}
-      <span className="w-10 shrink-0 text-right pr-2 text-[10px] text-muted-foreground select-none leading-[1.25rem]">
+      <span className="w-12 shrink-0 text-right pr-2 text-[10px] text-muted-foreground/50 select-none leading-[1.375rem] bg-muted/10">
         {lineNum ?? ""}
       </span>
       {/* Sign */}
       <span
         className={cn(
-          "w-4 shrink-0 text-center select-none leading-[1.25rem]",
-          isAdd && "text-green-600",
-          isDel && "text-red-600"
+          "w-4 shrink-0 text-center select-none leading-[1.375rem] text-[10px]",
+          isAdd && "text-success",
+          isDel && "text-destructive"
         )}
       >
         {isAdd ? "+" : isDel ? "-" : " "}
       </span>
       {/* Content with syntax highlighting */}
-      <span className="flex-1 pl-1 whitespace-pre leading-[1.25rem]">
+      <span className="flex-1 pl-2 whitespace-pre leading-[1.375rem] text-[11px]">
         <SyntaxHighlight code={line.content} />
       </span>
     </div>
@@ -276,7 +276,7 @@ function SplitView({
   onStageHunk: (raw: string) => void;
 }) {
   return (
-    <div className="divide-y divide-border/50">
+    <div className="divide-y divide-border/20">
       {hunks.map((hunk, hunkIdx) => {
         // Build left (old) and right (new) columns
         const leftLines: Array<{ type: "context" | "del"; content: string; lineNum: number | null }> = [];
@@ -304,11 +304,11 @@ function SplitView({
         return (
           <div key={hunkIdx} className="relative group">
             {/* Hunk header with stage button */}
-            <div className="flex items-center gap-2 px-3 py-1 bg-blue-500/5 text-blue-600 dark:text-blue-400 text-[10px] font-semibold border-b border-blue-500/10">
+            <div className="flex items-center gap-2 px-3 py-1 bg-blue-500/[0.04] text-blue-500 text-[10px] font-semibold border-b border-blue-500/10">
               <span>{hunk.header}</span>
               <div className="flex-1" />
               <button
-                className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-green-600 hover:bg-green-500/10 border border-transparent hover:border-green-500/30"
+                className="opacity-0 group-hover:opacity-100 transition-all duration-150 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-success hover:bg-success/10 border border-transparent hover:border-success/30 press-scale"
                 onClick={() => onStageHunk(hunk.raw)}
                 title="Stage this hunk"
               >
@@ -319,7 +319,7 @@ function SplitView({
             {/* Side-by-side columns */}
             <div className="flex">
               {/* Left column (old) */}
-              <div className="w-1/2 border-r border-border/30">
+              <div className="w-1/2 border-r border-border/20">
                 {leftLines.map((line, i) => (
                   <SplitLine key={i} line={line} side="left" />
                 ))}
@@ -350,22 +350,22 @@ function SplitLine({
   return (
     <div
       className={cn(
-        "flex items-stretch min-h-[1.25rem]",
-        line.type === "del" && "bg-red-500/10",
-        line.type === "add" && "bg-green-500/10"
+        "flex items-stretch min-h-[1.375rem]",
+        line.type === "del" && "bg-destructive/[0.06]",
+        line.type === "add" && "bg-success/[0.06]"
       )}
     >
       {/* Line number */}
-      <span className="w-8 shrink-0 text-right pr-1 text-[10px] text-muted-foreground select-none leading-[1.25rem]">
+      <span className="w-10 shrink-0 text-right pr-1 text-[10px] text-muted-foreground/50 select-none leading-[1.375rem] bg-muted/10">
         {line.lineNum ?? ""}
       </span>
       {/* Sign */}
       {line.content !== "" ? (
         <span
           className={cn(
-            "w-3 shrink-0 text-center select-none leading-[1.25rem]",
-            line.type === "del" && "text-red-600",
-            line.type === "add" && "text-green-600"
+            "w-3 shrink-0 text-center select-none leading-[1.375rem] text-[10px]",
+            line.type === "del" && "text-destructive",
+            line.type === "add" && "text-success"
           )}
         >
           {line.type === "del" ? "-" : line.type === "add" ? "+" : " "}
@@ -374,7 +374,7 @@ function SplitLine({
         <span className="w-3 shrink-0" />
       )}
       {/* Content */}
-      <span className="flex-1 pl-1 whitespace-pre leading-[1.25rem]">
+      <span className="flex-1 pl-1.5 whitespace-pre leading-[1.375rem] text-[11px]">
         {isHighlighted ? <SyntaxHighlight code={line.content} /> : line.content}
       </span>
     </div>

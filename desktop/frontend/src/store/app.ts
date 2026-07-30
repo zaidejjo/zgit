@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { applyAccentColor as applyAccent, applyBrightness as applyBgBrightness } from "@/lib/theme";
 
 // Types matching the Go backend models (snake_case — matches Wails JSON serialization)
 export interface StatusFile {
@@ -178,6 +179,7 @@ export interface GitHubUser {
   bio?: string;
   company?: string;
   location?: string;
+  plan?: string;
   followers: number;
   following: number;
   public_repos: number;
@@ -244,6 +246,15 @@ export interface AIConfig {
   provider: string;
   api_key: string;
   model: string;
+  endpoint?: string;
+  providers?: ProviderStatus[];
+}
+
+export interface ProviderStatus {
+  provider: string;
+  has_key: boolean;
+  key_masked: string;
+  model?: string;
   endpoint?: string;
 }
 
@@ -316,6 +327,8 @@ declare global {
           GetCurrentRepoPath(): Promise<string>;
           GetGitHubUser(): Promise<GitHubUser>;
           AuthenticateGitHub(token: string): Promise<void>;
+          SaveGitHubToken(token: string): Promise<void>;
+          ValidateGitHubToken(): Promise<GitHubUser>;
           GetRemotes(): Promise<Remote[]>;
           AddRemote(name: string, url: string): Promise<void>;
           RemoveRemote(name: string): Promise<void>;
@@ -324,6 +337,8 @@ declare global {
           GetAheadCommits(): Promise<Commit[]>;
           StartDeviceFlow(): Promise<DeviceFlowCode>;
           PollDeviceFlow(deviceCode: string): Promise<string>;
+          PollDeviceFlowWithRetry(deviceCode: string, interval: number): Promise<string>;
+          CancelDeviceFlow(): Promise<void>;
           GitPush(): Promise<void>;
           GetRepoPath(): Promise<string>;
           ListWorkflowRuns(): Promise<WorkflowRun[]>;
@@ -466,6 +481,29 @@ export interface ChatSession {
   updated_at: string;
 }
 
+// Theme type
+export type Theme = "dark" | "catppuccin" | "tokyonight" | "light" | "dracula";
+
+// User preferences (appearance + keybindings)
+export interface UserPreferences {
+  appearance: AppearanceConfig;
+  keybindings: Record<string, string>;
+}
+
+export interface AppearanceConfig {
+  theme: string;
+  accent_color: string;
+  brightness: number;
+}
+
+export const THEMES: { id: Theme; label: string; icon: string }[] = [
+  { id: "dark",       label: "Deep Slate",  icon: "🌑" },
+  { id: "catppuccin", label: "Catppuccin",  icon: "🌸" },
+  { id: "tokyonight", label: "Tokyo Night", icon: "🌃" },
+  { id: "light",      label: "Clean Light", icon: "☀️" },
+  { id: "dracula",    label: "Dracula",     icon: "🧛" },
+];
+
 // App state store
 interface AppState {
   // Git state
@@ -549,13 +587,23 @@ interface AppState {
   // UI state
   loading: Record<string, boolean>;
   error: string | null;
+  successMessage: string | null;
   activeTab: string;
   darkMode: boolean;
+  theme: Theme;
   loginDialogOpen: boolean;
+  userPreferences: UserPreferences | null;
+  preferencesLoaded: boolean;
 
   // Actions
   setActiveTab: (tab: string) => void;
   toggleDarkMode: () => void;
+  setTheme: (theme: Theme) => void;
+  loadUserPreferences: () => Promise<void>;
+  setUserPreferences: (prefs: UserPreferences) => Promise<void>;
+  setAccentColor: (color: string) => void;
+  setBrightness: (level: number) => void;
+  setKeybinding: (action: string, keys: string) => void;
   fetchStatus: () => Promise<void>;
   fetchLog: (count?: number) => Promise<void>;
   fetchGraphLog: (count?: number) => Promise<void>;
@@ -587,6 +635,9 @@ interface AppState {
   fetchRepository: () => Promise<void>;
   checkGitHubAuth: () => Promise<void>;
   authenticateGitHub: (token: string) => Promise<boolean>;
+  saveGitHubToken: (token: string) => Promise<boolean>;
+  validateGitHubToken: () => Promise<GitHubUser | null>;
+  logoutGitHub: () => Promise<void>;
   fetchWorkflowRuns: () => Promise<void>;
   reRunWorkflow: (runID: number) => Promise<void>;
   cancelWorkflowRun: (runID: number) => Promise<void>;
@@ -595,8 +646,11 @@ interface AppState {
   clearJobLogs: () => void;
   startDeviceFlow: () => Promise<DeviceFlowCode | null>;
   pollDeviceFlow: (deviceCode: string) => Promise<string>;
+  pollDeviceFlowWithRetry: (deviceCode: string, interval: number) => Promise<string>;
+  cancelDeviceFlow: () => Promise<void>;
   setLoginDialogOpen: (open: boolean) => void;
   setError: (err: string | null) => void;
+  setSuccessMessage: (msg: string | null) => void;
   clearDiff: () => void;
 
   // Repo management
@@ -670,8 +724,12 @@ interface AppState {
   // AI Commit Message
   fetchAIConfig: () => Promise<void>;
   setAIConfigAction: (provider: string, apiKey: string, model: string, endpoint?: string) => Promise<void>;
+  setProviderAIConfigAction: (provider: string, apiKey: string, model: string, endpoint?: string) => Promise<void>;
+  deleteProviderAIConfigAction: (provider: string) => Promise<void>;
+  fetchProviderModelsAction: (provider: string, apiKey?: string) => Promise<string[]>;
   generateCommitMessage: () => Promise<string | null>;
   generatePRDescription: (head: string, base?: string) => Promise<string | null>;
+  generatePRMetadata: (base: string, head: string) => Promise<string | null>;
 
   // Agentic AI Assistant — Dual Mode
   toggleAIPanel: () => void;
@@ -806,16 +864,100 @@ export const useAppStore = create<AppState>((set, get) => ({
   recentRepos: [],
   loading: {},
   error: null,
+  successMessage: null,
   activeTab: "status",
   darkMode: true,
+  theme: (localStorage.getItem("zgit-theme") as Theme) || "dark",
   loginDialogOpen: false,
+  userPreferences: null,
+  preferencesLoaded: false,
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
   toggleDarkMode: () => {
     const next = !get().darkMode;
-    document.documentElement.classList.toggle("dark", next);
-    set({ darkMode: next });
+    const theme: Theme = next ? "dark" : "light";
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("zgit-theme", theme);
+    set({ darkMode: next, theme });
+  },
+
+  setTheme: (theme: Theme) => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("zgit-theme", theme);
+    set({ theme, darkMode: theme !== "light" });
+    // Re-apply brightness with new theme baselines
+    const prefs = get().userPreferences;
+    if (prefs) {
+      applyBgBrightness(prefs.appearance.brightness, theme);
+      if (prefs.appearance.accent_color) {
+        applyAccent(prefs.appearance.accent_color);
+      }
+    }
+  },
+
+  loadUserPreferences: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const prefs = await backend.GetUserPreferences();
+      set({ userPreferences: prefs, preferencesLoaded: true });
+      // Apply persisted visual settings
+      if (prefs.appearance.accent_color) {
+        applyAccent(prefs.appearance.accent_color);
+      }
+      applyBgBrightness(prefs.appearance.brightness, prefs.appearance.theme || get().theme);
+    } catch (_) {
+      set({ preferencesLoaded: true });
+    }
+  },
+
+  setUserPreferences: async (prefs: UserPreferences) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.SetUserPreferences(prefs);
+      set({ userPreferences: prefs });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to save preferences" });
+    }
+  },
+
+  setAccentColor: (color: string) => {
+    const prefs = get().userPreferences;
+    if (!prefs) return;
+    const updated: UserPreferences = {
+      ...prefs,
+      appearance: { ...prefs.appearance, accent_color: color },
+    };
+    // Apply immediately
+    applyAccent(color);
+    set({ userPreferences: updated });
+    get().setUserPreferences(updated);
+  },
+
+  setBrightness: (level: number) => {
+    const prefs = get().userPreferences;
+    if (!prefs) return;
+    const updated: UserPreferences = {
+      ...prefs,
+      appearance: { ...prefs.appearance, brightness: level },
+    };
+    // Apply immediately
+    applyBgBrightness(level, prefs.appearance.theme || get().theme);
+    set({ userPreferences: updated });
+    get().setUserPreferences(updated);
+  },
+
+  setKeybinding: (action: string, keys: string) => {
+    const prefs = get().userPreferences;
+    if (!prefs) return;
+    const updated: UserPreferences = {
+      ...prefs,
+      keybindings: { ...prefs.keybindings, [action]: keys },
+    };
+    set({ userPreferences: updated });
+    get().setUserPreferences(updated);
   },
 
   fetchStatus: async () => {
@@ -1264,17 +1406,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   authenticateGitHub: async (token) => {
+    // PAT flow — saves token and validates. If validation hangs/times out,
+    // token is still saved and dialog still closes.
     const backend = getBackend();
     if (!backend) return false;
     set((s) => ({ loading: { ...s.loading, auth: true }, error: null }));
     try {
       await backend.AuthenticateGitHub(token);
       set({ ghAuthenticated: true, loginDialogOpen: false, loading: { ...get().loading, auth: false } });
-      // Refresh user + data
-      try {
-        const user = await backend.GetGitHubUser();
-        set({ ghUser: user });
-      } catch (_) { /* user fetch non-critical */ }
+      // User fetch non-critical — fire and forget
+      backend.GetGitHubUser()
+        .then((user: GitHubUser) => set({ ghUser: user }))
+        .catch(() => {});
       get().fetchPullRequests().catch(() => {});
       get().fetchIssues().catch(() => {});
       return true;
@@ -1287,28 +1430,82 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  startDeviceFlow: async () => {
+  saveGitHubToken: async (token) => {
+    // Instant save without validation — LoginDialog handles closing after success/validation.
+    const backend = getBackend();
+    if (!backend) return false;
+    try {
+      await backend.SaveGitHubToken(token);
+      set({ ghAuthenticated: true });
+      return true;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to save GitHub token" });
+      return false;
+    }
+  },
+
+  validateGitHubToken: async () => {
+    // Fetch user profile to validate the saved token.
+    // Returns null if validation fails (token still valid, user fetch just slow).
     const backend = getBackend();
     if (!backend) return null;
     try {
-      const code = await backend.StartDeviceFlow();
-      return code;
-    } catch (e: any) {
-      set({ error: e.message || "Failed to start device flow" });
+      const user = await backend.ValidateGitHubToken();
+      if (user) {
+        set({ ghUser: user });
+        return user;
+      }
+    } catch (_) { /* non-critical */ }
+    // Fallback: try GetGitHubUser (uses the same underlying token)
+    try {
+      const user = await backend.GetGitHubUser();
+      if (user) set({ ghUser: user });
+      return user;
+    } catch (_) {
       return null;
     }
+  },
+
+  logoutGitHub: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.LogoutGitHub();
+    } catch (_) { /* best effort */ }
+    set({ ghAuthenticated: false, ghUser: null, pullRequests: [], issues: [] });
+  },
+
+  startDeviceFlow: async () => {
+    const backend = getBackend();
+    if (!backend) return null;
+    // Let errors propagate to LoginDialog for inline error display.
+    const code = await backend.StartDeviceFlow();
+    return code;
   },
 
   pollDeviceFlow: async (deviceCode) => {
     const backend = getBackend();
     if (!backend) return "";
-    try {
-      const token = await backend.PollDeviceFlow(deviceCode);
-      return token;
-    } catch (e: any) {
-      set({ error: e.message || "Device flow polling failed" });
-      return "";
-    }
+    // Let errors propagate to caller (LoginDialog) for per-attempt handling.
+    // Empty string = "authorization_pending" — caller should retry.
+    const token = await backend.PollDeviceFlow(deviceCode);
+    return token;
+  },
+
+  pollDeviceFlowWithRetry: async (deviceCode, interval) => {
+    const backend = getBackend();
+    if (!backend) return "";
+    // Blocks until token received, error, or cancelled via cancelDeviceFlow.
+    // Handles interval, slow_down, authorization_pending internally on Go side.
+    const token = await backend.PollDeviceFlowWithRetry(deviceCode, interval);
+    return token;
+  },
+
+  cancelDeviceFlow: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    // Cancels any in-flight PollDeviceFlowWithRetry call.
+    await backend.CancelDeviceFlow();
   },
 
   fetchWorkflowRuns: async () => {
@@ -1372,6 +1569,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   setLoginDialogOpen: (open) => set({ loginDialogOpen: open }),
 
   setError: (err) => set({ error: err }),
+  setSuccessMessage: (msg) => {
+    set({ successMessage: msg });
+    if (msg) {
+      setTimeout(() => {
+        const current = get().successMessage;
+        if (current === msg) set({ successMessage: null });
+      }, 4000);
+    }
+  },
   clearDiff: () => set({ diff: null }),
 
   // --- Repo management ---
@@ -1878,9 +2084,42 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!backend) return;
     try {
       await backend.SetAIConfig(provider, apiKey, model, endpoint || "");
-      set({ aiConfig: { provider, api_key: apiKey, model, endpoint } });
+      // Refetch to get masked key status
+      await get().fetchAIConfig();
     } catch (e: any) {
       set({ error: e.message || "Failed to save AI config" });
+    }
+  },
+
+  setProviderAIConfigAction: async (provider, apiKey, model, endpoint) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.SetProviderAIConfig(provider, apiKey, model, endpoint || "");
+      await get().fetchAIConfig();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to save provider AI config" });
+    }
+  },
+
+  deleteProviderAIConfigAction: async (provider) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.DeleteProviderAIConfig(provider);
+      await get().fetchAIConfig();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to delete provider AI config" });
+    }
+  },
+
+  fetchProviderModelsAction: async (provider, apiKey) => {
+    const backend = getBackend();
+    if (!backend) return [];
+    try {
+      return await backend.FetchProviderModels(provider, apiKey || "");
+    } catch (_) {
+      return [];
     }
   },
 
@@ -1914,14 +2153,40 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  generatePRMetadata: async (base, head) => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      set({ aiGenerating: true });
+      const result: string = await backend.GeneratePRMetadata(base, head);
+      set({ aiGenerating: false });
+      return result;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to generate PR metadata" });
+      set({ aiGenerating: false });
+      return null;
+    }
+  },
+
   // --- Agentic AI Assistant — Dual Mode ---
 
   setAIMode: (mode) => {
-    const prev = get().aiMode;
+    const state = get();
+    const prev = state.aiMode;
     set({ aiMode: mode });
+
+    // Persist mode change on backend for active session
+    const sessionId = state.aiActiveSessionId;
+    if (sessionId && mode !== prev) {
+      const backend = getBackend();
+      if (backend && backend.SessionSetMode) {
+        backend.SessionSetMode(sessionId, mode).catch(() => {});
+      }
+    }
+
     // Switching to Agent: auto-start session
     if (mode === "agent" && prev !== "agent") {
-      if (!get().aiSessionActive) {
+      if (!state.aiSessionActive) {
         get().startAgentSession();
       }
     }

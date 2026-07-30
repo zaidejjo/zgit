@@ -443,6 +443,10 @@ func convertUser(u *github.User) *models.User {
 	if u == nil {
 		return nil
 	}
+	planName := ""
+	if p := u.GetPlan(); p != nil {
+		planName = p.GetName()
+	}
 	return &models.User{
 		Login:       u.GetLogin(),
 		Name:        u.GetName(),
@@ -451,6 +455,7 @@ func convertUser(u *github.User) *models.User {
 		Bio:         u.GetBio(),
 		Company:     u.GetCompany(),
 		Location:    u.GetLocation(),
+		Plan:        planName,
 		Followers:   u.GetFollowers(),
 		Following:   u.GetFollowing(),
 		PublicRepos: u.GetPublicRepos(),

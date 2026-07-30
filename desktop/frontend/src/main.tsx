@@ -5,8 +5,14 @@ import router from "./router";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import "./index.css";
 
-// Initialize dark mode
-document.documentElement.classList.add("dark");
+// Initialize theme: explicit preference → system preference → dark
+const savedTheme = localStorage.getItem("zgit-theme");
+if (savedTheme) {
+  document.documentElement.dataset.theme = savedTheme;
+} else {
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = prefersDark ? "dark" : "light";
+}
 
 /**
  * Persist the React root across HMR cycles.

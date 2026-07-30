@@ -5,6 +5,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -141,25 +142,63 @@ func (e *Engine) CurrentRepo() *models.Repo {
 }
 
 // AuthenticateGitHub sets the GitHub token and initializes the client.
+// SaveGitHubToken creates a GitHub client with the given token and persists it.
+// Unlike AuthenticateGitHub, this does NOT validate the token by fetching the user,
+// so it returns immediately without any network call.
+// Call ValidateGitHubToken() separately if you need the user profile.
+func (e *Engine) SaveGitHubToken(token string) error {
+	gh, err := github.NewCombinedClient(token)
+	if err != nil {
+		return fmt.Errorf("init github client: %w", err)
+	}
+	e.GitHub = gh
+	e.Config.Set("github.token", token)
+	return e.Config.Save()
+}
+
+// AuthenticateGitHub saves a GitHub token and validates it by fetching the user.
+// The token is saved even if validation fails (with a 10s timeout).
+// For instant dialog close without waiting for validation, use SaveGitHubToken instead.
 func (e *Engine) AuthenticateGitHub(token string) error {
 	gh, err := github.NewCombinedClient(token)
 	if err != nil {
 		return fmt.Errorf("init github client: %w", err)
 	}
-	// Validate by fetching user
-	user, err := gh.GetAuthenticatedUser(context.Background())
-	if err != nil {
-		return fmt.Errorf("token validation failed: %w", err)
-	}
+
+	// Save token immediately so it persists even if validation fails or times out.
+	// This happens BEFORE the validation call so the state is durable.
 	e.GitHub = gh
 	e.Config.Set("github.token", token)
-	e.Config.Set("github.user", user.Login)
-	return e.Config.Save()
+	if saveErr := e.Config.Save(); saveErr != nil {
+		log.Printf("zgit: AuthenticateGitHub: save config: %v", saveErr)
+	}
+
+	// Validate with a short timeout — don't block the frontend login dialog for long.
+	valCtx, valCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer valCancel()
+	user, err := gh.GetAuthenticatedUser(valCtx)
+	if err != nil {
+		log.Printf("zgit: AuthenticateGitHub: user validation note (token already saved): %v", err)
+	} else {
+		e.Config.Set("github.user", user.Login)
+		if saveErr := e.Config.Save(); saveErr != nil {
+			log.Printf("zgit: AuthenticateGitHub: save user: %v", saveErr)
+		}
+	}
+	return nil
 }
 
 // IsGitHubAuthenticated returns true if a GitHub client is available.
 func (e *Engine) IsGitHubAuthenticated() bool {
 	return e.GitHub != nil
+}
+
+// LogoutGitHub clears the GitHub token and client.
+func (e *Engine) LogoutGitHub() error {
+	e.GitHub = nil
+	e.Config.Set("github.token", "")
+	e.Config.Set("github.user", "")
+	return e.Config.Save()
 }
 
 // NewAgent creates an AI agent wired to this engine's git adapter.

@@ -215,11 +215,32 @@ export namespace embed {
 
 export namespace models {
 	
+	export class ProviderStatus {
+	    provider: string;
+	    has_key: boolean;
+	    key_masked: string;
+	    model?: string;
+	    endpoint?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProviderStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.provider = source["provider"];
+	        this.has_key = source["has_key"];
+	        this.key_masked = source["key_masked"];
+	        this.model = source["model"];
+	        this.endpoint = source["endpoint"];
+	    }
+	}
 	export class AIConfig {
 	    provider: string;
 	    api_key: string;
 	    model: string;
 	    endpoint?: string;
+	    providers?: ProviderStatus[];
 	
 	    static createFrom(source: any = {}) {
 	        return new AIConfig(source);
@@ -231,6 +252,41 @@ export namespace models {
 	        this.api_key = source["api_key"];
 	        this.model = source["model"];
 	        this.endpoint = source["endpoint"];
+	        this.providers = this.convertValues(source["providers"], ProviderStatus);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AppearanceConfig {
+	    theme: string;
+	    accent_color: string;
+	    brightness: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppearanceConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.theme = source["theme"];
+	        this.accent_color = source["accent_color"];
+	        this.brightness = source["brightness"];
 	    }
 	}
 	export class Branch {
@@ -643,6 +699,7 @@ export namespace models {
 		    return a;
 		}
 	}
+	
 	export class Review {
 	    id: number;
 	    author: string;
@@ -1062,6 +1119,7 @@ export namespace models {
 	    bio?: string;
 	    company?: string;
 	    location?: string;
+	    plan?: string;
 	    followers: number;
 	    following: number;
 	    public_repos: number;
@@ -1079,10 +1137,43 @@ export namespace models {
 	        this.bio = source["bio"];
 	        this.company = source["company"];
 	        this.location = source["location"];
+	        this.plan = source["plan"];
 	        this.followers = source["followers"];
 	        this.following = source["following"];
 	        this.public_repos = source["public_repos"];
 	    }
+	}
+	export class UserPreferences {
+	    appearance: AppearanceConfig;
+	    keybindings: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new UserPreferences(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.appearance = this.convertValues(source["appearance"], AppearanceConfig);
+	        this.keybindings = source["keybindings"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class WorkflowRun {
 	    id: number;

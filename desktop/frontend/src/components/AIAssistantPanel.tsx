@@ -46,6 +46,15 @@ export default function AIAssistantPanel() {
     }
   }, [aiPanelOpen]);
 
+  // Auto-activate Ask mode when panel opens — shows input area immediately
+  useEffect(() => {
+    if (aiPanelOpen && !aiSessionActive) {
+      if (aiMode === "ask") {
+        useAppStore.setState({ aiSessionActive: true });
+      }
+    }
+  }, [aiPanelOpen, aiSessionActive, aiMode]);
+
   const handleSend = async () => {
     const msg = input.trim();
     if (!msg || aiThinking) return;
@@ -116,7 +125,7 @@ export default function AIAssistantPanel() {
       {/* Overlay (only in panel mode, not fullscreen) */}
       {aiPanelOpen && !aiFullscreen && (
         <div
-          className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]"
+          className="fixed inset-0 z-40 command-overlay"
           onClick={toggleAIPanel}
         />
       )}
@@ -126,7 +135,7 @@ export default function AIAssistantPanel() {
         className={cn(
           aiFullscreen
             ? "fixed inset-0 z-50 bg-background flex flex-col"
-            : "fixed top-0 right-0 z-50 h-full w-[520px] max-w-[100vw] bg-background border-l border-border shadow-2xl flex flex-col transition-transform duration-300 ease-in-out",
+            : "fixed top-0 right-0 z-50 h-full w-[520px] max-w-[100vw] glass rounded-none border-r-0 border-t-0 border-b-0 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out",
           aiPanelOpen ? "translate-x-0" : "translate-x-full"
         )}
       >
