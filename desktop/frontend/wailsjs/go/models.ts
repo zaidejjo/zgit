@@ -1078,6 +1078,7 @@ export namespace models {
 	    bio?: string;
 	    company?: string;
 	    location?: string;
+	    plan?: string;
 	    followers: number;
 	    following: number;
 	    public_repos: number;
@@ -1095,6 +1096,7 @@ export namespace models {
 	        this.bio = source["bio"];
 	        this.company = source["company"];
 	        this.location = source["location"];
+	        this.plan = source["plan"];
 	        this.followers = source["followers"];
 	        this.following = source["following"];
 	        this.public_repos = source["public_repos"];
