@@ -13,11 +13,25 @@ const configFileName = "config.yaml"
 
 // Config holds all zgit configuration values.
 type Config struct {
-	GitHub      GitHubConfig `mapstructure:"github"`
-	AI          AIConfig     `mapstructure:"ai"`
-	Repo        RepoConfig   `mapstructure:"repo"`
-	RecentRepos []string     `mapstructure:"recent_repos"`
-	Theme       string       `mapstructure:"theme"`
+	GitHub          GitHubConfig    `mapstructure:"github"`
+	AI              AIConfig        `mapstructure:"ai"`
+	Repo            RepoConfig      `mapstructure:"repo"`
+	RecentRepos     []string        `mapstructure:"recent_repos"`
+	Theme           string          `mapstructure:"theme"`
+	UserPreferences UserPreferences `mapstructure:"user_preferences"`
+}
+
+// UserPreferences stores user-customizable appearance and keybinding settings.
+type UserPreferences struct {
+	Appearance  AppearanceConfig  `mapstructure:"appearance"`
+	Keybindings map[string]string `mapstructure:"keybindings"`
+}
+
+// AppearanceConfig controls theme-level visual customization.
+type AppearanceConfig struct {
+	Theme       string `mapstructure:"theme"`
+	AccentColor string `mapstructure:"accent_color"`
+	Brightness  int    `mapstructure:"brightness"`
 }
 
 // ProviderConfig stores per-provider AI settings.
@@ -84,6 +98,16 @@ func New() (*Manager, error) {
 	v.SetDefault("repo.editor", "code")
 	v.SetDefault("repo.diff_context", 3)
 	v.SetDefault("theme", "default")
+	v.SetDefault("user_preferences.appearance.theme", "dark")
+	v.SetDefault("user_preferences.appearance.accent_color", "")
+	v.SetDefault("user_preferences.appearance.brightness", 50)
+	v.SetDefault("user_preferences.keybindings", map[string]interface{}{
+		"command_palette": "Ctrl+K",
+		"toggle_ai_panel": "Ctrl+Shift+A",
+		"fullscreen_ai":   "Ctrl+Shift+F",
+		"commit":          "Enter",
+		"close_dialog":    "Escape",
+	})
 
 	m := &Manager{v: v, path: configDir}
 
@@ -235,6 +259,27 @@ func (m *Manager) AddCustomModel(provider string, model string) {
 	}
 	models = append(models, model)
 	m.v.Set("ai.providers."+provider+".custom_models", models)
+}
+
+// GetUserPreferences returns the stored user preferences.
+func (m *Manager) GetUserPreferences() UserPreferences {
+	return UserPreferences{
+		Appearance: AppearanceConfig{
+			Theme:       m.v.GetString("user_preferences.appearance.theme"),
+			AccentColor: m.v.GetString("user_preferences.appearance.accent_color"),
+			Brightness:  m.v.GetInt("user_preferences.appearance.brightness"),
+		},
+		Keybindings: m.v.GetStringMapString("user_preferences.keybindings"),
+	}
+}
+
+// SetUserPreferences saves user preferences and persists to disk.
+func (m *Manager) SetUserPreferences(prefs UserPreferences) error {
+	m.v.Set("user_preferences.appearance.theme", prefs.Appearance.Theme)
+	m.v.Set("user_preferences.appearance.accent_color", prefs.Appearance.AccentColor)
+	m.v.Set("user_preferences.appearance.brightness", prefs.Appearance.Brightness)
+	m.v.Set("user_preferences.keybindings", prefs.Keybindings)
+	return m.Save()
 }
 
 // DeleteProviderConfig removes a provider's config.

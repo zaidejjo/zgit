@@ -3,68 +3,262 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
+  /*
+   * ─── Theme: Dark (Midnight Black — Default) ───
+   * Background: #050508 / #090d16  → deep near-black with blue tint
+   * Accent:     #22C55E            → hsl(142 71% 45%) crisp green
+   */
+  :root,
+  [data-theme="dark"] {
+    --background: 230 20% 5%;        /* #0a0d14 */
+    --foreground: 210 40% 96%;       /* #f0f4f8 */
+    --card: 230 15% 9%;              /* #0f1219 */
+    --card-foreground: 210 40% 96%;
+    --popover: 230 15% 9%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 142 71% 45%;          /* #22C55E */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 230 12% 14%;        /* #1a1e28 */
+    --secondary-foreground: 210 40% 96%;
+    --muted: 230 12% 14%;
+    --muted-foreground: 215 12% 60%; /* #8792a7 */
+    --accent: 230 12% 18%;           /* #222736 */
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --border: 230 10% 18%;           /* #262b38 */
+    --input: 230 10% 18%;
+    --ring: 142 71% 45%;
     --radius: 0.5rem;
 
-    /* zgit semantic colors */
     --git-added: 142 71% 45%;
     --git-modified: 38 92% 50%;
     --git-deleted: 0 84% 60%;
-    --git-untracked: 240 4% 65%;
+    --git-untracked: 215 12% 60%;
     --pr-open: 142 71% 45%;
     --pr-closed: 0 84% 60%;
     --pr-merged: 271 81% 66%;
     --pr-draft: 38 92% 50%;
+
+    --glass-bg: 230 15% 9% / 0.75;
+    --glass-border: 230 10% 22% / 0.5;
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+
+    --selection-bg: 142 71% 45% / 0.25;
+    --scrollbar-thumb: 230 10% 22%;
+    --scrollbar-track: 230 20% 4%;
+
+    color-scheme: dark;
   }
 
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
+  /*
+   * ─── Theme: Catppuccin Mocha (exact palette) ───
+   * Base: #1e1e2e → hsl(240 21% 15%)
+   * Text: #cdd6f4 → hsl(226 64% 88%)
+   * Mauve: #cba6f7 → hsl(267 84% 81%)
+   * See https://catppuccin.com/palette
+   */
+  [data-theme="catppuccin"] {
+    --background: 240 21% 15%;     /* #1e1e2e base */
+    --foreground: 226 64% 88%;     /* #cdd6f4 text */
+    --card: 240 21% 12%;           /* #181825 mantle */
+    --card-foreground: 226 64% 88%;
+    --popover: 240 21% 12%;
+    --popover-foreground: 226 64% 88%;
+    --primary: 267 84% 81%;        /* #cba6f7 mauve */
+    --primary-foreground: 240 21% 12%;
+    --secondary: 240 16% 18%;      /* #313244 surface0 */
+    --secondary-foreground: 226 64% 88%;
+    --muted: 240 16% 18%;
+    --muted-foreground: 231 11% 57%; /* #9399b2 overlay0 */
+    --accent: 240 16% 23%;         /* #45475a surface1 */
+    --accent-foreground: 226 64% 88%;
+    --destructive: 347 87% 78%;    /* #f38ba8 red */
+    --destructive-foreground: 240 21% 12%;
+    --success: 115 54% 76%;        /* #a6e3a1 green */
+    --success-foreground: 240 21% 12%;
+    --warning: 41 86% 83%;         /* #f9e2af yellow */
+    --warning-foreground: 240 21% 12%;
+    --border: 240 16% 21%;         /* surface0-ish */
+    --input: 240 16% 21%;
+    --ring: 267 84% 81%;           /* mauve */
+    --radius: 0.5rem;
+
+    --git-added: 115 54% 76%;
+    --git-modified: 41 86% 83%;
+    --git-deleted: 347 87% 78%;
+    --git-untracked: 231 11% 57%;
+
+    --pr-open: 115 54% 76%;
+    --pr-closed: 347 87% 78%;
+    --pr-merged: 267 84% 81%;
+    --pr-draft: 41 86% 83%;
+
+    --glass-bg: 240 21% 15% / 0.75;
+    --glass-border: 240 16% 23% / 0.5;
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+
+    --selection-bg: 267 84% 81% / 0.25;
+    --scrollbar-thumb: 240 16% 25%;
+    --scrollbar-track: 240 21% 12%;
+
+    color-scheme: dark;
+  }
+
+  /*
+   * ─── Theme: Tokyo Night ───
+   * Palette: https://github.com/folke/tokyonight.nvim
+   */
+  [data-theme="tokyonight"] {
+    --background: 235 18% 13%;     /* #1a1b26 */
+    --foreground: 234 61% 86%;     /* #c0caf5 */
+    --card: 237 16% 18%;           /* #1f2335 */
+    --card-foreground: 234 61% 86%;
+    --popover: 237 16% 18%;
+    --popover-foreground: 234 61% 86%;
+    --primary: 192 100% 75%;       /* cyan #7dcfff */
+    --primary-foreground: 235 18% 13%;
+    --secondary: 235 18% 18%;      /* bg_alt-ish */
+    --secondary-foreground: 234 61% 86%;
+    --muted: 235 18% 18%;
+    --muted-foreground: 234 14% 55%; /* comment #565f89 */
+    --accent: 235 18% 23%;
+    --accent-foreground: 234 61% 86%;
+    --destructive: 351 89% 72%;    /* red #f7768e */
+    --destructive-foreground: 235 18% 13%;
+    --success: 143 46% 66%;        /* green #9ece6a */
+    --success-foreground: 235 18% 13%;
+    --warning: 38 84% 67%;         /* yellow #e0af68 */
+    --warning-foreground: 235 18% 13%;
+    --border: 234 14% 25%;
+    --input: 234 14% 25%;
+    --ring: 192 100% 75%;          /* cyan */
+    --radius: 0.5rem;
+
+    --git-added: 143 46% 66%;
+    --git-modified: 38 84% 67%;
+    --git-deleted: 351 89% 72%;
+    --git-untracked: 234 14% 55%;
+
+    --pr-open: 143 46% 66%;
+    --pr-closed: 351 89% 72%;
+    --pr-merged: 260 82% 76%;      /* magenta #bb9af7 */
+    --pr-draft: 38 84% 67%;
+
+    --glass-bg: 237 16% 18% / 0.7;
+    --glass-border: 234 14% 28% / 0.5;
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+
+    --selection-bg: 192 100% 75% / 0.25;
+    --scrollbar-thumb: 234 14% 30%;
+    --scrollbar-track: 235 18% 13%;
+
+    color-scheme: dark;
+  }
+
+  /*
+   * ─── Theme: Light (Clean Modern) ───
+   */
+  [data-theme="light"] {
+    --background: 0 0% 100%;       /* #ffffff */
+    --foreground: 222 47% 11%;     /* #0f172a */
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 217 91% 60%;        /* blue #3b82f6 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;      /* #f1f5f9 */
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%; /* #64748b */
+    --accent: 210 40% 92%;         /* #e2e8f0 */
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --border: 214 32% 91%;         /* #e2e8f0 */
+    --input: 214 32% 91%;
+    --ring: 217 91% 60%;
+    --radius: 0.5rem;
 
     --git-added: 142 71% 45%;
     --git-modified: 38 92% 50%;
     --git-deleted: 0 84% 60%;
-    --git-untracked: 240 4% 65%;
+    --git-untracked: 215 16% 47%;
+
     --pr-open: 142 71% 45%;
     --pr-closed: 0 84% 60%;
-    --pr-merged: 271 81% 66%;
+    --pr-merged: 271 81% 56%;
     --pr-draft: 38 92% 50%;
+
+    --glass-bg: 0 0% 100% / 0.7;
+    --glass-border: 214 32% 91% / 0.7;
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+
+    --selection-bg: 217 91% 60% / 0.2;
+    --scrollbar-thumb: 214 32% 80%;
+    --scrollbar-track: 210 40% 96%;
+
+    color-scheme: light;
+  }
+
+  /*
+   * ─── Theme: Dracula ───
+   * Palette: https://draculatheme.com
+   */
+  [data-theme="dracula"] {
+    --background: 231 15% 18%;     /* #282a36 */
+    --foreground: 60 30% 96%;      /* #f8f8f2 */
+    --card: 232 14% 25%;           /* #3a3c4a approx — slight lift */
+    --card-foreground: 60 30% 96%;
+    --popover: 232 14% 25%;
+    --popover-foreground: 60 30% 96%;
+    --primary: 326 100% 74%;       /* pink #ff79c6 */
+    --primary-foreground: 231 15% 18%;
+    --secondary: 231 15% 22%;
+    --secondary-foreground: 60 30% 96%;
+    --muted: 231 15% 22%;
+    --muted-foreground: 60 4% 62%; /* comment-ish #6272a4 adjusted */
+    --accent: 231 14% 28%;
+    --accent-foreground: 60 30% 96%;
+    --destructive: 0 100% 67%;     /* red #ff5555 */
+    --destructive-foreground: 60 30% 96%;
+    --success: 135 94% 65%;        /* green #50fa7b */
+    --success-foreground: 231 15% 18%;
+    --warning: 39 100% 71%;        /* orange #ffb86c */
+    --warning-foreground: 231 15% 18%;
+    --border: 231 14% 28%;
+    --input: 231 14% 28%;
+    --ring: 326 100% 74%;          /* pink */
+    --radius: 0.5rem;
+
+    --git-added: 135 94% 65%;
+    --git-modified: 39 100% 71%;
+    --git-deleted: 0 100% 67%;
+    --git-untracked: 60 4% 62%;
+
+    --pr-open: 135 94% 65%;
+    --pr-closed: 0 100% 67%;
+    --pr-merged: 326 100% 74%;
+    --pr-draft: 39 100% 71%;
+
+    --glass-bg: 231 15% 18% / 0.7;
+    --glass-border: 231 14% 30% / 0.5;
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+
+    --selection-bg: 326 100% 74% / 0.25;
+    --scrollbar-thumb: 231 14% 32%;
+    --scrollbar-track: 231 15% 18%;
+
+    color-scheme: dark;
   }
 }
 
@@ -72,8 +266,106 @@
   * {
     @apply border-border;
   }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.3);
+    color: hsl(var(--foreground));
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--scrollbar-track));
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--scrollbar-thumb));
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--scrollbar-thumb) / 0.8);
+  }
+
   body {
-    @apply bg-background text-foreground;
-    font-family: system-ui, -apple-system, sans-serif;
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer utilities {
+  /* Glassmorphism */
+  .glass {
+    background: hsl(var(--glass-bg));
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    border: 1px solid hsl(var(--glass-border));
+    box-shadow: var(--glass-shadow);
+  }
+
+  .glass-hover {
+    transition: background 200ms ease, border-color 200ms ease;
+  }
+  .glass-hover:hover {
+    background: hsl(var(--card) / 0.7);
+    border-color: hsl(var(--border) / 0.8);
+  }
+
+  /* Subtle glow for accents */
+  .glow-accent {
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.15);
+  }
+
+  /* Micro-interaction scale press */
+  .press-scale {
+    transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .press-scale:active {
+    transform: scale(0.97);
+  }
+
+  /* Command palette overlay */
+  .command-overlay {
+    background: hsl(0 0% 0% / 0.6);
+    backdrop-filter: blur(4px);
+  }
+
+  /* Sidebar item */
+  .sidebar-item {
+    @apply flex items-center gap-2.5 w-full px-3 py-2 text-sm rounded-lg
+           transition-all duration-150 ease-out
+           text-muted-foreground hover:text-foreground hover:bg-accent/50
+           cursor-pointer select-none;
+  }
+
+  .sidebar-item.active {
+    @apply bg-primary/10 text-primary font-medium;
+    box-shadow: inset 2px 0 0 hsl(var(--primary));
+  }
+
+  /* File row polish */
+  .file-row {
+    @apply flex items-center gap-2 px-3 py-2 border-l-2 cursor-pointer
+           transition-all duration-150 ease-out text-sm;
+  }
+  .file-row:hover {
+    @apply bg-accent/30;
+  }
+  .file-row.selected {
+    @apply bg-accent/40;
+  }
+
+  /* Badge status dot */
+  .status-dot {
+    @apply w-2 h-2 rounded-full shrink-0;
+  }
+
+  /* Theme preview swatch */
+  .theme-preview {
+    @apply w-8 h-8 rounded-lg border-2 transition-all duration-150 cursor-pointer;
+  }
+  .theme-preview.active {
+    @apply ring-2 ring-primary ring-offset-2 ring-offset-background;
   }
 }

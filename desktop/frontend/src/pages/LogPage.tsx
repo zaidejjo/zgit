@@ -32,11 +32,11 @@ const RESET_MODES = [
 type CommitAction = "pick" | "reword" | "squash" | "fixup" | "drop";
 
 const ACTION_COLORS: Record<CommitAction, string> = {
-  pick: "text-green-600 bg-green-500/10",
+  pick: "text-success bg-success/10",
   reword: "text-amber-600 bg-amber-500/10",
   squash: "text-blue-600 bg-blue-500/10",
   fixup: "text-cyan-600 bg-cyan-500/10",
-  drop: "text-red-600 bg-red-500/10 line-through",
+  drop: "text-destructive bg-destructive/10 line-through",
 };
 
 export default function LogPage() {
@@ -214,11 +214,11 @@ export default function LogPage() {
         {/* Legend (rebase mode) */}
         {rebaseMode && (
           <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-            <span className="text-green-600 font-medium">pick</span>
+            <span className="text-success font-medium">pick</span>
             <span className="text-amber-600 font-medium">reword</span>
             <span className="text-blue-600 font-medium">squash</span>
             <span className="text-cyan-600 font-medium">fixup</span>
-            <span className="text-red-600 font-medium">drop</span>
+            <span className="text-destructive font-medium">drop</span>
             <span className="text-muted-foreground/50">|</span>
             <span>Drag to reorder</span>
           </div>
@@ -497,7 +497,7 @@ function DraggableBranchBadge({ branch, commitHash }: { branch: string; commitHa
         "inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-mono cursor-grab active:cursor-grabbing transition-shadow hover:shadow-sm",
         isDragging ? "opacity-50 ring-2 ring-primary" : "",
         isHEAD
-          ? "bg-emerald-500/15 text-emerald-600"
+          ? "bg-primary/20 text-primary"
           : "bg-blue-500/10 text-blue-600"
       )}
       title={`Drag to merge/rebase onto another commit`}
@@ -623,7 +623,7 @@ function RebaseSortableCommit({
                 if (e.key === "Escape") onRewordCancel();
               }}
             />
-            <button onClick={onRewordApply} className="p-0.5 text-green-600 hover:text-green-500" title="Apply">
+            <button onClick={onRewordApply} className="p-0.5 text-success hover:text-success/80" title="Apply">
               ✓
             </button>
             <button onClick={onRewordCancel} className="p-0.5 text-muted-foreground hover:text-foreground" title="Cancel">

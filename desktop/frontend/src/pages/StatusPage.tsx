@@ -2,12 +2,11 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Download, Upload, Undo2, Archive, RotateCcw, Play, X,
   GitCommitHorizontal, SquarePen, AlignLeft, CheckCheck,
-  AlertTriangle, ChevronDown, ListChecks, FileText,
+  AlertTriangle, ChevronDown, FileText,
   RefreshCw, AlertOctagon, ArrowRight, Sparkles,
+  GitFork, Eye, EyeOff, Plus, Trash2,
 } from "lucide-react";
 import { useAppStore } from "@/store/app";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,19 +19,19 @@ import DiffViewer from "@/components/DiffViewer";
 import MergeEditor from "@/components/MergeEditor";
 
 const CONVENTIONAL_PREFIXES = [
-  { value: "feat", label: "feat", desc: "New feature", color: "text-green-500" },
-  { value: "fix", label: "fix", desc: "Bug fix", color: "text-red-500" },
-  { value: "docs", label: "docs", desc: "Documentation", color: "text-blue-500" },
-  { value: "style", label: "style", desc: "Formatting", color: "text-purple-500" },
-  { value: "refactor", label: "refactor", desc: "Code restructure", color: "text-yellow-500" },
-  { value: "test", label: "test", desc: "Tests", color: "text-orange-500" },
+  { value: "feat", label: "feat", desc: "New feature", color: "text-success" },
+  { value: "fix", label: "fix", desc: "Bug fix", color: "text-destructive" },
+  { value: "docs", label: "docs", desc: "Documentation", color: "text-primary" },
+  { value: "style", label: "style", desc: "Formatting", color: "text-[hsl(var(--pr-merged))]" },
+  { value: "refactor", label: "refactor", desc: "Code restructure", color: "text-warning" },
+  { value: "test", label: "test", desc: "Tests", color: "text-warning" },
   { value: "chore", label: "chore", desc: "Maintenance", color: "text-muted-foreground" },
 ] as const;
 
 // StatusType enum values from Go models
 const STATUS_UNTRACKED = 0;
 const STATUS_UNMODIFIED = 7;
-const STATUS_UNMERGED = 6; // StatusUpdatedButUnmerged
+const STATUS_UNMERGED = 6;
 
 export default function StatusPage() {
   const {
@@ -47,6 +46,7 @@ export default function StatusPage() {
 
   // Diff selection
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [diffVisible, setDiffVisible] = useState(false);
 
   // Commit form state
   const [summary, setSummary] = useState("");
@@ -74,11 +74,13 @@ export default function StatusPage() {
 
   const handleFileClick = (path: string) => {
     setSelectedFile(path);
+    setDiffVisible(true);
     fetchDiff(path);
   };
 
   const handleCloseDiff = () => {
     setSelectedFile(null);
+    setDiffVisible(false);
     clearDiff();
   };
 
@@ -94,7 +96,6 @@ export default function StatusPage() {
   const handleStageChecked = useCallback(async () => {
     const files = Array.from(checkedFiles);
     if (files.length === 0) return;
-    // Stage all checked files in sequence
     for (const f of files) {
       await stageFile(f);
     }
@@ -119,8 +120,6 @@ export default function StatusPage() {
   };
 
   const handleForcePushThenPush = async () => {
-    // Force push first, then do a normal commit+push sequence if needed
-    // This is for when user wants to push after force push
     try {
       await gitPushForce();
     } catch {
@@ -135,9 +134,12 @@ export default function StatusPage() {
     setStashMsg("");
   };
 
+  // Determine which view to show: if no diff, full width files; if diff, split layout
+  const showDiffPanel = selectedFile && diff && diffVisible;
+
   if (!status) {
     return (
-      <div className="flex items-center justify-center h-64 text-muted-foreground">
+      <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
         {loading.status ? "Loading status..." : "No repository open"}
       </div>
     );
@@ -152,6 +154,7 @@ export default function StatusPage() {
   const untrackedFiles = (status.files || []).filter(
     (f) => f.staged === STATUS_UNTRACKED
   );
+  const totalChanges = stagedFiles.length + unstagedFiles.length + untrackedFiles.length;
 
   const hasChecked = checkedFiles.size > 0;
   const checkedStaged = Array.from(checkedFiles).filter((p) =>
@@ -164,61 +167,84 @@ export default function StatusPage() {
   const canCommit = stagedFiles.length > 0 && summary.trim().length > 0;
 
   return (
-    <>
     <TooltipProvider delayDuration={300}>
-      <div className="flex gap-4 h-full">
-        {/* Left column: file list */}
-        <div className="flex-1 min-w-0 flex flex-col">
-          {/* Header row */}
+      <div className="flex gap-5 h-full">
+        {/* ─── Left: File List ─── */}
+        <div className={cn(
+          "flex-1 min-w-0 flex flex-col",
+          showDiffPanel ? "w-1/2" : "w-full"
+        )}>
+          {/* File list header */}
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold">Status</h2>
-              {status.branch && (
-                <Badge variant="outline" className="font-mono">
-                  {status.branch}
-                </Badge>
-              )}
-              {!status.is_clean && (
-                <Badge variant="warning">
-                  {status.ahead > 0 ? `+${status.ahead}` : ""}
-                  {status.behind > 0 ? ` -${status.behind}` : ""}
-                </Badge>
-              )}
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground font-medium">
+                  {totalChanges} change{totalChanges !== 1 ? "s" : ""}
+                </span>
+                {status.branch && (
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-primary/5 border border-primary/10">
+                    <GitFork className="w-3 h-3 text-primary" />
+                    <span className="text-[11px] font-mono text-primary font-medium">{status.branch}</span>
+                  </div>
+                )}
+                {(status.ahead > 0 || status.behind > 0) && (
+                  <span className="text-[11px] text-muted-foreground font-mono">
+                    {status.ahead > 0 && <span className="text-success">+{status.ahead}</span>}
+                    {status.ahead > 0 && status.behind > 0 && " "}
+                    {status.behind > 0 && <span className="text-destructive">-{status.behind}</span>}
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="flex gap-1 items-center">
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs"
-                onClick={() => gitFetch()} disabled={loading.fetch}>
-                <Download className="w-3.5 h-3.5 mr-1" />
-                Fetch
-              </Button>
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs"
-                onClick={() => gitPull(false)} disabled={loading.pull}>
-                <Upload className="w-3.5 h-3.5 mr-1" />
-                Pull
-              </Button>
-              <div className="w-px h-5 bg-border mx-1" />
-              {/* Batch stage/unstage buttons */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => gitFetch()}
+                disabled={loading.fetch}
+                className="px-2.5 py-1.5 text-xs rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors press-scale disabled:opacity-40"
+              >
+                <Download className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => gitPull(false)}
+                disabled={loading.pull}
+                className="px-2.5 py-1.5 text-xs rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors press-scale disabled:opacity-40"
+              >
+                <Upload className="w-3.5 h-3.5" />
+              </button>
+              <div className="w-px h-4 bg-border/50 mx-1" />
               {hasChecked ? (
                 <>
                   {checkedStaged.length > 0 && (
-                    <Button variant="outline" size="sm" onClick={handleUnstageChecked}>
-                      Unstage Selected ({checkedStaged.length})
-                    </Button>
+                    <button
+                      onClick={handleUnstageChecked}
+                      className="px-2.5 py-1.5 text-xs rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors press-scale"
+                    >
+                      Unstage ({checkedStaged.length})
+                    </button>
                   )}
                   {checkedUnstaged.length > 0 && (
-                    <Button variant="outline" size="sm" onClick={handleStageChecked}>
-                      Stage Selected ({checkedUnstaged.length})
-                    </Button>
+                    <button
+                      onClick={handleStageChecked}
+                      className="px-2.5 py-1.5 text-xs rounded-md text-success hover:text-success hover:bg-success/10 transition-colors press-scale"
+                    >
+                      Stage ({checkedUnstaged.length})
+                    </button>
                   )}
                 </>
               ) : (
                 <>
-                  <Button variant="outline" size="sm" onClick={() => stageAll()}>
-                    Stage All
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => unstageAll()}>
-                    Unstage All
-                  </Button>
+                  <button
+                    onClick={() => stageAll()}
+                    className="px-2.5 py-1.5 text-xs rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors press-scale"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => unstageAll()}
+                    className="px-2.5 py-1.5 text-xs rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors press-scale"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </>
               )}
             </div>
@@ -226,133 +252,145 @@ export default function StatusPage() {
 
           {/* Merge conflict resolution */}
           {status.is_merging && (
-            <>
-              <MergeConflictBanner
-                files={status.files || []}
-                onResolve={(file, side) => resolveConflict(file, side)}
-                onOpenEditor={(file) => openMergeEditor(file)}
-              />
-            </>
+            <MergeConflictBanner
+              files={status.files || []}
+              onResolve={(file, side) => resolveConflict(file, side)}
+              onOpenEditor={(file) => openMergeEditor(file)}
+            />
           )}
 
           {/* File list scroll area */}
-          <ScrollArea className="flex-1 min-h-0">
+          <ScrollArea className="flex-1 min-h-0 -mx-5 px-5">
             {status.is_clean && (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="w-16 h-16 rounded-full bg-primary/5 flex items-center justify-center mb-4">
-                  <CheckCheck className="w-8 h-8 text-primary/40" />
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <div className="w-14 h-14 rounded-xl bg-primary/5 border border-primary/10 flex items-center justify-center mb-4">
+                  <CheckCheck className="w-7 h-7 text-primary/30" />
                 </div>
-                <h3 className="text-base font-semibold text-foreground mb-1">Working tree is clean</h3>
-                <p className="text-sm text-muted-foreground max-w-xs">
-                  No modified or untracked files. Make changes to your project to see them here.
+                <h3 className="text-sm font-semibold text-foreground mb-1">Clean working tree</h3>
+                <p className="text-xs text-muted-foreground max-w-xs">
+                  No modified or untracked files.
                 </p>
               </div>
             )}
 
             {!status.is_clean && (
-              <>
-                {/* Staged files */}
+              <div className="space-y-5 pb-4">
+                {/* Staged */}
                 {stagedFiles.length > 0 && (
-                  <div className="mb-4">
-                    <h3 className="text-sm font-medium text-green-600 dark:text-green-400 mb-2">
-                      Staged ({stagedFiles.length})
-                    </h3>
-                    {stagedFiles.map((f) => (
-                      <FileRow
-                        key={f.path}
-                        file={f}
-                        type="staged"
-                        selected={selectedFile === f.path}
-                        checked={checkedFiles.has(f.path)}
-                        onToggleCheck={() => toggleCheck(f.path)}
-                        onClick={() => handleFileClick(f.path)}
-                        onStage={() => unstageFile(f.path)}
-                      />
-                    ))}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="status-dot bg-success" />
+                      <span className="text-[11px] font-medium text-success uppercase tracking-wider">
+                        Staged
+                      </span>
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        {stagedFiles.length}
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {stagedFiles.map((f) => (
+                        <FileRow
+                          key={f.path}
+                          file={f}
+                          type="staged"
+                          selected={selectedFile === f.path}
+                          checked={checkedFiles.has(f.path)}
+                          onToggleCheck={() => toggleCheck(f.path)}
+                          onClick={() => handleFileClick(f.path)}
+                          onStage={() => unstageFile(f.path)}
+                        />
+                      ))}
+                    </div>
                   </div>
                 )}
 
-                {/* Staged counter */}
-                {stagedFiles.length > 0 && (
-                  <div className="flex items-center gap-1.5 mb-4 px-3 py-2 rounded-lg bg-primary/5 border border-primary/10 text-sm text-primary">
-                    <ListChecks className="w-4 h-4" />
-                    <span>
-                      <strong>{stagedFiles.length}</strong> file{stagedFiles.length !== 1 ? "s" : ""} staged for commit
-                    </span>
-                  </div>
-                )}
-
-                {/* Unstaged files */}
+                {/* Unstaged */}
                 {unstagedFiles.length > 0 && (
-                  <div className="mb-4">
-                    <h3 className="text-sm font-medium text-yellow-600 dark:text-yellow-400 mb-2">
-                      Unstaged ({unstagedFiles.length})
-                    </h3>
-                    {unstagedFiles.map((f) => (
-                      <FileRow
-                        key={f.path}
-                        file={f}
-                        type="unstaged"
-                        selected={selectedFile === f.path}
-                        checked={checkedFiles.has(f.path)}
-                        onToggleCheck={() => toggleCheck(f.path)}
-                        onClick={() => handleFileClick(f.path)}
-                        onStage={() => stageFile(f.path)}
-                        onDiscard={() => discardFile(f.path)}
-                      />
-                    ))}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="status-dot bg-warning" />
+                      <span className="text-[11px] font-medium text-warning uppercase tracking-wider">
+                        Unstaged
+                      </span>
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        {unstagedFiles.length}
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {unstagedFiles.map((f) => (
+                        <FileRow
+                          key={f.path}
+                          file={f}
+                          type="unstaged"
+                          selected={selectedFile === f.path}
+                          checked={checkedFiles.has(f.path)}
+                          onToggleCheck={() => toggleCheck(f.path)}
+                          onClick={() => handleFileClick(f.path)}
+                          onStage={() => stageFile(f.path)}
+                          onDiscard={() => discardFile(f.path)}
+                        />
+                      ))}
+                    </div>
                   </div>
                 )}
 
-                {/* Untracked files */}
+                {/* Untracked */}
                 {untrackedFiles.length > 0 && (
-                  <div className="mb-4">
-                    <h3 className="text-sm font-medium text-muted-foreground mb-2">
-                      Untracked ({untrackedFiles.length})
-                    </h3>
-                    {untrackedFiles.map((f) => (
-                      <FileRow
-                        key={f.path}
-                        file={f}
-                        type="untracked"
-                        selected={selectedFile === f.path}
-                        checked={checkedFiles.has(f.path)}
-                        onToggleCheck={() => toggleCheck(f.path)}
-                        onClick={() => handleFileClick(f.path)}
-                        onStage={() => stageFile(f.path)}
-                        onDiscard={() => discardFile(f.path)}
-                      />
-                    ))}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="status-dot bg-muted-foreground/50" />
+                      <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Untracked
+                      </span>
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        {untrackedFiles.length}
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {untrackedFiles.map((f) => (
+                        <FileRow
+                          key={f.path}
+                          file={f}
+                          type="untracked"
+                          selected={selectedFile === f.path}
+                          checked={checkedFiles.has(f.path)}
+                          onToggleCheck={() => toggleCheck(f.path)}
+                          onClick={() => handleFileClick(f.path)}
+                          onStage={() => stageFile(f.path)}
+                          onDiscard={() => discardFile(f.path)}
+                        />
+                      ))}
+                    </div>
                   </div>
                 )}
-              </>
+              </div>
             )}
           </ScrollArea>
         </div>
 
-        {/* Right column: commit + stash + diff */}
-        <div className="w-[30rem] min-w-0 flex flex-col gap-4">
-          {/* Commit section — always visible */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2 min-w-0 w-full">
-                <GitCommitHorizontal className="w-4 h-4 shrink-0" />
-                <span className="text-muted-foreground shrink-0">Commit to</span>
-                <span className="font-mono text-primary truncate min-w-0">{status.branch}</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
+        {/* ─── Right: Commit Panel + Diff ─── */}
+        <div className={cn(
+          "flex flex-col gap-4",
+          showDiffPanel ? "w-[30rem]" : "w-[26rem]"
+        )}>
+          {/* Commit Card — glass */}
+          <div className="glass rounded-xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/20">
+              <GitCommitHorizontal className="w-4 h-4 text-primary shrink-0" />
+              <span className="text-xs text-muted-foreground">Commit to</span>
+              <span className="text-xs font-mono text-primary font-medium truncate">{status.branch}</span>
+            </div>
+
+            <div className="p-4 space-y-3">
               {/* Conventional commit chips */}
               <ConventionalChips
                 summary={summary}
                 onApplyPrefix={(prefix) => {
-                  // Apply or remove prefix from summary
                   const regex = /^(feat|fix|docs|style|refactor|test|chore)(\([^)]*\))?:\s*/;
                   if (regex.test(summary)) {
-                    // Replace existing prefix
                     setSummary(summary.replace(regex, `${prefix}: `));
                   } else {
-                    // Prepend prefix
                     setSummary(`${prefix}: ${summary}`);
                   }
                 }}
@@ -363,9 +401,9 @@ export default function StatusPage() {
 
               {/* Summary input */}
               <div className="relative">
-                <SquarePen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <SquarePen className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
                 <input
-                  className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-10 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex h-9 w-full rounded-lg border border-input/60 bg-background/50 pl-9 pr-9 py-2 text-sm ring-offset-background placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50 transition-all duration-150"
                   placeholder="Summary (required)"
                   value={summary}
                   onChange={(e) => setSummary(e.target.value)}
@@ -377,171 +415,140 @@ export default function StatusPage() {
                   }}
                   autoFocus
                 />
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={async () => {
-                        const msg = await generateCommitMessage();
-                        if (msg) {
-                          // Split on first newline to separate summary from description
-                          const nl = msg.indexOf("\n");
-                          if (nl >= 0) {
-                            setSummary(msg.slice(0, nl).trim());
-                            setDescription(msg.slice(nl + 1).trim());
-                          } else {
-                            setSummary(msg.trim());
+                {aiConfig?.provider && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={async () => {
+                          const msg = await generateCommitMessage();
+                          if (msg) {
+                            const nl = msg.indexOf("\n");
+                            if (nl >= 0) {
+                              setSummary(msg.slice(0, nl).trim());
+                              setDescription(msg.slice(nl + 1).trim());
+                            } else {
+                              setSummary(msg.trim());
+                            }
                           }
-                        }
-                      }}
-                      disabled={aiGenerating || !aiConfig?.provider}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      title={aiConfig?.provider ? "Generate commit message with AI" : "Configure AI in Settings first"}
-                    >
-                      {aiGenerating ? (
-                        <span className="block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Sparkles className="w-4 h-4" />
-                      )}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    {aiConfig?.provider ? "Generate commit message with AI" : "Configure AI in Settings first"}
-                  </TooltipContent>
-                </Tooltip>
+                        }}
+                        disabled={aiGenerating}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-40"
+                      >
+                        {aiGenerating ? (
+                          <span className="block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Sparkles className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">Generate commit message with AI</TooltipContent>
+                  </Tooltip>
+                )}
               </div>
 
               {/* Description textarea */}
               <div className="relative">
-                <AlignLeft className="absolute left-3 top-3 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <AlignLeft className="absolute left-3 top-3 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
                 <textarea
-                  className="flex w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                  className="flex w-full rounded-lg border border-input/60 bg-background/50 pl-9 pr-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50 transition-all duration-150 resize-none"
                   placeholder="Description (optional)"
-                  rows={3}
+                  rows={2}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                 />
               </div>
 
               {/* Commit action buttons */}
-              <div className="flex flex-wrap gap-2">
-                {/* Primary: Commit to branch */}
-                <Tooltip open={!canCommit ? undefined : false}>
-                  <TooltipTrigger asChild>
-                    <span tabIndex={0} className="flex-1 min-w-[180px]">
-                      <Button
-                        size="sm"
-                        className="w-full"
-                        disabled={!canCommit || committing}
-                        onClick={() => handleCommitClick(false)}
-                      >
-                        <CheckCheck className="w-4 h-4 mr-1.5 shrink-0" />
-                        <span className="truncate">
-                          {committing ? "Committing..." : `Commit to ${status.branch}`}
-                        </span>
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  {!canCommit && (
-                    <TooltipContent side="bottom">
-                      {stagedFiles.length === 0
-                        ? "Stage at least one file first"
-                        : "Enter a summary message"}
-                    </TooltipContent>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  disabled={!canCommit || committing}
+                  onClick={() => handleCommitClick(false)}
+                  className={cn(
+                    "flex-1 h-8 rounded-lg text-xs font-medium transition-all duration-150 press-scale",
+                    "bg-primary text-primary-foreground hover:brightness-110",
+                    "disabled:opacity-40 disabled:cursor-not-allowed disabled:press-scale-none"
                   )}
-                </Tooltip>
+                >
+                  {committing ? "Committing..." : `Commit to ${status.branch}`}
+                </button>
 
-                {/* Secondary: Commit & Push with force push dropdown */}
-                <div className="flex shrink-0">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="rounded-r-none"
-                    disabled={!canCommit || committing}
-                    onClick={() => handleCommitClick(true)}
-                  >
-                    <Upload className="w-4 h-4 mr-1.5 shrink-0" />
-                    <span className="truncate">{committing ? "Committing..." : "Commit & Push"}</span>
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="rounded-l-none border-l border-secondary-foreground/20 px-2"
-                        disabled={committing}
-                        aria-label="Push options"
-                      >
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" side="bottom">
-                      <DropdownMenuItem
-                        disabled={!canCommit || committing}
-                        onClick={() => handleCommitClick(true)}
-                      >
-                        <Upload className="w-4 h-4 mr-2" />
-                        Commit & Push
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={handleForcePushThenPush}
-                        className="text-destructive focus:text-destructive"
-                      >
-                        <AlertTriangle className="w-4 h-4 mr-2" />
-                        Force Push
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      disabled={!canCommit || committing}
+                      className="h-8 px-2.5 rounded-lg text-xs font-medium transition-all duration-150 press-scale border border-border/50 text-muted-foreground hover:text-foreground hover:bg-accent/50 disabled:opacity-40"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" side="top" className="w-44">
+                    <DropdownMenuItem
+                      disabled={!canCommit || committing}
+                      onClick={() => handleCommitClick(true)}
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      Commit & Push
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={handleForcePushThenPush}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <AlertTriangle className="w-4 h-4 mr-2" />
+                      Force Push
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          {/* Stash section */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Archive className="w-4 h-4" />
-                Stash
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
+          {/* Stash Section — glass */}
+          <div className="glass rounded-xl overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/20">
+              <Archive className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="text-xs font-medium text-foreground">Stash</span>
+            </div>
+            <div className="p-3 space-y-2">
               {!status.is_clean && (
                 <div className="flex gap-2">
                   <input
-                    className="flex-1 rounded border border-input bg-background px-2 py-1.5 text-xs"
-                    placeholder="Stash message (optional)"
+                    className="flex-1 h-8 rounded-lg border border-input/60 bg-background/50 px-3 text-xs placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50 transition-all duration-150"
+                    placeholder="Stash message"
                     value={stashMsg}
                     onChange={(e) => setStashMsg(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") handleStashPush(); }}
                   />
-                  <Button size="sm" className="h-7 text-xs" onClick={handleStashPush} disabled={stashing}>
-                    <RotateCcw className="w-3 h-3 mr-1" />
+                  <button
+                    onClick={handleStashPush}
+                    disabled={stashing}
+                    className="h-8 px-2.5 rounded-lg text-xs font-medium transition-all duration-150 press-scale bg-accent/50 text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-40"
+                  >
                     {stashing ? "..." : "Stash"}
-                  </Button>
+                  </button>
                 </div>
               )}
 
               {stashes.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No stashes</p>
+                <p className="text-[11px] text-muted-foreground/60 px-1">No stashes</p>
               ) : (
-                <ScrollArea className="max-h-48">
-                  <div className="space-y-1">
+                <ScrollArea className="max-h-[140px] -mx-1">
+                  <div className="space-y-0.5 px-1">
                     {stashes.map((s) => (
                       <div key={s.index}
-                        className="flex items-center gap-2 px-2 py-1.5 rounded text-xs hover:bg-accent/50 group">
-                        <span className="font-mono text-muted-foreground shrink-0">stash@{s.index}</span>
-                        <span className="flex-1 truncate">{s.message || "(no message)"}</span>
-                        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100">
-                          <button className="h-5 px-1 text-muted-foreground hover:text-foreground"
+                        className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs hover:bg-accent/30 transition-colors group">
+                        <span className="font-mono text-muted-foreground shrink-0 text-[10px]">stash@{s.index}</span>
+                        <span className="flex-1 truncate text-muted-foreground/80">{s.message || "(no message)"}</span>
+                        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground"
                             onClick={() => stashPop(s.index)} title="Pop">
                             <Upload className="w-3 h-3" />
                           </button>
-                          <button className="h-5 px-1 text-muted-foreground hover:text-foreground"
+                          <button className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground"
                             onClick={() => stashApply(s.index)} title="Apply">
                             <Play className="w-3 h-3" />
                           </button>
-                          <button className="h-5 px-1 text-muted-foreground hover:text-destructive"
+                          <button className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive"
                             onClick={() => stashDrop(s.index)} title="Drop">
                             <Archive className="w-3 h-3" />
                           </button>
@@ -551,27 +558,34 @@ export default function StatusPage() {
                   </div>
                 </ScrollArea>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          {/* Diff panel */}
-          {selectedFile && diff && (
-            <div className="flex-1 min-h-0 border rounded-lg flex flex-col">
-              <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/20 shrink-0">
-                <h3 className="text-sm font-semibold font-mono truncate flex items-center gap-1.5">
+          {/* Diff Panel */}
+          {showDiffPanel && (
+            <div className="flex-1 min-h-0 glass rounded-xl overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/20 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
                   <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  {selectedFile}
-                </h3>
+                  <span className="text-xs font-mono font-medium truncate">{selectedFile}</span>
+                </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs text-green-600 font-medium">+{diff.total_additions}</span>
-                  <span className="text-xs text-red-600 font-medium">-{diff.total_deletions}</span>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
-                    onClick={() => fetchDiff(selectedFile)} title="Refresh diff">
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={handleCloseDiff}>
-                    <X className="w-3.5 h-3.5" />
-                  </Button>
+                  <span className="text-[11px] text-success font-medium">+{diff.total_additions}</span>
+                  <span className="text-[11px] text-destructive font-medium">-{diff.total_deletions}</span>
+                  <button
+                    onClick={() => fetchDiff(selectedFile)}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+                    title="Refresh diff"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={handleCloseDiff}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+                    title="Close diff"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 </div>
               </div>
               <ScrollArea className="flex-1">
@@ -585,11 +599,11 @@ export default function StatusPage() {
           )}
         </div>
       </div>
-    </TooltipProvider>
 
-    {/* 3-Way Merge Editor modal */}
-    <MergeEditor />
-    </>);
+      {/* 3-Way Merge Editor modal */}
+      <MergeEditor />
+    </TooltipProvider>
+  );
 }
 
 /* ─── Conventional Commit Chips ─── */
@@ -615,17 +629,14 @@ function ConventionalChips({
           <button
             key={p.value}
             className={cn(
-              "text-xs px-1.5 py-0.5 rounded border transition-colors",
+              "text-[10px] px-1.5 py-0.5 rounded-md border transition-all duration-100 press-scale",
               isActive
-                ? "bg-primary/10 border-primary text-primary"
-                : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                ? "bg-primary/10 border-primary/40 text-primary"
+                : "border-border/50 text-muted-foreground hover:border-primary/30 hover:text-foreground"
             )}
             onClick={() => {
-              if (isActive) {
-                onRemovePrefix();
-              } else {
-                onApplyPrefix(p.value);
-              }
+              if (isActive) onRemovePrefix();
+              else onApplyPrefix(p.value);
             }}
             title={p.desc}
           >
@@ -635,11 +646,11 @@ function ConventionalChips({
       })}
       {currentPrefix && (
         <button
-          className="text-xs px-1.5 py-0.5 rounded border border-destructive/50 text-destructive hover:bg-destructive/10 transition-colors"
+          className="text-[10px] px-1.5 py-0.5 rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors press-scale"
           onClick={onRemovePrefix}
           title="Remove prefix"
         >
-          <X className="w-3 h-3" />
+          <X className="w-2.5 h-2.5" />
         </button>
       )}
     </div>
@@ -660,70 +671,64 @@ interface FileRowProps {
 }
 
 function FileRow({ file, type, selected, checked, onToggleCheck, onClick, onStage, onDiscard }: FileRowProps) {
-  const colorClass = {
-    staged: "border-l-green-500",
-    unstaged: "border-l-yellow-500",
-    untracked: "border-l-muted-foreground",
-  }[type];
-
-  const label = {
-    staged: "M",
-    unstaged: "M",
-    untracked: "?",
-  }[type];
-
-  const labelColor = {
-    staged: "text-green-500",
-    unstaged: "text-yellow-500",
-    untracked: "text-muted-foreground",
+  const config = {
+    staged:    { dot: "bg-success",      border: "border-l-success",    label: "M", labelColor: "text-success" },
+    unstaged:  { dot: "bg-warning",      border: "border-l-warning",    label: "M", labelColor: "text-warning" },
+    untracked: { dot: "bg-muted-foreground/50", border: "border-l-muted-foreground/30", label: "?", labelColor: "text-muted-foreground" },
   }[type];
 
   return (
     <div
       className={cn(
-        "group flex items-center gap-2 px-3 py-1.5 border-l-2 cursor-pointer hover:bg-accent/50 text-sm transition-colors",
-        colorClass,
-        selected && "bg-accent"
+        "group flex items-center gap-2.5 px-3 py-2 border-l-[3px] cursor-pointer rounded-r-lg transition-all duration-100",
+        config.border,
+        selected
+          ? "bg-accent/40 shadow-sm"
+          : "hover:bg-accent/20"
       )}
+      onClick={onClick}
     >
-      {/* Checkbox */}
+      {/* Checkbox (stop propagation so click doesn't also open diff) */}
       <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
         <Checkbox
           checked={checked}
           onChange={onToggleCheck}
-          className="cursor-pointer"
+          className="cursor-pointer data-[state=checked]:bg-primary data-[state=checked]:border-primary"
         />
       </div>
 
-      {/* Status label */}
-      <span className={cn("w-5 text-center font-mono text-xs", labelColor)}>
-        {label}
-      </span>
+      {/* Status badge */}
+      <div className={cn("w-5 h-5 flex items-center justify-center rounded-md text-[10px] font-bold font-mono", config.labelColor, "bg-current/5")}>
+        <span className="opacity-80">{config.label}</span>
+      </div>
 
-      {/* File path — click to view diff */}
-      <span className="flex-1 truncate" onClick={onClick}>
+      {/* File path */}
+      <span className="flex-1 truncate text-xs font-mono text-foreground/80 group-hover:text-foreground transition-colors">
         {file.path}
       </span>
 
-      {/* Actions */}
-      <div className="flex gap-0.5 opacity-0 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
+      {/* Actions (visible on hover) */}
+      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
         {type !== "staged" && onDiscard && (
           <button
-            className="h-6 px-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors"
+            className="h-6 w-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
             onClick={onDiscard}
             title="Discard changes"
           >
             <Undo2 className="w-3 h-3" />
           </button>
         )}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-2 text-xs"
+        <button
+          className={cn(
+            "h-6 px-2 text-[10px] font-medium rounded-md transition-colors press-scale",
+            type === "staged"
+              ? "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+              : "text-success hover:text-success hover:bg-success/10"
+          )}
           onClick={onStage}
         >
           {type === "staged" ? "Unstage" : "Stage"}
-        </Button>
+        </button>
       </div>
     </div>
   );
@@ -747,48 +752,41 @@ function MergeConflictBanner({
   if (conflictedFiles.length === 0) return null;
 
   return (
-    <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 overflow-hidden">
-      {/* Banner header */}
-      <div className="flex items-center gap-2 px-4 py-3 bg-destructive/10 border-b border-destructive/20">
+    <div className="mb-4 rounded-xl border border-destructive/20 bg-destructive/[0.03] overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-3 bg-destructive/[0.06] border-b border-destructive/10">
         <AlertOctagon className="w-5 h-5 text-destructive shrink-0" />
         <div>
           <p className="text-sm font-semibold text-destructive">Merge Conflict</p>
-          <p className="text-xs text-destructive/80">
-            {conflictedFiles.length} file{conflictedFiles.length !== 1 ? "s" : ""} with conflicts — resolve before committing
+          <p className="text-[11px] text-destructive/70">
+            {conflictedFiles.length} file{conflictedFiles.length !== 1 ? "s" : ""} — resolve before committing
           </p>
         </div>
       </div>
 
-      {/* Conflicted files */}
-      <div className="divide-y divide-destructive/10">
+      <div className="divide-y divide-destructive/5">
         {conflictedFiles.map((f) => (
-          <div key={f.path} className="flex items-center gap-3 px-4 py-2.5 hover:bg-destructive/5 transition-colors">
-            <FileText className="w-4 h-4 text-destructive/60 shrink-0" />
-            <span className="text-sm font-mono flex-1 truncate">{f.path}</span>
+          <div key={f.path} className="flex items-center gap-3 px-4 py-2.5 hover:bg-destructive/[0.02] transition-colors">
+            <FileText className="w-4 h-4 text-destructive/50 shrink-0" />
+            <span className="text-xs font-mono flex-1 truncate text-foreground/80">{f.path}</span>
             <div className="flex gap-1.5 shrink-0">
               <button
-                className="text-xs px-2 py-1 rounded border border-blue-500/30 text-blue-600 hover:bg-blue-500/10 transition-colors"
+                className="text-[10px] px-2 py-1 rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors press-scale font-medium"
                 onClick={() => onResolve(f.path, "ours")}
-                title="Use our version"
               >
-                <ArrowRight className="w-3 h-3 mr-0.5 inline" />
                 Ours
               </button>
               <button
-                className="text-xs px-2 py-1 rounded border border-purple-500/30 text-purple-600 hover:bg-purple-500/10 transition-colors"
+                className="text-[10px] px-2 py-1 rounded-md border border-[hsl(var(--pr-merged))/0.3] text-[hsl(var(--pr-merged))] hover:bg-[hsl(var(--pr-merged))/0.1] transition-colors press-scale font-medium"
                 onClick={() => onResolve(f.path, "theirs")}
-                title="Use their version"
               >
                 Theirs
-                <ArrowRight className="w-3 h-3 ml-0.5 inline" />
               </button>
-              <span className="text-muted-foreground/30">|</span>
+              <span className="text-muted-foreground/20 self-center">|</span>
               <button
-                className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground hover:bg-muted/80 transition-colors font-mono"
+                className="text-[10px] px-2 py-1 rounded-md bg-muted/40 text-muted-foreground hover:bg-muted/60 transition-colors press-scale font-mono"
                 onClick={() => onOpenEditor?.(f.path)}
-                title="Open 3-way merge editor"
               >
-                Open Editor
+                Open
               </button>
             </div>
           </div>

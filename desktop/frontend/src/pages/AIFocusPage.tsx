@@ -25,10 +25,13 @@ export default function AIFocusPage() {
 
   useEffect(() => {
     fetchAIConfig();
-    // Ensure session is active
+    // Ensure session is active — Ask mode just needs the UI active,
+    // Agent mode needs a backend session.
     if (!aiSessionActive) {
       if (aiMode === "agent") {
         useAppStore.getState().startAgentSession();
+      } else {
+        useAppStore.setState({ aiSessionActive: true });
       }
     }
   }, [fetchAIConfig, aiSessionActive, aiMode]);

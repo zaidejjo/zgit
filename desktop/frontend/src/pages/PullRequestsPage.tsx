@@ -6,7 +6,7 @@ import {
   AlertTriangle, LoaderCircle, ChevronDown, Sparkles,
 } from "lucide-react";
 import { useAppStore } from "@/store/app";
-import type { PRSummary, PullRequestDetail } from "@/store/app";
+import type { PRSummary, PullRequestDetail, AIConfig } from "@/store/app";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -26,7 +26,7 @@ export default function PullRequestsPage() {
     loading, error, ghAuthenticated, aiGenerating, aiConfig,
     setLoginDialogOpen, fetchPullRequests, fetchPRDetail, clearPRDetail,
     createPullRequest, mergePullRequest, fetchBranches,
-    generatePRDescription, fetchAIConfig,
+    generatePRDescription, generatePRMetadata, fetchAIConfig,
   } = useAppStore();
 
   // Selection
@@ -40,6 +40,7 @@ export default function PullRequestsPage() {
   const [prBase, setPrBase] = useState("main");
   const [prDraft, setPrDraft] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [prGenerating, setPrGenerating] = useState(false);
 
   // Merge dialog
   const [showMerge, setShowMerge] = useState(false);
@@ -69,16 +70,22 @@ export default function PullRequestsPage() {
   }, [selectedPRNum]);
 
   const handleGeneratePR = async () => {
-    const result = await generatePRDescription(prHead, prBase);
-    if (!result) return;
-    // Parse: expected format "PR Title: ...\n\n## Summary\n..."
-    const titleMatch = result.match(/^PR Title:\s*(.+)/m);
-    const title = titleMatch ? titleMatch[1].trim() : "";
-    // Body = everything after the first blank line (or everything after title line)
-    const bodyStart = result.indexOf("\n\n");
-    const body = bodyStart >= 0 ? result.slice(bodyStart + 2).trim() : result;
-    if (title) setPrTitle(title);
-    if (body) setPrBody(body);
+    if (!prHead || !prBase) return;
+    setPrGenerating(true);
+    try {
+      const result = await generatePRMetadata(prBase, prHead);
+      if (!result) return;
+      // Parse: expected format "PR Title: ...\n\n## Summary\n..."
+      const titleMatch = result.match(/^PR Title:\s*(.+)/m);
+      const title = titleMatch ? titleMatch[1].trim() : "";
+      // Extract description body: everything after "PR Title: ..." line
+      // Remove the PR Title line, then trim
+      const body = result.replace(/^PR Title:.*\n*/m, "").trim();
+      if (title) setPrTitle(title);
+      if (body) setPrBody(body);
+    } finally {
+      setPrGenerating(false);
+    }
   };
 
   const handleCreate = async () => {
@@ -208,16 +215,31 @@ export default function PullRequestsPage() {
                   </div>
                 </div>
 
-                {/* Title */}
+                {/* Title with AI generate button */}
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Title</label>
-                  <input
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    placeholder="PR title"
-                    value={prTitle}
-                    onChange={(e) => setPrTitle(e.target.value)}
-                    autoFocus
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 h-9 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      placeholder="PR title"
+                      value={prTitle}
+                      onChange={(e) => setPrTitle(e.target.value)}
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleGeneratePR}
+                      disabled={prGenerating || !aiConfig?.provider || !prHead || !prBase}
+                      className="shrink-0 h-9 px-3 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:opacity-40 disabled:cursor-not-allowed transition-all press-scale flex items-center gap-1.5"
+                      title={aiConfig?.provider ? "Generate PR title & description with AI" : "Configure AI in Settings first"}
+                    >
+                      {prGenerating ? (
+                        <span className="block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Sparkles className="w-3.5 h-3.5" />
+                      )}
+                      <span className="hidden sm:inline">AI Generate</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Body */}
@@ -226,24 +248,20 @@ export default function PullRequestsPage() {
                   <textarea
                     className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
                     placeholder="Describe your changes (optional)"
-                    rows={4}
+                    rows={5}
                     value={prBody}
                     onChange={(e) => setPrBody(e.target.value)}
                   />
-                  <div className="flex justify-end">
-                    <button
-                      onClick={handleGeneratePR}
-                      disabled={aiGenerating || !aiConfig?.provider}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                      title={aiConfig?.provider ? "Generate PR description with AI" : "Configure AI in Settings first"}
-                    >
-                      {aiGenerating ? (
-                        <span className="block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Sparkles className="w-3.5 h-3.5" />
-                      )}
-                      Generate PR Description
-                    </button>
+                  <div className="flex justify-between items-center mt-1">
+                    <span className="text-[10px] text-muted-foreground/60">
+                      {prGenerating ? "Generating title & description from branch diff..." : "AI will analyze diff between branches"}
+                    </span>
+                    {prGenerating && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-primary">
+                        <span className="block w-2 h-2 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        Generating...
+                      </span>
+                    )}
                   </div>
                 </div>
 

@@ -54,6 +54,10 @@ export function AuthenticateGitHub(arg1) {
   return window['go']['main']['App']['AuthenticateGitHub'](arg1);
 }
 
+export function CancelDeviceFlow() {
+  return window['go']['main']['App']['CancelDeviceFlow']();
+}
+
 export function CancelWorkflowRun(arg1) {
   return window['go']['main']['App']['CancelWorkflowRun'](arg1);
 }
@@ -110,6 +114,10 @@ export function DeleteBranch(arg1, arg2) {
   return window['go']['main']['App']['DeleteBranch'](arg1, arg2);
 }
 
+export function DeleteProviderAIConfig(arg1) {
+  return window['go']['main']['App']['DeleteProviderAIConfig'](arg1);
+}
+
 export function DiscardAllFiles() {
   return window['go']['main']['App']['DiscardAllFiles']();
 }
@@ -118,12 +126,20 @@ export function DiscardFile(arg1) {
   return window['go']['main']['App']['DiscardFile'](arg1);
 }
 
+export function FetchProviderModels(arg1, arg2) {
+  return window['go']['main']['App']['FetchProviderModels'](arg1, arg2);
+}
+
 export function GenerateCommitMessage() {
   return window['go']['main']['App']['GenerateCommitMessage']();
 }
 
 export function GeneratePRDescription(arg1, arg2) {
   return window['go']['main']['App']['GeneratePRDescription'](arg1, arg2);
+}
+
+export function GeneratePRMetadata(arg1, arg2) {
+  return window['go']['main']['App']['GeneratePRMetadata'](arg1, arg2);
 }
 
 export function GetAIConfig() {
@@ -210,6 +226,10 @@ export function GetStatus() {
   return window['go']['main']['App']['GetStatus']();
 }
 
+export function GetUserPreferences() {
+  return window['go']['main']['App']['GetUserPreferences']();
+}
+
 export function GetWorkflowJobLogs(arg1) {
   return window['go']['main']['App']['GetWorkflowJobLogs'](arg1);
 }
@@ -254,6 +274,10 @@ export function ListWorkflowRuns() {
   return window['go']['main']['App']['ListWorkflowRuns']();
 }
 
+export function LogoutGitHub() {
+  return window['go']['main']['App']['LogoutGitHub']();
+}
+
 export function MergePullRequest(arg1, arg2) {
   return window['go']['main']['App']['MergePullRequest'](arg1, arg2);
 }
@@ -262,12 +286,20 @@ export function OpenRepo(arg1) {
   return window['go']['main']['App']['OpenRepo'](arg1);
 }
 
+export function OpenURL(arg1) {
+  return window['go']['main']['App']['OpenURL'](arg1);
+}
+
 export function PickDirectory() {
   return window['go']['main']['App']['PickDirectory']();
 }
 
 export function PollDeviceFlow(arg1) {
   return window['go']['main']['App']['PollDeviceFlow'](arg1);
+}
+
+export function PollDeviceFlowWithRetry(arg1, arg2) {
+  return window['go']['main']['App']['PollDeviceFlowWithRetry'](arg1, arg2);
 }
 
 export function ReRunWorkflow(arg1) {
@@ -302,6 +334,10 @@ export function Run(arg1) {
   return window['go']['main']['App']['Run'](arg1);
 }
 
+export function SaveGitHubToken(arg1) {
+  return window['go']['main']['App']['SaveGitHubToken'](arg1);
+}
+
 export function SessionActiveID() {
   return window['go']['main']['App']['SessionActiveID']();
 }
@@ -330,6 +366,10 @@ export function SessionRename(arg1, arg2) {
   return window['go']['main']['App']['SessionRename'](arg1, arg2);
 }
 
+export function SessionSetMode(arg1, arg2) {
+  return window['go']['main']['App']['SessionSetMode'](arg1, arg2);
+}
+
 export function SessionSwitch(arg1) {
   return window['go']['main']['App']['SessionSwitch'](arg1);
 }
@@ -338,8 +378,16 @@ export function SetAIConfig(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SetAIConfig'](arg1, arg2, arg3, arg4);
 }
 
+export function SetProviderAIConfig(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetProviderAIConfig'](arg1, arg2, arg3, arg4);
+}
+
 export function SetRemoteURL(arg1, arg2) {
   return window['go']['main']['App']['SetRemoteURL'](arg1, arg2);
+}
+
+export function SetUserPreferences(arg1) {
+  return window['go']['main']['App']['SetUserPreferences'](arg1);
 }
 
 export function StageAll() {
@@ -404,4 +452,8 @@ export function UnstageAll() {
 
 export function UnstageFile(arg1) {
   return window['go']['main']['App']['UnstageFile'](arg1);
+}
+
+export function ValidateGitHubToken() {
+  return window['go']['main']['App']['ValidateGitHubToken']();
 }

@@ -35,6 +35,7 @@ type User struct {
 	Bio         string `json:"bio,omitempty"`
 	Company     string `json:"company,omitempty"`
 	Location    string `json:"location,omitempty"`
+	Plan        string `json:"plan,omitempty"`
 	Followers   int    `json:"followers"`
 	Following   int    `json:"following"`
 	PublicRepos int    `json:"public_repos"`

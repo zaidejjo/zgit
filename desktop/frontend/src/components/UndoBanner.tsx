@@ -58,7 +58,7 @@ export default function UndoBanner() {
   };
 
   return (
-    <div className="border-b border-border bg-muted/40">
+    <div className="border-b border-border/30 bg-card/60">
       <div className="flex items-center gap-2 px-4 py-1.5 text-xs">
         <History className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
 
@@ -140,17 +140,17 @@ export default function UndoBanner() {
 
 function ActionBadge({ action }: { action: string }) {
   const colors: Record<string, string> = {
-    commit: "bg-green-500/10 text-green-600",
-    reset: "bg-orange-500/10 text-orange-600",
-    merge: "bg-blue-500/10 text-blue-600",
-    rebase: "bg-purple-500/10 text-purple-600",
-    "cherry-pick": "bg-cyan-500/10 text-cyan-600",
-    revert: "bg-red-500/10 text-red-600",
-    checkout: "bg-gray-500/10 text-gray-600",
-    branch: "bg-indigo-500/10 text-indigo-600",
-    amend: "bg-amber-500/10 text-amber-600",
+    commit: "bg-success/10 text-success",
+    reset: "bg-warning/10 text-warning",
+    merge: "bg-primary/10 text-primary",
+    rebase: "bg-[hsl(var(--pr-merged))/0.1] text-[hsl(var(--pr-merged))]",
+    "cherry-pick": "bg-primary/10 text-primary",
+    revert: "bg-destructive/10 text-destructive",
+    checkout: "bg-muted/40 text-muted-foreground",
+    branch: "bg-primary/10 text-primary",
+    amend: "bg-warning/10 text-warning",
   };
-  const colorClass = colors[action] || "bg-muted text-muted-foreground";
+  const colorClass = colors[action] || "bg-muted/40 text-muted-foreground";
   return (
     <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase ${colorClass}`}>
       {action}
