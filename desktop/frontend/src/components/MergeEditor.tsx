@@ -110,8 +110,8 @@ export default function MergeEditor() {
         <div className="flex-1 flex flex-col sm:flex-row overflow-hidden">
           {/* Left: Ours */}
           <div className="flex-1 flex flex-col min-w-0 border-r border-border">
-            <div className="px-3 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider bg-blue-500/5 border-b border-border shrink-0">
-              <span className="text-blue-600 dark:text-blue-400">◀ Ours (Current)</span>
+            <div className="px-3 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider bg-primary/5 border-b border-border shrink-0">
+              <span className="text-primary">◀ Ours (Current)</span>
             </div>
             <div
               ref={oursRef}
@@ -125,7 +125,7 @@ export default function MergeEditor() {
                 highlightLines={detail.blocks.map((b) => ({
                   start: b.ours_start,
                   end: b.ours_end,
-                  className: b.state === "use-ours" ? "bg-green-500/10" : "bg-blue-500/10",
+                  className: b.state === "use-ours" ? "bg-primary/20" : "bg-primary/10",
                 }))}
               />
             </div>
@@ -133,8 +133,8 @@ export default function MergeEditor() {
 
           {/* Right: Theirs */}
           <div className="flex-1 flex flex-col min-w-0 border-r border-border hidden sm:flex">
-            <div className="px-3 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider bg-purple-500/5 border-b border-border shrink-0">
-              <span className="text-purple-600 dark:text-purple-400">▶ Theirs (Incoming)</span>
+            <div className="px-3 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider bg-[hsl(var(--pr-merged))/0.08] border-b border-border shrink-0">
+              <span className="text-[hsl(var(--pr-merged))]">▶ Theirs (Incoming)</span>
             </div>
             <div
               ref={theirsRef}
@@ -148,7 +148,7 @@ export default function MergeEditor() {
                 highlightLines={detail.blocks.map((b) => ({
                   start: b.theirs_start,
                   end: b.theirs_end,
-                  className: b.state === "use-theirs" ? "bg-green-500/10" : "bg-purple-500/10",
+                  className: b.state === "use-theirs" ? "bg-primary/20" : "bg-primary/10",
                 }))}
               />
             </div>
@@ -156,10 +156,10 @@ export default function MergeEditor() {
 
           {/* Bottom: Result (Resolved) */}
           <div className="flex-1 flex flex-col min-w-0">
-            <div className="px-3 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider bg-green-500/5 border-b border-border shrink-0">
-              <span className="text-green-600 dark:text-green-400">✔ Result</span>
+            <div className="px-3 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider bg-success/10 border-b border-border shrink-0">
+              <span className="text-success">✔ Result</span>
               {!allResolved && (
-                <span className="ml-2 text-amber-600 dark:text-amber-400 font-normal">
+                <span className="ml-2 text-warning font-normal">
                   ({detail.blocks.filter((b) => b.state === "unresolved").length} unresolved)
                 </span>
               )}
@@ -194,7 +194,7 @@ export default function MergeEditor() {
                 onClick={() => {
                   detail.blocks.forEach((_, idx) => resolveMergeBlock(idx, "use-ours"));
                 }}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 transition-colors"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
               >
                 <ArrowRight className="w-3 h-3" /> Use Ours All
               </button>
@@ -202,7 +202,7 @@ export default function MergeEditor() {
                 onClick={() => {
                   detail.blocks.forEach((_, idx) => resolveMergeBlock(idx, "use-theirs"));
                 }}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:bg-purple-500/20 transition-colors"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium bg-[hsl(var(--pr-merged))/0.12] text-[hsl(var(--pr-merged))] hover:bg-[hsl(var(--pr-merged))/0.2] transition-colors"
               >
                 Use Theirs All <ArrowRight className="w-3 h-3" />
               </button>

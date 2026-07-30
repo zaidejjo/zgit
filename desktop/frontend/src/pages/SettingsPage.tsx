@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useLocation } from "@tanstack/react-router";
 import {
   FolderOpen, GitBranch, Globe, User, Sparkles, Eye, EyeOff,
   Save, X, Palette, Keyboard,
@@ -58,6 +59,9 @@ const THEME_PREVIEW_ACCENT: Record<Theme, string> = {
 };
 
 export default function SettingsPage() {
+  const location = useLocation();
+  const initialTab = (location.state as { settingsTab?: SettingsTab })?.settingsTab;
+
   const {
     repoPath, currentBranch, status,
     repository, fetchRepository,
@@ -68,7 +72,7 @@ export default function SettingsPage() {
     userPreferences, setAccentColor, setBrightness, setKeybinding,
   } = useAppStore();
 
-  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || "general");
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
 

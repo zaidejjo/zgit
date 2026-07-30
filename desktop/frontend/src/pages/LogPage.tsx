@@ -497,7 +497,7 @@ function DraggableBranchBadge({ branch, commitHash }: { branch: string; commitHa
         "inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-mono cursor-grab active:cursor-grabbing transition-shadow hover:shadow-sm",
         isDragging ? "opacity-50 ring-2 ring-primary" : "",
         isHEAD
-          ? "bg-emerald-500/15 text-emerald-600"
+          ? "bg-primary/20 text-primary"
           : "bg-blue-500/10 text-blue-600"
       )}
       title={`Drag to merge/rebase onto another commit`}

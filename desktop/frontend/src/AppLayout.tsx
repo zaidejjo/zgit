@@ -342,7 +342,10 @@ export default function AppLayout() {
         {/* GitHub Auth status */}
         <div className="px-3 py-2 border-t border-border/30">
           {ghAuthenticated && ghUser ? (
-            <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-accent/30 transition-colors group">
+            <button
+              onClick={() => navigate({ to: "/settings", state: { settingsTab: "git" } as any })}
+              className="flex items-center gap-2.5 w-full px-2 py-1.5 rounded-lg hover:bg-accent/30 transition-colors text-left"
+            >
               <img
                 src={ghUser.avatar_url}
                 alt={ghUser.login}
@@ -354,17 +357,7 @@ export default function AppLayout() {
                   {ghUser.name || "GitHub user"}
                 </p>
               </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  useAppStore.getState().logoutGitHub();
-                }}
-                className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all text-[10px]"
-                title="Disconnect GitHub"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
+            </button>
           ) : (
             <button
               onClick={() => setLoginDialogOpen(true)}
@@ -399,7 +392,10 @@ export default function AppLayout() {
             <div className="flex items-center gap-2">
               {/* GitHub profile */}
               {ghAuthenticated && ghUser ? (
-                <div className="flex items-center gap-2 text-xs">
+                <button
+                  onClick={() => navigate({ to: "/settings", state: { settingsTab: "git" } as any })}
+                  className="flex items-center gap-2 text-xs hover:bg-accent/30 px-1.5 py-1 rounded-md transition-colors"
+                >
                   <img
                     src={ghUser.avatar_url}
                     alt={ghUser.login}
@@ -408,7 +404,7 @@ export default function AppLayout() {
                   <span className="text-muted-foreground hidden sm:inline">
                     {ghUser.login}
                   </span>
-                </div>
+                </button>
               ) : (
                 <button
                   className="text-xs px-2.5 py-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors press-scale"
