@@ -1,0 +1,47 @@
+---
+export interface Props {
+  label: string;
+  cmd: string;
+}
+
+const { label, cmd } = Astro.props;
+---
+
+<div class="flex items-center justify-between border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm rounded-xl p-3.5 group hover:border-white/[0.14] transition-colors">
+  <div class="min-w-0 flex-1">
+    <div class="text-xs text-foreground-muted font-medium mb-1">{label}</div>
+    <code class="font-mono text-sm text-foreground-secondary block whitespace-pre-wrap break-all">
+      <span class="text-primary">$</span> {cmd}
+    </code>
+  </div>
+  <button
+    class="cmd-copy-btn flex-shrink-0 ml-3 p-2 rounded-lg text-foreground-muted hover:text-foreground hover:bg-white/[0.06] transition-all opacity-0 group-hover:opacity-100"
+    aria-label={`Copy ${label} command`}
+    data-cmd={cmd}
+  >
+    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </svg>
+  </button>
+</div>
+
+<script>
+  document.querySelectorAll('.cmd-copy-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const cmd = btn.getAttribute('data-cmd');
+      if (cmd) {
+        try {
+          await navigator.clipboard.writeText(cmd);
+          const svg = btn.querySelector('svg');
+          if (svg) {
+            svg.innerHTML = '<polyline points="20 6 9 17 4 12" stroke-linecap="round" stroke-linejoin="round"/>';
+            setTimeout(() => {
+              svg.innerHTML = '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>';
+            }, 2000);
+          }
+        } catch {}
+      }
+    });
+  });
+</script>

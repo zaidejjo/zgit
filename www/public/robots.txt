@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://zgit.pages.dev/sitemap-index.xml

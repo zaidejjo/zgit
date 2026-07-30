@@ -1,0 +1,104 @@
+/* Starlight theme overrides — Dark Monochrome Glass */
+:root {
+  --sl-color-accent: #4f8cff;
+  --sl-color-accent-high: #7aa5ff;
+  --sl-color-accent-low: rgba(79, 140, 255, 0.12);
+  --sl-color-white: #e2e8f0;
+  --sl-color-gray-1: #94a3b8;
+  --sl-color-gray-2: #64748b;
+  --sl-color-gray-3: #475569;
+  --sl-color-gray-4: rgba(255, 255, 255, 0.08);
+  --sl-color-gray-5: rgba(255, 255, 255, 0.05);
+  --sl-color-gray-6: rgba(255, 255, 255, 0.03);
+  --sl-color-black: #070709;
+  --sl-color-bg: #070709;
+  --sl-color-bg-nav: rgba(255, 255, 255, 0.02);
+  --sl-color-bg-sidebar: #070709;
+  --sl-color-bg-inline-code: rgba(255, 255, 255, 0.04);
+  --sl-color-bg-card: rgba(255, 255, 255, 0.025);
+  --sl-color-text-accent: #7aa5ff;
+  --sl-color-text-invert: #070709;
+  --sl-color-border: rgba(255, 255, 255, 0.06);
+  --sl-color-border-hover: rgba(255, 255, 255, 0.12);
+  --sl-line-height: 1.75;
+  --sl-font: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --sl-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Site title */
+.site-title {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.site-title img {
+  filter: drop-shadow(0 0 6px rgba(129, 140, 248, 0.15));
+}
+
+/* Hero in docs */
+.hero img {
+  filter: drop-shadow(0 0 20px rgba(79, 140, 255, 0.15));
+}
+
+/* Card styling */
+.card {
+  border: 1px solid var(--sl-color-gray-5);
+  background: var(--sl-color-bg-card);
+  backdrop-filter: blur(12px);
+  border-radius: 0.75rem;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.card:hover {
+  border-color: rgba(129, 140, 248, 0.2);
+  box-shadow: 0 0 20px rgba(129, 140, 248, 0.06);
+}
+
+/* Inline code */
+:not(pre) > code {
+  background: var(--sl-color-bg-inline-code);
+  border: 1px solid var(--sl-color-gray-5);
+  padding: 0.15em 0.4em;
+  border-radius: 0.375rem;
+  font-size: 0.875em;
+}
+
+/* Tables */
+.sl-markdown-content table {
+  border: 1px solid var(--sl-color-gray-5);
+}
+
+.sl-markdown-content th {
+  background: var(--sl-color-gray-6);
+  border-color: var(--sl-color-gray-5);
+}
+
+.sl-markdown-content td {
+  border-color: var(--sl-color-gray-5);
+}
+
+/* Navigation header glass effect */
+.header {
+  backdrop-filter: blur(20px);
+  background-color: rgba(7, 7, 9, 0.85) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--sl-color-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--sl-color-gray-5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sl-color-gray-4);
+}
