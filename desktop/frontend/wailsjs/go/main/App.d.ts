@@ -60,9 +60,13 @@ export function CurrentBranch():Promise<string>;
 
 export function DeleteBranch(arg1:string,arg2:boolean):Promise<void>;
 
+export function DeleteProviderAIConfig(arg1:string):Promise<void>;
+
 export function DiscardAllFiles():Promise<void>;
 
 export function DiscardFile(arg1:string):Promise<void>;
+
+export function FetchProviderModels(arg1:string,arg2:string):Promise<Array<string>>;
 
 export function GenerateCommitMessage():Promise<string>;
 
@@ -185,6 +189,8 @@ export function SessionSetMode(arg1:string,arg2:string):Promise<void>;
 export function SessionSwitch(arg1:string):Promise<ai.SessionSummary>;
 
 export function SetAIConfig(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function SetProviderAIConfig(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function SetRemoteURL(arg1:string,arg2:string):Promise<void>;
 

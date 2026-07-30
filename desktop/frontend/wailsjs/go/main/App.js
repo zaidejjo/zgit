@@ -114,12 +114,20 @@ export function DeleteBranch(arg1, arg2) {
   return window['go']['main']['App']['DeleteBranch'](arg1, arg2);
 }
 
+export function DeleteProviderAIConfig(arg1) {
+  return window['go']['main']['App']['DeleteProviderAIConfig'](arg1);
+}
+
 export function DiscardAllFiles() {
   return window['go']['main']['App']['DiscardAllFiles']();
 }
 
 export function DiscardFile(arg1) {
   return window['go']['main']['App']['DiscardFile'](arg1);
+}
+
+export function FetchProviderModels(arg1, arg2) {
+  return window['go']['main']['App']['FetchProviderModels'](arg1, arg2);
 }
 
 export function GenerateCommitMessage() {
@@ -364,6 +372,10 @@ export function SessionSwitch(arg1) {
 
 export function SetAIConfig(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SetAIConfig'](arg1, arg2, arg3, arg4);
+}
+
+export function SetProviderAIConfig(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetProviderAIConfig'](arg1, arg2, arg3, arg4);
 }
 
 export function SetRemoteURL(arg1, arg2) {

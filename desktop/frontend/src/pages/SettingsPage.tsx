@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "@tanstack/react-router";
 import {
-  FolderOpen, GitBranch, Globe, User, Sparkles, Eye, EyeOff,
+  FolderOpen, GitBranch, User, Sparkles, Eye, EyeOff,
   Save, X, Palette, Keyboard,
   Check, ChevronRight, Sun,
   LogOut, Github, Terminal, Sliders,
@@ -12,7 +12,7 @@ import { useAppStore, type Theme, THEMES, type GitHubUser } from "@/store/app";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { ACCENT_PRESETS, isValidHex, hexToHSL } from "@/lib/theme";
-import ModelSelectorPopover from "@/components/ModelSelectorPopover";
+
 import { OpenURL } from "../../wailsjs/go/main/App";
 
 /* ─── Settings tabs (6) ─── */
@@ -27,13 +27,15 @@ const SETTINGS_TABS = [
 
 type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
 
-/* ─── AI providers ─── */
+/* ─── AI providers (matches Go backend ProviderKind) ─── */
 const AI_PROVIDERS = [
-  { value: "openai", label: "OpenAI", models: ["gpt-4o-mini", "gpt-4o", "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"] },
-  { value: "anthropic", label: "Anthropic", models: ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-haiku-20240307"] },
-  { value: "deepseek", label: "DeepSeek", models: ["deepseek-chat", "deepseek-coder", "deepseek-reasoner"] },
-  { value: "openrouter", label: "OpenRouter", models: ["openai/gpt-4o-mini", "openai/gpt-4o", "anthropic/claude-3.5-sonnet", "deepseek/deepseek-chat", "deepseek/deepseek-r1", "google/gemini-2.0-flash-exp"] },
-  { value: "custom", label: "Custom / Ollama", models: ["llama3.2", "qwen2.5-coder", "mistral", "codestral"] },
+  { value: "openai", label: "OpenAI", modelHint: "gpt-4o-mini", fetchModels: true },
+  { value: "anthropic", label: "Anthropic", modelHint: "claude-sonnet-4-20250514", fetchModels: false },
+  { value: "groq", label: "Groq", modelHint: "llama-3.1-8b-instant", fetchModels: true },
+  { value: "deepseek", label: "DeepSeek", modelHint: "deepseek-chat", fetchModels: false },
+  { value: "openrouter", label: "OpenRouter", modelHint: "openai/gpt-4o-mini", fetchModels: true },
+  { value: "ollama", label: "Ollama", modelHint: "llama3.2", fetchModels: true },
+  { value: "custom", label: "Custom / Ollama", modelHint: "llama3.2", fetchModels: false },
 ];
 
 /* ─── Theme preview colours ─── */
@@ -69,29 +71,12 @@ export default function SettingsPage() {
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || "general");
 
-  // AI form
-  const [aiProvider, setAiProvider] = useState("");
-  const [aiApiKey, setAiApiKey] = useState("");
-  const [aiModel, setAiModel] = useState("");
-  const [aiEndpoint, setAiEndpoint] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [aiSaving, setAiSaving] = useState(false);
-
   useEffect(() => {
     fetchRepository();
     fetchGitConfig();
     fetchAIConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (aiConfig) {
-      setAiProvider(aiConfig.provider || "");
-      setAiApiKey(aiConfig.api_key || "");
-      setAiModel(aiConfig.model || "");
-      setAiEndpoint(aiConfig.endpoint || "");
-    }
-  }, [aiConfig]);
 
   const repoName = repoPath ? repoPath.split("/").pop() || repoPath : "No repository";
 
@@ -131,27 +116,7 @@ export default function SettingsPage() {
           onSetConfig={setGitConfig}
         />
       )}
-      {activeTab === "ai" && (
-        <AITab
-          aiConfig={aiConfig}
-          aiProvider={aiProvider}
-          aiApiKey={aiApiKey}
-          aiModel={aiModel}
-          aiEndpoint={aiEndpoint}
-          showApiKey={showApiKey}
-          aiSaving={aiSaving}
-          onProviderChange={(p, m, e) => { setAiProvider(p); setAiModel(m); setAiEndpoint(e); }}
-          onApiKeyChange={setAiApiKey}
-          onModelChange={setAiModel}
-          onEndpointChange={setAiEndpoint}
-          onToggleShowKey={() => setShowApiKey(!showApiKey)}
-          onSave={async () => {
-            setAiSaving(true);
-            await setAIConfigAction(aiProvider, aiApiKey, aiModel, aiEndpoint);
-            setAiSaving(false);
-          }}
-        />
-      )}
+      {activeTab === "ai" && <AITab />}
       {activeTab === "shortcuts" && (
         <ShortcutsTab
           keybindings={userPreferences?.keybindings || {}}
@@ -571,31 +536,133 @@ function GitTab({
 
 /* ═══════════════════════ AI Integration Tab ═══════════════════════ */
 
-function AITab({
-  aiConfig, aiProvider, aiApiKey, aiModel, aiEndpoint,
-  showApiKey, aiSaving,
-  onProviderChange, onApiKeyChange, onModelChange, onEndpointChange,
-  onToggleShowKey, onSave,
-}: {
-  aiConfig: any;
-  aiProvider: string;
-  aiApiKey: string;
-  aiModel: string;
-  aiEndpoint: string;
-  showApiKey: boolean;
-  aiSaving: boolean;
-  onProviderChange: (provider: string, model: string, endpoint: string) => void;
-  onApiKeyChange: (key: string) => void;
-  onModelChange: (model: string) => void;
-  onEndpointChange: (endpoint: string) => void;
-  onToggleShowKey: () => void;
-  onSave: () => Promise<void>;
-}) {
+function AITab() {
+  const {
+    aiConfig, fetchAIConfig,
+    setAIConfigAction, setProviderAIConfigAction,
+    deleteProviderAIConfigAction, fetchProviderModelsAction,
+  } = useAppStore();
+
+  const [selectedProvider, setSelectedProvider] = useState("");
+  const [keyInput, setKeyInput] = useState("");
+  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [aiSaving, setAiSaving] = useState(false);
+  const [model, setModel] = useState("");
+  const [endpoint, setEndpoint] = useState("");
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  // Reset local state when provider changes
+  useEffect(() => {
+    setKeyInput("");
+    setShowKeyInput(false);
+    setShowApiKey(false);
+    setFetchedModels([]);
+
+    if (!aiConfig || !selectedProvider) {
+      setModel("");
+      setEndpoint("");
+      return;
+    }
+
+    // Load model and endpoint from per-provider or top-level config
+    const providerStatus = aiConfig.providers?.find((p) => p.provider === selectedProvider);
+    if (providerStatus) {
+      setModel(providerStatus.model || aiConfig.model || "");
+      setEndpoint(providerStatus.endpoint || aiConfig.endpoint || "");
+    } else {
+      setModel(aiConfig.model || "");
+      setEndpoint(aiConfig.endpoint || "");
+    }
+
+    // Auto-fetch models if supported and key exists
+    const prov = AI_PROVIDERS.find((p) => p.value === selectedProvider);
+    if (prov?.fetchModels && providerStatus?.has_key) {
+      fetchModels(selectedProvider);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProvider, aiConfig?.providers, aiConfig?.provider]);
+
+  // Init selectedProvider from stored config on mount
+  useEffect(() => {
+    if (aiConfig?.provider) {
+      setSelectedProvider(aiConfig.provider);
+    }
+  }, [aiConfig?.provider]);
+
+  const getProviderStatus = (): { has_key: boolean; key_masked: string } | null => {
+    if (!aiConfig?.providers) return null;
+    const ps = aiConfig.providers.find((p) => p.provider === selectedProvider);
+    return ps || null;
+  };
+
+  const fetchModels = async (provider: string, overrideKey?: string) => {
+    setFetchingModels(true);
+    try {
+      const models = await fetchProviderModelsAction(provider, overrideKey || "");
+      setFetchedModels(models || []);
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  const handleSaveKey = async () => {
+    if (!selectedProvider || !keyInput) return;
+    setAiSaving(true);
+    try {
+      await setProviderAIConfigAction(selectedProvider, keyInput, model, endpoint);
+      setKeyInput("");
+      setShowKeyInput(false);
+      // Fetch models after saving the key
+      const prov = AI_PROVIDERS.find((p) => p.value === selectedProvider);
+      if (prov?.fetchModels) {
+        fetchModels(selectedProvider, keyInput);
+      }
+    } finally {
+      setAiSaving(false);
+    }
+  };
+
+  const handleClearKey = async () => {
+    if (!selectedProvider) return;
+    setAiSaving(true);
+    try {
+      await deleteProviderAIConfigAction(selectedProvider);
+      setKeyInput("");
+      setShowKeyInput(false);
+      setFetchedModels([]);
+    } finally {
+      setAiSaving(false);
+    }
+  };
+
+  const handleSetActiveProvider = async () => {
+    if (!selectedProvider) return;
+    setAiSaving(true);
+    try {
+      const status = getProviderStatus();
+      await setAIConfigAction(selectedProvider, status?.has_key ? "" : "", model, endpoint);
+    } finally {
+      setAiSaving(false);
+    }
+  };
+
+  const handleFetchModels = () => {
+    if (!selectedProvider) return;
+    fetchModels(selectedProvider);
+  };
+
+  const status = getProviderStatus();
+  const provInfo = AI_PROVIDERS.find((p) => p.value === selectedProvider);
+  const canFetchModels = provInfo?.fetchModels ?? false;
+
   return (
     <div className="space-y-5">
       <Section icon={<Sparkles className="w-4 h-4" />} title="AI Integration">
         <p className="text-xs text-muted-foreground">
-          Configure an AI provider to generate commit messages and assist with Git workflows.
+          Each provider stores its own encrypted API key. Keys are encrypted at rest and never
+          sent to the frontend in plaintext.
         </p>
       </Section>
 
@@ -609,96 +676,233 @@ function AITab({
           <div className="space-y-1.5">
             <Label>Provider</Label>
             <div className="flex flex-wrap gap-1.5">
-              {AI_PROVIDERS.map((p) => (
-                <button
-                  key={p.value}
-                  onClick={() => onProviderChange(p.value, p.models[0] || "", p.value === "custom" ? "https://" : "")}
-                  className={cn(
-                    "text-xs px-2.5 py-1.5 rounded-lg border font-medium transition-all press-scale",
-                    aiProvider === p.value
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border/50 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+              {AI_PROVIDERS.map((p) => {
+                const isActive = selectedProvider === p.value;
+                const provStatus = aiConfig?.providers?.find((ps) => ps.provider === p.value);
+                return (
+                  <button
+                    key={p.value}
+                    onClick={() => {
+                      setSelectedProvider(p.value);
+                      if (!isActive) {
+                        setShowKeyInput(false);
+                        setKeyInput("");
+                      }
+                    }}
+                    className={cn(
+                      "text-xs px-2.5 py-1.5 rounded-lg border font-medium transition-all press-scale flex items-center gap-1.5",
+                      isActive
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border/50 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                    )}
+                  >
+                    <span className={cn(
+                      "w-1.5 h-1.5 rounded-full shrink-0",
+                      provStatus?.has_key ? "bg-success" : "bg-muted-foreground/30"
+                    )} />
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {selectedProvider ? (
+            <>
+              {/* API Key status + actions */}
+              <div className="space-y-1.5">
+                <Label>API Key</Label>
+                {status?.has_key && !showKeyInput ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-8 flex items-center px-3 rounded-lg border border-border/30 bg-muted/20 text-xs font-mono text-muted-foreground">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-success" />
+                        {status.key_masked || "••••••••••••"}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setShowKeyInput(true)}
+                      className="h-8 px-3 rounded-lg text-xs border border-border/30 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all press-scale"
+                    >
+                      Update Key
+                    </button>
+                    <button
+                      onClick={handleClearKey}
+                      disabled={aiSaving}
+                      className="h-8 px-3 rounded-lg text-xs border border-border/30 text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-all press-scale disabled:opacity-50"
+                    >
+                      <X className="w-3.5 h-3.5 inline mr-1" />
+                      Clear
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground/60 italic flex items-center gap-1.5">
+                      {showKeyInput ? "Enter a new API key below" : "No API key saved for this provider"}
+                    </p>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        className="h-8 text-xs flex-1 font-mono"
+                        type={showApiKey ? "text" : "password"}
+                        value={keyInput}
+                        onChange={(e) => setKeyInput(e.target.value)}
+                        placeholder={`Enter ${provInfo?.label || ""} API key`}
+                      />
+                      <button
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={handleSaveKey}
+                        disabled={aiSaving || !keyInput}
+                        className="h-7 px-3 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:brightness-110 transition-all press-scale disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {aiSaving ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            Saving...
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5">
+                            <Save className="w-3.5 h-3.5" />
+                            Save Key
+                          </span>
+                        )}
+                      </button>
+                      {showKeyInput && (
+                        <button
+                          onClick={() => { setShowKeyInput(false); setKeyInput(""); }}
+                          className="h-7 px-3 rounded-lg text-xs border border-border/30 text-muted-foreground hover:text-foreground transition-all press-scale"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Model */}
+              <div className="space-y-1.5">
+                <Label>Model</Label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      className="h-8 text-xs flex-1 font-mono"
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      placeholder={provInfo?.modelHint || "Model name"}
+                      list="ai-model-list"
+                    />
+                    {fetchedModels.length > 0 && (
+                      <datalist id="ai-model-list">
+                        {fetchedModels.map((m) => (
+                          <option key={m} value={m} />
+                        ))}
+                      </datalist>
+                    )}
+                  </div>
+                  {canFetchModels && (
+                    <button
+                      onClick={handleFetchModels}
+                      disabled={fetchingModels || (!status?.has_key && !keyInput)}
+                      className="h-8 px-2.5 rounded-lg text-xs border border-border/30 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all press-scale disabled:opacity-40"
+                      title="Fetch models from provider"
+                    >
+                      <RefreshCw className={cn("w-3.5 h-3.5", fetchingModels && "animate-spin")} />
+                    </button>
                   )}
+                </div>
+                {fetchedModels.length > 0 && (
+                  <div className="max-h-32 overflow-y-auto flex flex-wrap gap-1">
+                    {fetchedModels.slice(0, 30).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setModel(m)}
+                        className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                          model === m
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border/30 text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                    {fetchedModels.length > 30 && (
+                      <span className="text-[10px] text-muted-foreground/50 self-center">
+                        +{fetchedModels.length - 30} more
+                      </span>
+                    )}
+                  </div>
+                )}
+                <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                  {fetchedModels.length > 0
+                    ? `Fetched ${fetchedModels.length} models. Click a model or type custom.`
+                    : canFetchModels
+                      ? "Save an API key and click refresh to fetch models."
+                      : "Enter any model name supported by this provider."}
+                </p>
+              </div>
+
+              {/* Endpoint */}
+              <div className="space-y-1.5">
+                <Label>API Endpoint</Label>
+                <Input
+                  className="h-8 text-xs flex-1 font-mono"
+                  value={endpoint}
+                  onChange={(e) => setEndpoint(e.target.value)}
+                  placeholder={
+                    selectedProvider === "custom"
+                      ? "https://api.example.com/v1/chat/completions"
+                      : "Auto-detected (override if needed)"
+                  }
+                />
+              </div>
+
+              {/* Set Active Provider */}
+              <div className="flex justify-end pt-1">
+                <button
+                  onClick={handleSetActiveProvider}
+                  disabled={aiSaving || !selectedProvider}
+                  className="h-8 px-4 rounded-lg text-xs font-medium transition-all press-scale bg-primary text-primary-foreground hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {p.label}
+                  {aiSaving ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      Saving...
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5">
+                      {aiConfig?.provider === selectedProvider ? (
+                        <><Check className="w-3.5 h-3.5" /> Active Provider</>
+                      ) : (
+                        <><Save className="w-3.5 h-3.5" /> Set as Active</>
+                      )}
+                    </span>
+                  )}
                 </button>
-              ))}
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center py-8">
+              <p className="text-xs text-muted-foreground italic">
+                Select a provider above to configure
+              </p>
             </div>
-          </div>
-
-          {/* API Key */}
-          <div className="space-y-1.5">
-            <Label>API Key</Label>
-            <div className="flex items-center gap-1">
-              <Input
-                className="h-8 text-xs flex-1 font-mono"
-                type={showApiKey ? "text" : "password"}
-                value={aiApiKey}
-                onChange={(e) => onApiKeyChange(e.target.value)}
-                placeholder={aiProvider ? `Enter ${AI_PROVIDERS.find((p) => p.value === aiProvider)?.label} key` : "Select provider first"}
-                disabled={!aiProvider}
-              />
-              <button
-                onClick={onToggleShowKey}
-                className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Model */}
-          <div className="space-y-1.5">
-            <Label>Model</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                className="h-8 text-xs flex-1 font-mono"
-                value={aiModel}
-                onChange={(e) => onModelChange(e.target.value)}
-                placeholder={aiProvider ? `e.g. ${AI_PROVIDERS.find((p) => p.value === aiProvider)?.models[0] || "gpt-4o-mini"}` : "Select provider first"}
-                disabled={!aiProvider}
-              />
-              <ModelSelectorPopover variant="settings" />
-            </div>
-            <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-              Enter any model name or use the picker.
-            </p>
-          </div>
-
-          {/* Endpoint */}
-          <div className="space-y-1.5">
-            <Label>API Endpoint</Label>
-            <Input
-              className="h-8 text-xs flex-1 font-mono"
-              value={aiEndpoint}
-              onChange={(e) => onEndpointChange(e.target.value)}
-              placeholder={aiProvider === "custom" ? "https://api.example.com/v1/chat/completions" : "Auto-detected (override if needed)"}
-              disabled={!aiProvider}
-            />
-          </div>
-
-          {/* Save */}
-          <div className="flex justify-end pt-1">
-            <button
-              disabled={aiSaving || !aiProvider || !aiApiKey}
-              onClick={onSave}
-              className="h-8 px-4 rounded-lg text-xs font-medium transition-all press-scale bg-primary text-primary-foreground hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {aiSaving ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  Saving...
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5">
-                  <Save className="w-3.5 h-3.5" />
-                  {aiConfig?.provider === aiProvider ? "Update" : "Save"} Config
-                </span>
-              )}
-            </button>
-          </div>
+          )}
         </div>
       </div>
+
+      <p className="text-[10px] text-muted-foreground/50">
+        API keys are encrypted with AES-256-GCM and stored in{" "}
+        <code className="text-[10px] font-mono bg-muted/30 px-1 rounded">~/.config/zgit/config.yaml</code>.
+        Plaintext keys are never sent to the frontend.
+      </p>
     </div>
   );
 }

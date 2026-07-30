@@ -604,13 +604,73 @@ func (a *App) CheckoutTheirs(file string) error {
 // --- AI Commit Message Generator ---
 
 // GetAIConfig returns the current AI configuration.
+// API keys are masked — never sent in plaintext to the frontend.
 func (a *App) GetAIConfig() (models.AIConfig, error) {
 	cfg := a.engine.Config
+	cfgDir := cfg.ConfigPath()
+
+	// Gather per-provider key status
+	providers := cfg.GetProviderKeys()
+	ps := make([]models.ProviderStatus, 0, len(providers))
+	for _, p := range providers {
+		pc := cfg.GetProviderConfig(p)
+		status := models.ProviderStatus{
+			Provider: p,
+			HasKey:   pc.APIKey != "",
+			Model:    pc.Model,
+			Endpoint: pc.Endpoint,
+		}
+		if pc.APIKey != "" {
+			// Try decrypt to get last 4 chars for masking
+			plaintext, err := ai.DecryptAPIKey(pc.APIKey, cfgDir)
+			if err == nil && len(plaintext) >= 4 {
+				prefix := plaintext[:min(4, len(plaintext))]
+				if len(plaintext) > 4 {
+					status.KeyMasked = prefix + "..." + plaintext[len(plaintext)-4:]
+				} else {
+					status.KeyMasked = prefix + "..." + plaintext
+				}
+			} else if err == nil {
+				status.KeyMasked = "(saved)"
+			} else {
+				// Fallback: show stored format
+				status.HasKey = false
+				status.KeyMasked = ""
+			}
+		}
+		ps = append(ps, status)
+	}
+
+	// Top-level config (provider may be set but key may be in per-provider storage)
+	activeProvider := cfg.GetString("ai.provider")
+	var activeKeyMasked string
+	topLevelKey := cfg.GetString("ai.api_key")
+	if topLevelKey != "" {
+		plaintext, err := ai.DecryptAPIKey(topLevelKey, cfgDir)
+		if err == nil {
+			if len(plaintext) >= 8 {
+				activeKeyMasked = plaintext[:4] + "..." + plaintext[len(plaintext)-4:]
+			} else {
+				activeKeyMasked = "(saved)"
+			}
+		}
+	}
+	// Also check per-provider config for the active provider
+	if activeKeyMasked == "" {
+		for _, p := range ps {
+			if p.Provider == activeProvider {
+				activeKeyMasked = p.KeyMasked
+				break
+			}
+		}
+	}
+
 	return models.AIConfig{
-		Provider: cfg.GetString("ai.provider"),
-		APIKey:   cfg.GetString("ai.api_key"),
-		Model:    cfg.GetString("ai.model"),
-		Endpoint: cfg.GetString("ai.endpoint"),
+		Provider:  activeProvider,
+		APIKey:    activeKeyMasked,
+		Model:     cfg.GetString("ai.model"),
+		Endpoint:  cfg.GetString("ai.endpoint"),
+		Providers: ps,
 	}, nil
 }
 
@@ -642,13 +702,111 @@ func (a *App) SetUserPreferences(prefs models.UserPreferences) error {
 }
 
 // SetAIConfig saves the AI provider configuration.
+// The API key is encrypted before being stored in the config file.
 func (a *App) SetAIConfig(provider, apiKey, model, endpoint string) error {
 	cfg := a.engine.Config
+	cfgDir := cfg.ConfigPath()
+
+	if err := encryptAndSetProviderKey(cfg, cfgDir, provider, apiKey); err != nil {
+		return err
+	}
+
 	cfg.Set("ai.provider", provider)
-	cfg.Set("ai.api_key", apiKey)
 	cfg.Set("ai.model", model)
 	cfg.Set("ai.endpoint", endpoint)
+
+	// Also update the per-provider config
+	pc := cfg.GetProviderConfig(provider)
+	pc.Model = model
+	if endpoint != "" {
+		pc.Endpoint = endpoint
+	}
+	cfg.SetProviderConfig(provider, pc)
+
 	return cfg.Save()
+}
+
+// SetProviderAIConfig saves config for a specific AI provider.
+// The API key is encrypted before being stored.
+func (a *App) SetProviderAIConfig(provider, apiKey, model, endpoint string) error {
+	cfg := a.engine.Config
+	cfgDir := cfg.ConfigPath()
+
+	if err := encryptAndSetProviderKey(cfg, cfgDir, provider, apiKey); err != nil {
+		return err
+	}
+
+	cfg.SetProviderConfig(provider, config.ProviderConfig{
+		APIKey:   cfg.GetString("ai.providers." + provider + ".api_key"),
+		Model:    model,
+		Endpoint: endpoint,
+	})
+
+	// If this is the active provider, also update top-level fields
+	if cfg.GetString("ai.provider") == provider {
+		cfg.Set("ai.model", model)
+		if endpoint != "" {
+			cfg.Set("ai.endpoint", endpoint)
+		}
+	}
+
+	return cfg.Save()
+}
+
+// encryptAndSetProviderKey encrypts and stores the API key for the given provider.
+// If apiKey is empty, it deletes the stored key.
+func encryptAndSetProviderKey(cfg *config.Manager, cfgDir, provider, apiKey string) error {
+	if apiKey == "" {
+		// Clear the key for this provider
+		cfg.Set("ai.providers."+provider+".api_key", "")
+		cfg.Set("ai.api_key", "")
+		return nil
+	}
+
+	encrypted, err := ai.EncryptAPIKey(apiKey, cfgDir)
+	if err != nil {
+		return fmt.Errorf("encrypt API key: %w", err)
+	}
+
+	// Store encrypted key both top-level (for backward compat) and per-provider
+	cfg.Set("ai.api_key", encrypted)
+	cfg.Set("ai.providers."+provider+".api_key", encrypted)
+	return nil
+}
+
+// DeleteProviderAIConfig removes all config for a specific provider (key, model, endpoint).
+func (a *App) DeleteProviderAIConfig(provider string) error {
+	cfg := a.engine.Config
+	cfg.DeleteProviderConfig(provider)
+
+	// If this was the active provider, also clear top-level AI fields
+	if cfg.GetString("ai.provider") == provider {
+		cfg.Set("ai.provider", "")
+		cfg.Set("ai.api_key", "")
+		cfg.Set("ai.model", "")
+		cfg.Set("ai.endpoint", "")
+	}
+
+	return cfg.Save()
+}
+
+// FetchProviderModels queries the provider's /models API and returns available model IDs.
+// apiKey is required for OpenAI, OpenRouter, Groq; optional for Ollama.
+func (a *App) FetchProviderModels(provider, apiKey string) ([]string, error) {
+	// If no apiKey provided, try the stored encrypted key
+	if apiKey == "" {
+		cfg := a.engine.Config
+		cfgDir := cfg.ConfigPath()
+		pc := cfg.GetProviderConfig(provider)
+		if pc.APIKey != "" {
+			decrypted, err := ai.DecryptAPIKey(pc.APIKey, cfgDir)
+			if err == nil {
+				apiKey = decrypted
+			}
+		}
+	}
+
+	return ai.FetchProviderModels(provider, apiKey)
 }
 
 // GenerateCommitMessage reads the staged diff and returns an AI-generated conventional commit message.

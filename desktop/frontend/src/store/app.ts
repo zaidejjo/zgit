@@ -247,6 +247,15 @@ export interface AIConfig {
   api_key: string;
   model: string;
   endpoint?: string;
+  providers?: ProviderStatus[];
+}
+
+export interface ProviderStatus {
+  provider: string;
+  has_key: boolean;
+  key_masked: string;
+  model?: string;
+  endpoint?: string;
 }
 
 export interface ReflogEntry {
@@ -715,6 +724,9 @@ interface AppState {
   // AI Commit Message
   fetchAIConfig: () => Promise<void>;
   setAIConfigAction: (provider: string, apiKey: string, model: string, endpoint?: string) => Promise<void>;
+  setProviderAIConfigAction: (provider: string, apiKey: string, model: string, endpoint?: string) => Promise<void>;
+  deleteProviderAIConfigAction: (provider: string) => Promise<void>;
+  fetchProviderModelsAction: (provider: string, apiKey?: string) => Promise<string[]>;
   generateCommitMessage: () => Promise<string | null>;
   generatePRDescription: (head: string, base?: string) => Promise<string | null>;
 
@@ -2071,9 +2083,42 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!backend) return;
     try {
       await backend.SetAIConfig(provider, apiKey, model, endpoint || "");
-      set({ aiConfig: { provider, api_key: apiKey, model, endpoint } });
+      // Refetch to get masked key status
+      await get().fetchAIConfig();
     } catch (e: any) {
       set({ error: e.message || "Failed to save AI config" });
+    }
+  },
+
+  setProviderAIConfigAction: async (provider, apiKey, model, endpoint) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.SetProviderAIConfig(provider, apiKey, model, endpoint || "");
+      await get().fetchAIConfig();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to save provider AI config" });
+    }
+  },
+
+  deleteProviderAIConfigAction: async (provider) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.DeleteProviderAIConfig(provider);
+      await get().fetchAIConfig();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to delete provider AI config" });
+    }
+  },
+
+  fetchProviderModelsAction: async (provider, apiKey) => {
+    const backend = getBackend();
+    if (!backend) return [];
+    try {
+      return await backend.FetchProviderModels(provider, apiKey || "");
+    } catch (_) {
+      return [];
     }
   },
 
