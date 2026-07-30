@@ -2109,11 +2109,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   // --- Agentic AI Assistant — Dual Mode ---
 
   setAIMode: (mode) => {
-    const prev = get().aiMode;
+    const state = get();
+    const prev = state.aiMode;
     set({ aiMode: mode });
+
+    // Persist mode change on backend for active session
+    const sessionId = state.aiActiveSessionId;
+    if (sessionId && mode !== prev) {
+      const backend = getBackend();
+      if (backend && backend.SessionSetMode) {
+        backend.SessionSetMode(sessionId, mode).catch(() => {});
+      }
+    }
+
     // Switching to Agent: auto-start session
     if (mode === "agent" && prev !== "agent") {
-      if (!get().aiSessionActive) {
+      if (!state.aiSessionActive) {
         get().startAgentSession();
       }
     }

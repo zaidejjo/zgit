@@ -354,6 +354,10 @@ export function SessionRename(arg1, arg2) {
   return window['go']['main']['App']['SessionRename'](arg1, arg2);
 }
 
+export function SessionSetMode(arg1, arg2) {
+  return window['go']['main']['App']['SessionSetMode'](arg1, arg2);
+}
+
 export function SessionSwitch(arg1) {
   return window['go']['main']['App']['SessionSwitch'](arg1);
 }

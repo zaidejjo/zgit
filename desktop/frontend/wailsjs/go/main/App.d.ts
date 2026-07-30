@@ -180,6 +180,8 @@ export function SessionList():Promise<Array<ai.SessionSummary>>;
 
 export function SessionRename(arg1:string,arg2:string):Promise<void>;
 
+export function SessionSetMode(arg1:string,arg2:string):Promise<void>;
+
 export function SessionSwitch(arg1:string):Promise<ai.SessionSummary>;
 
 export function SetAIConfig(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;

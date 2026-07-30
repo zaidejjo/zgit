@@ -1,7 +1,10 @@
 package ai
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -222,6 +225,78 @@ func (sm *SessionManager) ClearMessages(id string) error {
 	}
 	s.Messages = systemMsgs
 	s.UpdatedAt = time.Now()
+	return nil
+}
+
+// SaveToFile persists all sessions as JSON to the specified path.
+func (sm *SessionManager) SaveToFile(path string) error {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create chat store dir: %w", err)
+	}
+
+	data, err := json.MarshalIndent(sm.sessions, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal sessions: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("write chat store: %w", err)
+	}
+	return nil
+}
+
+// LoadFromFile loads sessions from a JSON file. Existing sessions are merged
+// (file sessions overwrite in-memory ones with the same ID).
+func (sm *SessionManager) LoadFromFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // not an error
+		}
+		return fmt.Errorf("read chat store: %w", err)
+	}
+
+	var fileSessions map[string]*Session
+	if err := json.Unmarshal(data, &fileSessions); err != nil {
+		return fmt.Errorf("unmarshal sessions: %w", err)
+	}
+
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Track highest ID so we don't collide
+	maxID := sm.nextID.Load()
+	for id := range fileSessions {
+		if _, exists := sm.sessions[id]; !exists {
+			sm.sessions[id] = fileSessions[id]
+		}
+		// Parse numeric suffix for nextID tracking
+		var n int64
+		if _, err := fmt.Sscanf(id, "session_%d", &n); err == nil && n > maxID {
+			maxID = n
+		}
+	}
+	if maxID > sm.nextID.Load() {
+		sm.nextID.Store(maxID)
+	}
+
+	// Set active to most recent session if none active
+	if sm.activeID == "" {
+		var newest *Session
+		for _, s := range fileSessions {
+			if newest == nil || s.UpdatedAt.After(newest.UpdatedAt) {
+				newest = s
+			}
+		}
+		if newest != nil {
+			sm.activeID = newest.ID
+		}
+	}
+
 	return nil
 }
 

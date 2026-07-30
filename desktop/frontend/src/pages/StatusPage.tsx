@@ -19,12 +19,12 @@ import DiffViewer from "@/components/DiffViewer";
 import MergeEditor from "@/components/MergeEditor";
 
 const CONVENTIONAL_PREFIXES = [
-  { value: "feat", label: "feat", desc: "New feature", color: "text-green-500" },
-  { value: "fix", label: "fix", desc: "Bug fix", color: "text-red-500" },
-  { value: "docs", label: "docs", desc: "Documentation", color: "text-blue-500" },
-  { value: "style", label: "style", desc: "Formatting", color: "text-purple-500" },
-  { value: "refactor", label: "refactor", desc: "Code restructure", color: "text-yellow-500" },
-  { value: "test", label: "test", desc: "Tests", color: "text-orange-500" },
+  { value: "feat", label: "feat", desc: "New feature", color: "text-success" },
+  { value: "fix", label: "fix", desc: "Bug fix", color: "text-destructive" },
+  { value: "docs", label: "docs", desc: "Documentation", color: "text-primary" },
+  { value: "style", label: "style", desc: "Formatting", color: "text-[hsl(var(--pr-merged))]" },
+  { value: "refactor", label: "refactor", desc: "Code restructure", color: "text-warning" },
+  { value: "test", label: "test", desc: "Tests", color: "text-warning" },
   { value: "chore", label: "chore", desc: "Maintenance", color: "text-muted-foreground" },
 ] as const;
 
@@ -770,13 +770,13 @@ function MergeConflictBanner({
             <span className="text-xs font-mono flex-1 truncate text-foreground/80">{f.path}</span>
             <div className="flex gap-1.5 shrink-0">
               <button
-                className="text-[10px] px-2 py-1 rounded-md border border-blue-500/20 text-blue-500 hover:bg-blue-500/10 transition-colors press-scale font-medium"
+                className="text-[10px] px-2 py-1 rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors press-scale font-medium"
                 onClick={() => onResolve(f.path, "ours")}
               >
                 Ours
               </button>
               <button
-                className="text-[10px] px-2 py-1 rounded-md border border-purple-500/20 text-purple-500 hover:bg-purple-500/10 transition-colors press-scale font-medium"
+                className="text-[10px] px-2 py-1 rounded-md border border-[hsl(var(--pr-merged))/0.3] text-[hsl(var(--pr-merged))] hover:bg-[hsl(var(--pr-merged))/0.1] transition-colors press-scale font-medium"
                 onClick={() => onResolve(f.path, "theirs")}
               >
                 Theirs

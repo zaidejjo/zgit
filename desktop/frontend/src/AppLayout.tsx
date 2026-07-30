@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from "@tanstack/react-router";
 import {
   GitCommitHorizontal, History, GitBranch, GitPullRequest,
   CircleDot, Play, Globe, Tag, Settings, FolderOpen, Folder,
-  X, Sparkles, Command, Search, ChevronDown, GitFork, Palette,
+  X, Sparkles, Command, Search, ChevronDown, GitFork, Palette, Brain,
 } from "lucide-react";
 import { useAppStore, type Theme, THEMES } from "@/store/app";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ const navItems = [
   { id: "pull-requests", label: "PRs", Icon: GitPullRequest },
   { id: "issues",   label: "Issues",   Icon: CircleDot },
   { id: "actions",  label: "Actions",  Icon: Play },
+  { id: "ai",       label: "AI",       Icon: Brain },
 ] as const;
 
 const bottomNavItems = [
@@ -168,7 +169,7 @@ export default function AppLayout() {
   const pageTitleMap: Record<string, string> = {
     status: "Status", log: "Log", branches: "Branches",
     "pull-requests": "PRs", issues: "Issues", actions: "Actions",
-    remotes: "Remotes", tags: "Tags", settings: "Settings",
+    ai: "AI Chat", remotes: "Remotes", tags: "Tags", settings: "Settings",
   };
 
   // Derive repo name for display
@@ -176,11 +177,16 @@ export default function AppLayout() {
 
   const handleNav = useCallback((tabId: string) => {
     setActiveTab(tabId);
+    if (tabId === "ai") {
+      navigate({ to: "/ai" });
+      return;
+    }
     navigate({ to: `/${tabId === "status" ? "" : tabId}` });
   }, [setActiveTab, navigate]);
 
   const getNavId = (): string => {
     if (location.pathname === "/") return "status";
+    if (location.pathname === "/ai") return "ai";
     const p = location.pathname.slice(1);
     return navItems.find((n) => n.id === p)?.id
       || bottomNavItems.find((n) => n.id === p)?.id
