@@ -16,6 +16,9 @@ export const THEME_BASELINES: Record<string, Record<string, string>> = {
     "--accent": "230 12% 18%",
     "--border": "230 10% 18%",
     "--input": "230 10% 18%",
+    "--glass-bg": "230 15% 9% / 0.75",
+    "--glass-border": "230 10% 22% / 0.5",
+    "--selection-bg": "142 71% 45% / 0.25",
     "--scrollbar-thumb": "230 10% 22%",
     "--scrollbar-track": "230 20% 4%",
   },
@@ -29,6 +32,9 @@ export const THEME_BASELINES: Record<string, Record<string, string>> = {
     "--accent": "240 16% 23%",
     "--border": "240 16% 21%",
     "--input": "240 16% 21%",
+    "--glass-bg": "240 21% 15% / 0.75",
+    "--glass-border": "240 16% 23% / 0.5",
+    "--selection-bg": "267 84% 81% / 0.25",
     "--scrollbar-thumb": "240 16% 25%",
     "--scrollbar-track": "240 21% 12%",
   },
@@ -42,6 +48,9 @@ export const THEME_BASELINES: Record<string, Record<string, string>> = {
     "--accent": "235 18% 23%",
     "--border": "234 14% 25%",
     "--input": "234 14% 25%",
+    "--glass-bg": "237 16% 18% / 0.7",
+    "--glass-border": "234 14% 28% / 0.5",
+    "--selection-bg": "192 100% 75% / 0.25",
     "--scrollbar-thumb": "234 14% 30%",
     "--scrollbar-track": "235 18% 13%",
   },
@@ -55,6 +64,9 @@ export const THEME_BASELINES: Record<string, Record<string, string>> = {
     "--accent": "210 40% 92%",
     "--border": "214 32% 91%",
     "--input": "214 32% 91%",
+    "--glass-bg": "0 0% 100% / 0.7",
+    "--glass-border": "214 32% 91% / 0.7",
+    "--selection-bg": "217 91% 60% / 0.2",
     "--scrollbar-thumb": "214 32% 80%",
     "--scrollbar-track": "210 40% 96%",
   },
@@ -68,6 +80,9 @@ export const THEME_BASELINES: Record<string, Record<string, string>> = {
     "--accent": "231 14% 28%",
     "--border": "231 14% 28%",
     "--input": "231 14% 28%",
+    "--glass-bg": "231 15% 18% / 0.7",
+    "--glass-border": "231 14% 30% / 0.5",
+    "--selection-bg": "326 100% 74% / 0.25",
     "--scrollbar-thumb": "231 14% 32%",
     "--scrollbar-track": "231 15% 18%",
   },
@@ -170,10 +185,21 @@ export function applyBrightness(brightness: number, theme: string): void {
 
     const h = parts[0];
     const s = parts[1];
-    const lVal = parseFloat(parts[2]);
+
+    // Find lightness: it's at index 2 unless there's a "/" opacity suffix
+    const slashIdx = parts.indexOf("/");
+    const lIdx = slashIdx > 0 ? slashIdx - 1 : 2;
+    const lVal = parseFloat(parts[lIdx]);
     if (isNaN(lVal)) continue;
 
     const adjustedL = Math.max(0, Math.min(100, lVal + offset));
-    root.style.setProperty(varName, `${h} ${s} ${adjustedL}%`);
+
+    // Preserve any opacity suffix ("/ alpha")
+    let suffix = "";
+    if (slashIdx > 0) {
+      suffix = parts.slice(slashIdx).join(" ");
+    }
+
+    root.style.setProperty(varName, `${h} ${s} ${adjustedL}%${suffix ? " " + suffix : ""}`);
   }
 }
