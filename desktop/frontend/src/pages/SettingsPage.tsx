@@ -5,17 +5,20 @@ import {
   Save, X, Palette, Keyboard,
   Check, ChevronRight, Sun,
   LogOut, Github, Terminal, Sliders,
-  RotateCcw, Monitor,
+  RotateCcw, Monitor, ExternalLink, RefreshCw,
+  Users, GitFork, BookOpen, Crown,
 } from "lucide-react";
-import { useAppStore, type Theme, THEMES, type UserPreferences } from "@/store/app";
+import { useAppStore, type Theme, THEMES, type GitHubUser } from "@/store/app";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { ACCENT_PRESETS, isValidHex, hexToHSL } from "@/lib/theme";
 import ModelSelectorPopover from "@/components/ModelSelectorPopover";
+import { OpenURL } from "../../wailsjs/go/main/App";
 
-/* ─── Settings tabs (5) ─── */
+/* ─── Settings tabs (6) ─── */
 const SETTINGS_TABS = [
-  { id: "general",     label: "General",      Icon: Sliders },
+  { id: "profile",     label: "Profile",       Icon: User },
+  { id: "general",     label: "General",       Icon: Sliders },
   { id: "appearance",  label: "Appearance",    Icon: Palette },
   { id: "git",         label: "Git & GitHub",  Icon: GitBranch },
   { id: "ai",          label: "AI Integration", Icon: Sparkles },
@@ -61,6 +64,7 @@ export default function SettingsPage() {
     aiConfig, fetchAIConfig, setAIConfigAction,
     theme, setTheme, logoutGitHub, setLoginDialogOpen,
     userPreferences, setAccentColor, setBrightness, setKeybinding,
+    validateGitHubToken,
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || "general");
@@ -93,6 +97,16 @@ export default function SettingsPage() {
 
   const tabContent = (
     <div className="flex-1 min-w-0 max-w-2xl animate-in fade-in slide-in-from-left-2 duration-200">
+      {activeTab === "profile" && (
+        <ProfileTab
+          ghUser={ghUser}
+          ghAuthenticated={ghAuthenticated}
+          gitConfig={gitConfig}
+          onSetConfig={setGitConfig}
+          onRefresh={validateGitHubToken}
+          onLogin={() => setLoginDialogOpen(true)}
+        />
+      )}
       {activeTab === "general" && (
         <GeneralTab
           repoName={repoName}
@@ -925,6 +939,248 @@ function ShortcutsTab({
       <p className="text-[10px] text-muted-foreground/50">
         Changes are saved automatically. Defaults restore on next app start if not customized.
       </p>
+    </div>
+  );
+}
+
+/* ═══════════════════════ Profile Tab ═══════════════════════ */
+
+function ProfileTab({
+  ghUser, ghAuthenticated, gitConfig,
+  onSetConfig, onRefresh, onLogin,
+}: {
+  ghUser: GitHubUser | null;
+  ghAuthenticated: boolean;
+  gitConfig: Record<string, string>;
+  onSetConfig: (key: string, value: string) => Promise<void>;
+  onRefresh: () => Promise<GitHubUser | null>;
+  onLogin: () => void;
+}) {
+  const [refreshing, setRefreshing] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+
+  // Sync display name from ghUser or git config on mount
+  useEffect(() => {
+    setDisplayName(ghUser?.name || gitConfig["user.name"] || "");
+  }, [ghUser?.name, gitConfig["user.name"]]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await onRefresh();
+    setRefreshing(false);
+  };
+
+  const handleDisplayNameChange = async (value: string) => {
+    setDisplayName(value);
+    await onSetConfig("user.name", value);
+  };
+
+  // Not connected state
+  if (!ghAuthenticated || !ghUser) {
+    return (
+      <div className="space-y-5">
+        <Section icon={<User className="w-4 h-4" />} title="Profile">
+          <p className="text-xs text-muted-foreground">
+            Your GitHub profile and account settings.
+          </p>
+        </Section>
+        <div className="glass rounded-xl overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-border/20 flex items-center gap-2">
+            <Github className="w-4 h-4 text-muted-foreground" />
+            <span className="text-xs font-medium">GitHub Account</span>
+          </div>
+          <div className="p-8 flex flex-col items-center gap-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-muted/30 flex items-center justify-center">
+              <User className="w-8 h-8 text-muted-foreground/50" />
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-1">Not connected</p>
+              <p className="text-xs text-muted-foreground max-w-xs">
+                Connect your GitHub account to view your profile, stats, and manage
+                your identity.
+              </p>
+            </div>
+            <button
+              onClick={onLogin}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:brightness-110 transition-all press-scale"
+            >
+              <Github className="w-4 h-4" />
+              Sign in with GitHub
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const planLabel = ghUser.plan === "pro" || ghUser.plan === "business"
+    ? "Pro" : "Free";
+  const isPro = ghUser.plan === "pro" || ghUser.plan === "business";
+  const profileURL = `https://github.com/${ghUser.login}`;
+
+  return (
+    <div className="space-y-5 max-w-2xl">
+      <Section icon={<User className="w-4 h-4" />} title="Profile">
+        <p className="text-xs text-muted-foreground">
+          Your GitHub profile and account settings.
+        </p>
+      </Section>
+
+      {/* ── Profile Header ── */}
+      <div className="glass rounded-xl overflow-hidden">
+        <div className="p-6 flex items-center gap-5">
+          <img
+            src={ghUser.avatar_url}
+            alt={ghUser.login}
+            className="w-16 h-16 rounded-full ring-2 ring-border/50 shrink-0"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg font-semibold truncate">
+                {ghUser.name || ghUser.login}
+              </h2>
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium",
+                  isPro
+                    ? "bg-amber-500/15 text-amber-500 border border-amber-500/20"
+                    : "bg-muted/40 text-muted-foreground border border-border/30"
+                )}
+              >
+                {isPro ? <Crown className="w-3 h-3" /> : null}
+                {planLabel}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              @{ghUser.login}
+            </p>
+            {ghUser.bio && (
+              <p className="text-xs text-foreground/70 mt-1 line-clamp-2">
+                {ghUser.bio}
+              </p>
+            )}
+          </div>
+          <a
+            href={profileURL}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => { e.preventDefault(); OpenURL(profileURL); }}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-border/30 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all press-scale"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">View on GitHub</span>
+          </a>
+        </div>
+      </div>
+
+      {/* ── Stats Grid ── */}
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard
+          icon={<Users className="w-4 h-4" />}
+          label="Followers"
+          value={ghUser.followers ?? 0}
+        />
+        <StatCard
+          icon={<GitFork className="w-4 h-4" />}
+          label="Following"
+          value={ghUser.following ?? 0}
+        />
+        <StatCard
+          icon={<BookOpen className="w-4 h-4" />}
+          label="Public Repos"
+          value={ghUser.public_repos ?? 0}
+        />
+      </div>
+
+      {/* ── Identity Cards ── */}
+      <div className="glass rounded-xl overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-border/20 flex items-center gap-2">
+          <User className="w-4 h-4 text-muted-foreground" />
+          <span className="text-xs font-medium">Identity</span>
+        </div>
+        <div className="p-4 space-y-4">
+          {/* Display Name → git user.name */}
+          <div>
+            <span className="text-xs text-muted-foreground font-medium block mb-1.5">
+              Display Name
+            </span>
+            <Input
+              className="h-7 text-xs flex-1"
+              value={displayName}
+              onChange={(e) => handleDisplayNameChange(e.target.value)}
+              placeholder="Your Name"
+            />
+            <p className="text-[10px] text-muted-foreground/50 mt-1">
+              Syncs with Git config{" "}
+              <code className="text-[10px] font-mono bg-muted/30 px-1 rounded">user.name</code>
+            </p>
+          </div>
+
+          {/* Bio — read-only from ghUser */}
+          <div>
+            <span className="text-xs text-muted-foreground font-medium block mb-1.5">
+              Bio
+            </span>
+            <p className={cn(
+              "text-xs px-3 py-2 rounded-lg border min-h-[2.5rem]",
+              ghUser.bio
+                ? "border-border/30 text-foreground/80"
+                : "border-dashed border-border/20 text-muted-foreground/40 italic"
+            )}>
+              {ghUser.bio || "No bio set on GitHub"}
+            </p>
+            {ghUser.company && (
+              <p className="text-[10px] text-muted-foreground/50 mt-1">
+                Works at {ghUser.company}
+                {ghUser.location ? ` · ${ghUser.location}` : ""}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Quick Actions ── */}
+      <div className="glass rounded-xl overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-border/20 flex items-center gap-2">
+          <Terminal className="w-4 h-4 text-muted-foreground" />
+          <span className="text-xs font-medium">Quick Actions</span>
+        </div>
+        <div className="p-4 flex flex-wrap gap-2">
+          <button
+            onClick={() => OpenURL(profileURL)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border/30 text-foreground hover:bg-accent/30 hover:border-primary/40 transition-all press-scale"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            View on GitHub
+          </button>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border/30 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all press-scale disabled:opacity-50"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", refreshing && "animate-spin")} />
+            {refreshing ? "Refreshing..." : "Refresh Data"}
+          </button>
+          <button
+            onClick={() => OpenURL(`${profileURL}?tab=repositories`)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border/30 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all press-scale"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            Repositories
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Stat Card sub-component ── */
+function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+  return (
+    <div className="glass rounded-xl p-4 flex flex-col items-center gap-1.5 text-center">
+      <span className="text-muted-foreground">{icon}</span>
+      <span className="text-lg font-bold tabular-nums">{value.toLocaleString()}</span>
+      <span className="text-[10px] text-muted-foreground">{label}</span>
     </div>
   );
 }

@@ -343,7 +343,7 @@ export default function AppLayout() {
         <div className="px-3 py-2 border-t border-border/30">
           {ghAuthenticated && ghUser ? (
             <button
-              onClick={() => navigate({ to: "/settings", state: { settingsTab: "git" } as any })}
+              onClick={() => navigate({ to: "/settings", state: { settingsTab: "profile" } as any })}
               className="flex items-center gap-2.5 w-full px-2 py-1.5 rounded-lg hover:bg-accent/30 transition-colors text-left"
             >
               <img
@@ -393,7 +393,7 @@ export default function AppLayout() {
               {/* GitHub profile */}
               {ghAuthenticated && ghUser ? (
                 <button
-                  onClick={() => navigate({ to: "/settings", state: { settingsTab: "git" } as any })}
+                  onClick={() => navigate({ to: "/settings", state: { settingsTab: "profile" } as any })}
                   className="flex items-center gap-2 text-xs hover:bg-accent/30 px-1.5 py-1 rounded-md transition-colors"
                 >
                   <img

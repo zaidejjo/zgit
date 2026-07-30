@@ -179,6 +179,7 @@ export interface GitHubUser {
   bio?: string;
   company?: string;
   location?: string;
+  plan?: string;
   followers: number;
   following: number;
   public_repos: number;
