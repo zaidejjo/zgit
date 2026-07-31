@@ -1,12 +1,13 @@
 <div align="center">
 
-<img src="https://github.com/zaidejjo/zgit/blob/main/images/logo.png" alt="zgit logo" width="150" height="150" />
+<img src="./images/logo.png" alt="zgit logo" width="150" />
 
 # Zgit
 
 [![Build](https://github.com/zaidejjo/zgit/actions/workflows/build.yml/badge.svg)](https://github.com/zaidejjo/zgit/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/zaidejjo/zgit)](https://goreportcard.com/report/github.com/zaidejjo/zgit)
+![Go Version](https://img.shields.io/github/go-mod/go-version/zaidejjo/zgit)
+![Latest Release](https://img.shields.io/github/v/release/zaidejjo/zgit)
 
 A modern, fast Git & GitHub client combining local Git operations with GitHub CLI/API features (PRs, Issues, Actions, Reviews) into a clean, non-cluttered interface.
 
@@ -18,7 +19,7 @@ Ships as **both** a terminal UI (TUI) and a desktop application.
 
 ## Installation
 
-## Macos/Linux
+### macos/Linux
 ```bash
 curl -fsSL https://zgit.pages.dev/install | bash
 ```
@@ -91,6 +92,10 @@ make dev    # fmt → vet → test → build
 make test   # run all tests
 make lint   # golangci-lint
 ```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request or open an Issue.
 
 ## License
 
