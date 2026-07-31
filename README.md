@@ -1,4 +1,8 @@
-# zgit
+<div align="center">
+
+<img src="https://github.com/zaidejjo/zgit/blob/main/images/logo.png" alt="zgit logo" width="150" height="150" />
+
+# Zgit
 
 [![Build](https://github.com/zaidejjo/zgit/actions/workflows/build.yml/badge.svg)](https://github.com/zaidejjo/zgit/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -8,50 +12,15 @@ A modern, fast Git & GitHub client combining local Git operations with GitHub CL
 
 Ships as **both** a terminal UI (TUI) and a desktop application.
 
-## Features
+</div>
 
-- **Full Git integration** — status, log, branches, tags, remotes
-- **Commit management** — conventional commit tags, file checkboxes, force push options
-- **Interactive rebase** — drag-and-drop commit reordering, cherry-pick, squash
-- **3-way merge editor** — resolve conflicts inline with a visual editor
-- **GitHub PRs** — create, merge, view, list with status badges
-- **GitHub Issues** — create, close, detail view
-- **AI assistant** — commit message generation, PR descriptions, chat-based git operations
-- **Dual UI** — terminal (Bubble Tea) for devs, desktop (Wails + React + shadcn/ui) for rich interaction
-- **Diff viewer** — unified/split toggle, hunk staging, syntax highlighting
-- **Remote management** — add, rename, remove, set URL
-- **Global undo** — revert the last git action
+---
 
 ## Installation
 
-### Pre-built binaries
-
-Download the latest release from [GitHub Releases](https://github.com/zaidejjo/zgit/releases).
-
-| Package | Command |
-|---------|---------|
-| Linux (TUI) | `zgit-v{VERSION}-linux-{arch}.tar.gz` |
-| Linux (Desktop) | `zgit-desktop-v{VERSION}-linux-{arch}.tar.gz` |
-| macOS (TUI) | `zgit-v{VERSION}-darwin-{arch}.tar.gz` |
-| macOS (Desktop) | `zgit-desktop-v{VERSION}-darwin-{arch}.tar.gz` |
-| Windows (TUI) | `zgit-v{VERSION}-windows-{arch}.exe` |
-| Windows (Desktop) | `zgit-desktop-v{VERSION}-windows-{arch}.exe` (in .zip) |
-
-### Build from source
-
+## Macos/Linux
 ```bash
-# Prerequisites
-go install golang.org/dl/go1.26@latest
-
-# Clone and build
-git clone https://github.com/zaidejjo/zgit.git
-cd zgit
-make build          # TUI binary → ./zgit
-make install        # go install → $GOPATH/bin/zgit
-
-# Desktop app (requires Wails CLI + webkit2gtk-4.0)
-cd desktop
-wails build
+curl -fsSL https://zgit.pages.dev/install | bash
 ```
 
 ### Arch Linux (AUR)
@@ -99,6 +68,21 @@ ai:
       api_key: ${OPENROUTER_API_KEY}
       model: openai/gpt-4o
 ```
+
+## Features
+
+- **Full Git integration** — status, log, branches, tags, remotes
+- **Commit management** — conventional commit tags, file checkboxes, force push options
+- **Interactive rebase** — drag-and-drop commit reordering, cherry-pick, squash
+- **3-way merge editor** — resolve conflicts inline with a visual editor
+- **GitHub PRs** — create, merge, view, list with status badges
+- **GitHub Issues** — create, close, detail view
+- **AI assistant** — commit message generation, PR descriptions, chat-based git operations
+- **Dual UI** — terminal (Bubble Tea) for devs, desktop (Wails + React + shadcn/ui) for rich interaction
+- **Diff viewer** — unified/split toggle, hunk staging, syntax highlighting
+- **Remote management** — add, rename, remove, set URL
+- **Global undo** — revert the last git action
+
 
 ## Development
 
