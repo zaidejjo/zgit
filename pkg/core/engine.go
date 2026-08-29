@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -100,14 +101,59 @@ func (e *Engine) OpenRepo(repoPath string) error {
 	defer e.mu.Unlock()
 
 	if repoPath == "" {
-		repoPath = e.opts.RepoPath
-	}
-	if repoPath == "" {
-		repoPath = "."
+		// Try opts.RepoPath first (explicitly set)
+		if e.opts.RepoPath != "" {
+			repoPath = e.opts.RepoPath
+		} else {
+			// Try to get last opened repo from config
+			cfgLast := e.Config.GetString("repo.last_path")
+			if cfgLast != "" {
+				repoPath = cfgLast
+			} else {
+				// Fallback to recent repos list (most recent first)
+				recent := e.Config.GetRecentRepos()
+				if len(recent) > 0 {
+					repoPath = recent[0]
+				} else {
+					// Last resort: try cwd
+					repoPath = "."
+				}
+			}
+		}
 	}
 
 	if err := e.Git.Open(repoPath); err != nil {
+		// Exit code 128 = empty repo / unborn HEAD — handle gracefully
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			if exitErr.ProcessState != nil && exitErr.ProcessState.ExitCode() == 128 {
+				// Empty repo is not a fatal error; just set the path
+				e.repo = &models.Repo{Path: repoPath}
+				// Still track as last opened repo
+				if repoPath != "" && repoPath != "." {
+					e.Config.AddRecentRepo(repoPath)
+					e.Config.Set("repo.last_path", repoPath)
+				}
+				if e.GitHub != nil {
+					owner, name, err := guessCurrentRepo(e.Git)
+					if err == nil {
+						repo, err := e.GitHub.GetRepository(context.Background(), owner, name)
+						if err == nil {
+							e.repo = repo
+							repo.Path = repoPath
+							return nil
+						}
+					}
+				}
+				return nil // gracefully handled — not an error
+			}
+		}
 		return fmt.Errorf("open repo: %w", err)
+	}
+
+	// Track this repo path as the last opened (for next time)
+	if repoPath != "" && repoPath != "." {
+		e.Config.AddRecentRepo(repoPath)
+		e.Config.Set("repo.last_path", repoPath)
 	}
 
 	// Try to detect GitHub repo from remotes

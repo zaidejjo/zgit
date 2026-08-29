@@ -642,7 +642,16 @@ function AITab() {
     setAiSaving(true);
     try {
       const status = getProviderStatus();
-      await setAIConfigAction(selectedProvider, status?.has_key ? "" : "", model, endpoint);
+      // If provider already has a stored key, just set it as active without clearing the key
+      if (status?.has_key) {
+        // Directly set the provider config via the store, preserving the per-provider encrypted key
+        setSelectedProvider(selectedProvider);
+        // Fetch updated AI config to get masked key status
+        fetchAIConfig();
+        return;
+      }
+      // No key stored — use SetAIConfig which will prompt user to set a key
+      await setAIConfigAction(selectedProvider, "", model, endpoint);
     } finally {
       setAiSaving(false);
     }

@@ -1017,11 +1017,33 @@ Return ONLY the PR title and description. No extra commentary.`
 
 // aiConfig extracts AI provider config from the engine settings.
 func (a *App) aiConfig() ai.Config {
+	cfg := a.engine.Config
+	cfgDir := cfg.ConfigPath()
+	provider := ai.ProviderKind(cfg.GetString("ai.provider"))
+	// Try to decrypt the top-level API key; fall back to per-provider key if decryption fails
+	var apiKey string
+	topLevelKey := cfg.GetString("ai.api_key")
+	if topLevelKey != "" {
+		plaintext, err := ai.DecryptAPIKey(topLevelKey, cfgDir)
+		if err == nil {
+			apiKey = plaintext
+		}
+	}
+	// If top-level decryption failed, try per-provider key
+	if apiKey == "" {
+		pc := cfg.GetProviderConfig(string(provider))
+		if pc.APIKey != "" {
+			plaintext, err := ai.DecryptAPIKey(pc.APIKey, cfgDir)
+			if err == nil {
+				apiKey = plaintext
+			}
+		}
+	}
 	return ai.Config{
-		Provider: ai.ProviderKind(a.engine.Config.GetString("ai.provider")),
-		APIKey:   a.engine.Config.GetString("ai.api_key"),
-		Model:    a.engine.Config.GetString("ai.model"),
-		Endpoint: a.engine.Config.GetString("ai.endpoint"),
+		Provider: provider,
+		APIKey:   apiKey,
+		Model:    cfg.GetString("ai.model"),
+		Endpoint: cfg.GetString("ai.endpoint"),
 	}
 }
 
@@ -1147,11 +1169,33 @@ func (a *App) AgentGetHistory() ([]ai.Message, error) {
 
 // getAskConfig reads AI config from viper and returns a Config for Ask mode.
 func (a *App) getAskConfig() ai.Config {
+	cfg := a.engine.Config
+	cfgDir := cfg.ConfigPath()
+	provider := ai.ProviderKind(cfg.GetString("ai.provider"))
+	// Try to decrypt the top-level API key; fall back to per-provider key if decryption fails
+	var apiKey string
+	topLevelKey := cfg.GetString("ai.api_key")
+	if topLevelKey != "" {
+		plaintext, err := ai.DecryptAPIKey(topLevelKey, cfgDir)
+		if err == nil {
+			apiKey = plaintext
+		}
+	}
+	// If top-level decryption failed, try per-provider key
+	if apiKey == "" {
+		pc := cfg.GetProviderConfig(string(provider))
+		if pc.APIKey != "" {
+			plaintext, err := ai.DecryptAPIKey(pc.APIKey, cfgDir)
+			if err == nil {
+				apiKey = plaintext
+			}
+		}
+	}
 	return ai.Config{
-		Provider: ai.ProviderKind(a.engine.Config.GetString("ai.provider")),
-		APIKey:   a.engine.Config.GetString("ai.api_key"),
-		Model:    a.engine.Config.GetString("ai.model"),
-		Endpoint: a.engine.Config.GetString("ai.endpoint"),
+		Provider: provider,
+		APIKey:   apiKey,
+		Model:    cfg.GetString("ai.model"),
+		Endpoint: cfg.GetString("ai.endpoint"),
 	}
 }
 

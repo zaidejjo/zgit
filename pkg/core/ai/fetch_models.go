@@ -13,13 +13,18 @@ import (
 const fetchModelsTimeout = 15 * time.Second
 
 // FetchProviderModels queries the provider's /models API and returns available model IDs.
-// Supported: openai, openrouter, groq, ollama. Returns nil for unsupported providers.
+// Supported providers: openai, openrouter, anthropic, deepseek, groq, ollama.
+// Returns nil for unsupported providers.
 func FetchProviderModels(provider, apiKey string) ([]string, error) {
 	switch ProviderKind(provider) {
 	case ProviderOpenAI:
 		return fetchOpenAIModels(apiKey)
 	case ProviderOpenRouter:
 		return fetchOpenRouterModels(apiKey)
+	case ProviderAnthropic:
+		return fetchAnthropicModels(apiKey)
+	case ProviderDeepSeek:
+		return fetchDeepSeekModels(apiKey)
 	case ProviderGroq:
 		return fetchGroqModels(apiKey)
 	case ProviderOllama:
@@ -120,6 +125,54 @@ func fetchOllamaModels() ([]string, error) {
 		ids := make([]string, 0, len(resp.Models))
 		for _, m := range resp.Models {
 			ids = append(ids, m.Name)
+		}
+		return ids, nil
+	})
+}
+
+// --- Anthropic ---
+
+type anthropicModel struct {
+	ID string `json:"id"`
+}
+
+type anthropicModelResponse struct {
+	Data []anthropicModel `json:"data"`
+}
+
+func fetchAnthropicModels(apiKey string) ([]string, error) {
+	return fetchModelsJSON("https://api.anthropic.com/v1/models", apiKey, "x-api-key", func(body []byte) ([]string, error) {
+		var resp anthropicModelResponse
+		if err := json.Unmarshal(body, &resp); err != nil {
+			return nil, err
+		}
+		ids := make([]string, 0, len(resp.Data))
+		for _, m := range resp.Data {
+			ids = append(ids, m.ID)
+		}
+		return ids, nil
+	})
+}
+
+// --- DeepSeek ---
+
+type deepseekModel struct {
+	ID string `json:"id"`
+}
+
+type deepseekResponse struct {
+	Data []deepseekModel `json:"data"`
+}
+
+func fetchDeepSeekModels(apiKey string) ([]string, error) {
+	return fetchModelsJSON("https://api.deepseek.com/models", apiKey, "Bearer ", func(body []byte) ([]string, error) {
+		var resp deepseekResponse
+		if err := json.Unmarshal(body, &resp); err != nil {
+			return nil, err
+		}
+		ids := make([]string, 0, len(resp.Data))
+		for _, m := range resp.Data {
+			ids = append(ids, m.ID)
 		}
 		return ids, nil
 	})
