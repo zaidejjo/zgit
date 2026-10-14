@@ -8,6 +8,8 @@ import IssuesPage from "./pages/IssuesPage";
 import ActionsPage from "./pages/ActionsPage";
 import RemotesPage from "./pages/RemotesPage";
 import TagsPage from "./pages/TagsPage";
+import WorktreesPage from "./pages/WorktreesPage";
+import HistoryPage from "./pages/HistoryPage";
 import SettingsPage from "./pages/SettingsPage";
 import AIFocusPage from "./pages/AIFocusPage";
 
@@ -63,6 +65,18 @@ const tagsRoute = createRoute({
   component: TagsPage,
 });
 
+const worktreesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/worktrees",
+  component: WorktreesPage,
+});
+
+const historyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/history",
+  component: HistoryPage,
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
@@ -84,6 +98,8 @@ const routeTree = rootRoute.addChildren([
   actionsRoute,
   remotesRoute,
   tagsRoute,
+  worktreesRoute,
+  historyRoute,
   settingsRoute,
   aiRoute,
 ]);

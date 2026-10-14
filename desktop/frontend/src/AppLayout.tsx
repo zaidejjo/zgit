@@ -19,6 +19,8 @@ const navItems = [
   { id: "status",   label: "Status",   Icon: GitCommitHorizontal },
   { id: "log",      label: "Log",      Icon: History },
   { id: "branches", label: "Branches", Icon: GitBranch },
+  { id: "worktrees", label: "Worktrees", Icon: GitFork },
+  { id: "history", label: "History", Icon: History },
   { id: "pull-requests", label: "PRs", Icon: GitPullRequest },
   { id: "issues",   label: "Issues",   Icon: CircleDot },
   { id: "actions",  label: "Actions",  Icon: Play },
@@ -167,7 +169,7 @@ export default function AppLayout() {
 
   // Page title lookup
   const pageTitleMap: Record<string, string> = {
-    status: "Status", log: "Log", branches: "Branches",
+    status: "Status", log: "Log", branches: "Branches", worktrees: "Worktrees", history: "History",
     "pull-requests": "PRs", issues: "Issues", actions: "Actions",
     ai: "AI Chat", remotes: "Remotes", tags: "Tags", settings: "Settings",
   };

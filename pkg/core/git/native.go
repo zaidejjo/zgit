@@ -4,9 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -174,7 +177,12 @@ func (n *NativeExec) Status(ctx context.Context) (*models.Status, error) {
 	s := ParsePorcelainV2(data, bi)
 
 	// Detect merge/rebase/cherry-pick/revert state by checking for sentinel files.
-	gitDir := n.repoPath + "/.git"
+	// Resolve via gitDir() so linked worktrees (where .git is a file)
+	// report state correctly instead of silently showing none.
+	gitDir := n.gitDir(ctx)
+	if !filepath.IsAbs(gitDir) {
+		gitDir = filepath.Join(n.repoPath, gitDir)
+	}
 	if fi, err := os.Stat(gitDir); err == nil && fi.IsDir() {
 		s.IsMerging = fileExists(gitDir + "/MERGE_HEAD")
 		s.IsRebasing = fileExists(gitDir + "/REBASE_HEAD")
@@ -227,10 +235,22 @@ func (n *NativeExec) gitDir(ctx context.Context) string {
 // --- Log ---
 
 func (n *NativeExec) Log(ctx context.Context, opts LogOptions) ([]*models.Commit, error) {
+	if opts.Follow && opts.File == "" {
+		return nil, fmt.Errorf("--follow requires a file path")
+	}
 	args := []string{"log", "--format=" + logFormat}
 
 	if opts.Graph {
 		args = append(args, "--topo-order")
+	}
+	if opts.Follow {
+		args = append(args, "--follow")
+	}
+	if opts.Pickaxe != "" {
+		args = append(args, "-S"+opts.Pickaxe)
+	}
+	if opts.PickaxeR != "" {
+		args = append(args, "-G"+opts.PickaxeR)
 	}
 	if opts.Count > 0 {
 		args = append(args, fmt.Sprintf("-%d", opts.Count))
@@ -254,6 +274,9 @@ func (n *NativeExec) Log(ctx context.Context, opts LogOptions) ([]*models.Commit
 		args = append(args, "--until="+opts.Until)
 	}
 	if opts.File != "" {
+		if opts.Branch != "" {
+			args = append(args, opts.Branch)
+		}
 		args = append(args, "--", opts.File)
 	} else if opts.Branch != "" {
 		args = append(args, opts.Branch)
@@ -496,16 +519,22 @@ func (n *NativeExec) RebaseSequence(ctx context.Context, opts models.RebaseSeque
 	repoPath := n.repoPath
 	n.mu.RUnlock()
 
-	// We need a wrapper script because GIT_SEQUENCE_EDITOR receives the
-	// target filename as an argument: "$EDITOR <file>"
-	// We want to copy our todo over it. Create a shell script.
-	editorCmd := fmt.Sprintf("cp %s \"$1\"", tmpPath)
+	// GIT_SEQUENCE_EDITOR receives the target filename as an argument:
+	// `$EDITOR <file>`. We install a tiny script that copies our todo
+	// over it. A real script file (not an inline shell snippet) is used
+	// because Windows has no `cp` and CreateProcess quoting is unreliable.
+	// .bat on Windows (copy), .sh elsewhere (cp).
+	editorPath, err := writeSequenceEditorScript(tmpPath)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(editorPath)
 
 	cmd := exec.CommandContext(ctx, n.gitPath, "rebase", "-i", opts.Onto)
 	cmd.Dir = repoPath
 	cmd.Env = append(os.Environ(),
-		"GIT_SEQUENCE_EDITOR="+editorCmd,
-		"GIT_EDITOR="+editorCmd,
+		"GIT_SEQUENCE_EDITOR="+editorPath,
+		"GIT_EDITOR="+editorPath,
 	)
 
 	output, err := cmd.CombinedOutput()
@@ -524,6 +553,45 @@ func (n *NativeExec) RebaseSequence(ctx context.Context, opts models.RebaseSeque
 }
 
 // --- Commit operations ---
+
+// writeSequenceEditorScript creates an executable script that copies
+// todoPath over the file given as its first argument.
+// Returns the script path; the caller removes it when done.
+func writeSequenceEditorScript(todoPath string) (string, error) {
+	if runtime.GOOS == "windows" {
+		f, err := os.CreateTemp("", "git-seq-editor-*.bat")
+		if err != nil {
+			return "", fmt.Errorf("create editor script: %w", err)
+		}
+		scriptPath := f.Name()
+		// %1 = first argument (target file). Quoted for spaces.
+		content := "@echo off\r\ncopy /Y \"" + todoPath + "\" \"%1\"\r\n"
+		if _, err := f.WriteString(content); err != nil {
+			f.Close()
+			os.Remove(scriptPath)
+			return "", fmt.Errorf("write editor script: %w", err)
+		}
+		f.Close()
+		return scriptPath, nil
+	}
+	f, err := os.CreateTemp("", "git-seq-editor-*.sh")
+	if err != nil {
+		return "", fmt.Errorf("create editor script: %w", err)
+	}
+	scriptPath := f.Name()
+	content := "#!/bin/sh\ncp \"" + todoPath + "\" \"$1\"\n"
+	if _, err := f.WriteString(content); err != nil {
+		f.Close()
+		os.Remove(scriptPath)
+		return "", fmt.Errorf("write editor script: %w", err)
+	}
+	f.Close()
+	if err := os.Chmod(scriptPath, 0700); err != nil {
+		os.Remove(scriptPath)
+		return "", fmt.Errorf("chmod editor script: %w", err)
+	}
+	return scriptPath, nil
+}
 
 func (n *NativeExec) CherryPick(ctx context.Context, sha string) error {
 	_, err := n.run(ctx, "cherry-pick", sha)
@@ -1245,6 +1313,168 @@ func parseBranchNameFromSubject(subject string) string {
 
 // --- Misc ---
 
+// WorktreeList returns all worktrees (main first) via `git worktree list --porcelain`.
+func (n *NativeExec) WorktreeList(ctx context.Context) ([]*models.Worktree, error) {
+	data, err := n.run(ctx, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil, err
+	}
+	return ParseWorktreePorcelain(data)
+}
+
+// validateWorktreePath cleans and validates a worktree path argument.
+func validateWorktreePath(path string) (string, error) {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return "", fmt.Errorf("worktree path is required")
+	}
+	if strings.ContainsRune(trimmed, '\x00') || strings.Contains(trimmed, "\n") {
+		return "", fmt.Errorf("invalid worktree path %q", path)
+	}
+	return filepath.Clean(trimmed), nil
+}
+
+// worktreeMainPath resolves the main worktree path for safety checks.
+// Returns "" when the list cannot be determined (caller proceeds and lets git enforce).
+func (n *NativeExec) worktreeMainPath(ctx context.Context) string {
+	data, err := n.run(ctx, "worktree", "list", "--porcelain")
+	if err != nil {
+		return ""
+	}
+	list, err := ParseWorktreePorcelain(data)
+	if err != nil || len(list) == 0 {
+		return ""
+	}
+	return list[0].Path
+}
+
+// WorktreeAdd creates a new worktree at path checking out ref.
+// When opts.CreateBranch is set, ref is treated as a new branch name (-b).
+// When opts.Detach is set, HEAD is detached and CreateBranch is ignored.
+func (n *NativeExec) WorktreeAdd(ctx context.Context, path, ref string, opts models.WorktreeAddOptions) error {
+	cleanPath, err := validateWorktreePath(path)
+	if err != nil {
+		return err
+	}
+	args := []string{"worktree", "add"}
+	if opts.Force {
+		args = append(args, "--force")
+	}
+	if opts.Detach {
+		args = append(args, "--detach")
+	} else if opts.CreateBranch {
+		branch := strings.TrimSpace(ref)
+		if branch == "" {
+			return fmt.Errorf("branch name is required when creating a new branch")
+		}
+		args = append(args, "-b", branch)
+		args = append(args, cleanPath)
+		_, err := n.run(ctx, args...)
+		return err
+	}
+	args = append(args, cleanPath)
+	if strings.TrimSpace(ref) != "" {
+		args = append(args, strings.TrimSpace(ref))
+	}
+	_, err = n.run(ctx, args...)
+	return err
+}
+
+// WorktreeRemove removes the worktree at path. Refuses the main worktree.
+func (n *NativeExec) WorktreeRemove(ctx context.Context, path string, force bool) error {
+	cleanPath, err := validateWorktreePath(path)
+	if err != nil {
+		return err
+	}
+	if main := n.worktreeMainPath(ctx); main != "" {
+		// Compare repo-anchored absolute paths: a relative argument must
+		// resolve against the repo dir, not the process working directory.
+		if samePath(main, n.absInRepo(cleanPath)) {
+			return fmt.Errorf("cannot remove the main worktree %q", cleanPath)
+		}
+	}
+	args := []string{"worktree", "remove"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, cleanPath)
+	_, err = n.run(ctx, args...)
+	return err
+}
+
+// WorktreeLock locks the worktree at path with an optional reason.
+func (n *NativeExec) WorktreeLock(ctx context.Context, path, reason string) error {
+	cleanPath, err := validateWorktreePath(path)
+	if err != nil {
+		return err
+	}
+	args := []string{"worktree", "lock"}
+	if strings.TrimSpace(reason) != "" {
+		args = append(args, "--reason", strings.TrimSpace(reason))
+	}
+	args = append(args, cleanPath)
+	_, err = n.run(ctx, args...)
+	return err
+}
+
+// WorktreeUnlock unlocks the worktree at path.
+func (n *NativeExec) WorktreeUnlock(ctx context.Context, path string) error {
+	cleanPath, err := validateWorktreePath(path)
+	if err != nil {
+		return err
+	}
+	_, err = n.run(ctx, "worktree", "unlock", cleanPath)
+	return err
+}
+
+// WorktreePrune prunes worktree metadata for directories deleted on disk.
+func (n *NativeExec) WorktreePrune(ctx context.Context) error {
+	_, err := n.run(ctx, "worktree", "prune")
+	return err
+}
+
+// WorktreeRepair repairs worktree metadata (git >= 2.27).
+func (n *NativeExec) WorktreeRepair(ctx context.Context) error {
+	_, err := n.run(ctx, "worktree", "repair")
+	return err
+}
+
+// absInRepo resolves p to an absolute path, anchoring relative paths at the
+// open repository directory instead of the process working directory.
+func (n *NativeExec) absInRepo(p string) string {
+	if filepath.IsAbs(p) {
+		return filepath.Clean(p)
+	}
+	n.mu.RLock()
+	rp := n.repoPath
+	n.mu.RUnlock()
+	if rp == "" {
+		if abs, err := filepath.Abs(p); err == nil {
+			return abs
+		}
+		return filepath.Clean(p)
+	}
+	if !filepath.IsAbs(rp) {
+		if abs, err := filepath.Abs(rp); err == nil {
+			rp = abs
+		}
+	}
+	return filepath.Join(rp, p)
+}
+
+// samePath reports whether two paths resolve to the same absolute location.
+// Falls back to cleaned-string comparison when Abs fails.
+// Note: symlinked prefixes (e.g. /tmp on macOS) can defeat string comparison;
+// git itself re-validates removal targets, so this guard is defense-in-depth.
+func samePath(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return filepath.Clean(a) == filepath.Clean(b)
+	}
+	return absA == absB
+}
+
 func (n *NativeExec) MergeBase(ctx context.Context, a, b string) (string, error) {
 	data, err := n.run(ctx, "merge-base", a, b)
 	if err != nil {
@@ -1281,6 +1511,51 @@ func (n *NativeExec) IsWorkTreeClean(ctx context.Context) (bool, error) {
 	return len(bytes.TrimSpace(data)) == 0, nil
 }
 
+// Blame attributes each line of path to its last-modifying commit.
+// Uses porcelain format for machine-readable output.
+func (n *NativeExec) Blame(ctx context.Context, path string, opts models.BlameOptions) ([]*models.BlameLine, error) {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return nil, fmt.Errorf("file path is required")
+	}
+	if strings.ContainsRune(trimmed, '\x00') || strings.Contains(trimmed, "\n") {
+		return nil, fmt.Errorf("invalid file path %q", path)
+	}
+	args := []string{"blame", "--porcelain"}
+	if strings.TrimSpace(opts.Lines) != "" {
+		if !validLineRange(opts.Lines) {
+			return nil, fmt.Errorf("invalid line range %q, want e.g. \"10,20\"", opts.Lines)
+		}
+		args = append(args, "-L", strings.TrimSpace(opts.Lines))
+	}
+	if strings.TrimSpace(opts.Ref) != "" {
+		args = append(args, strings.TrimSpace(opts.Ref))
+	}
+	args = append(args, "--", trimmed)
+	data, err := n.run(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBlamePorcelain(data)
+}
+
+// validLineRange reports whether s looks like git's -L range ("10,20", "10,+5", "/regex/").
+func validLineRange(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	if strings.HasPrefix(s, "/") {
+		return true // regex range: /pattern/[,offset]
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && r != ',' && r != '+' && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
 // RevList returns commit hashes reachable from ref, up to count.
 func (n *NativeExec) RevList(ctx context.Context, ref string, count int) ([]string, error) {
 	args := []string{"rev-list"}
@@ -1296,10 +1571,10 @@ func (n *NativeExec) RevList(ctx context.Context, ref string, count int) ([]stri
 }
 
 // asGitErr unwraps err to *GitError if possible.
+// Uses errors.As so wrapped errors (fmt.Errorf ... %w) still match.
 func asGitErr(err error, target **GitError) bool {
 	if err == nil {
 		return false
 	}
-	*target, _ = err.(*GitError) // direct cast OK here — we wrap at origin
-	return *target != nil
+	return errors.As(err, target)
 }

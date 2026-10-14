@@ -1,0 +1,263 @@
+#!/usr/bin/env bash
+# zgit installer for Linux and macOS (amd64 + arm64).
+#
+# Installs BOTH the TUI (zgit) and the desktop app (zgit-desktop).
+#
+# Usage:
+#   curl -fsSL https://zgit.pages.dev/install | bash
+#
+# Environment:
+#   ZGIT_VERSION     pinned version tag, e.g. v0.1.1 (default: latest release)
+#   ZGIT_INSTALL_DIR install directory (default: /usr/local/bin, falls back
+#                    to $HOME/.local/bin when not writable)
+#   ZGIT_NO_DESKTOP=1  skip the desktop app, install TUI only
+#   ZGIT_OS / ZGIT_ARCH  override auto-detection (mainly for testing)
+#
+# The script verifies the sha256 checksum before installing anything.
+set -euo pipefail
+
+REPO="zaidejjo/zgit"
+VERSION="${ZGIT_VERSION:-}"
+
+die() {
+  echo "install: error: $*" >&2
+  exit 1
+}
+
+need_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+}
+
+detect_os() {
+  local os="${ZGIT_OS:-}"
+  if [ -z "$os" ]; then
+    case "$(uname -s)" in
+      Linux) os="linux" ;;
+      Darwin) os="darwin" ;;
+      *) die "unsupported OS: $(uname -s) (Linux and macOS only; Windows needs install.ps1)" ;;
+    esac
+  fi
+  case "$os" in
+    linux | darwin) echo "$os" ;;
+    *) die "unsupported OS override: $os (linux and darwin only)" ;;
+  esac
+}
+
+detect_arch() {
+  local arch="${ZGIT_ARCH:-}"
+  if [ -z "$arch" ]; then
+    case "$(uname -m)" in
+      x86_64 | amd64) arch="amd64" ;;
+      aarch64 | arm64) arch="arm64" ;;
+      *) die "unsupported architecture: $(uname -m) (amd64 and arm64 only)" ;;
+    esac
+  fi
+  case "$arch" in
+    amd64 | arm64) echo "$arch" ;;
+    *) die "unsupported architecture override: $arch (amd64 and arm64 only)" ;;
+  esac
+}
+
+latest_version() {
+  need_cmd curl
+  local tag
+  # 2>/dev/null: grep -m1 closes the pipe after the first match (SIGPIPE noise).
+  tag="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep -m1 '"tag_name"' | cut -d'"' -f4)"
+  [ -n "$tag" ] || die "could not resolve latest release (set ZGIT_VERSION=vX.Y.Z to pin one)"
+  echo "$tag"
+}
+
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
+  fi
+}
+
+main() {
+  need_cmd curl
+  need_cmd tar
+  need_cmd mktemp
+
+  PINNED=0
+  [ -z "$VERSION" ] && VERSION="$(latest_version)" || PINNED=1
+  OS="$(detect_os)"
+  ARCH="$(detect_arch)"
+
+  ASSET="zgit-${VERSION}-${OS}-${ARCH}.tar.gz"
+  BASE="https://github.com/${REPO}/releases/download/${VERSION}"
+
+  TMPDIR="$(mktemp -d)"
+  trap 'rm -rf "$TMPDIR"' EXIT
+  cd "$TMPDIR"
+
+  resolve_dest
+
+  # Update mode: tracking latest and TUI already current.
+  # Compare without the leading "v": release binaries report
+  # "zgit 0.2.0" while tags are "v0.2.0".
+  cur_ver="$(installed_tui_version)"
+  if [ "$PINNED" -eq 0 ] && [ -n "$cur_ver" ] && [ "${cur_ver#v}" = "${VERSION#v}" ]; then
+    if [ "${ZGIT_NO_DESKTOP:-0}" = "1" ] || desktop_present; then
+      echo "install: zgit ${VERSION} already up to date"
+      return 0
+    fi
+    echo "install: TUI ${VERSION} current, installing missing desktop app..."
+    install_desktop
+    return $?
+  fi
+
+  echo "install: downloading ${ASSET} (${VERSION})..."
+  curl -fsSL -o "$ASSET" "${BASE}/${ASSET}" || die "download failed — no ${OS}/${ARCH} build for ${VERSION} yet?"
+
+  echo "install: verifying checksum..."
+  curl -fsSL -o checksums.txt "${BASE}/checksums.txt" || die "could not download checksums.txt"
+  want="$(grep -m1 " ${ASSET}\$" checksums.txt | cut -d' ' -f1)"
+  [ -n "$want" ] || die "${ASSET} not listed in checksums.txt"
+  got="$(sha256_of "$ASSET")"
+  [ "$want" = "$got" ] || die "checksum mismatch for ${ASSET} (wanted ${want}, got ${got})"
+
+  tar xzf "$ASSET" zgit
+  [ -f zgit ] || die "archive did not contain a zgit binary"
+
+  if [ -w "$DEST" ]; then
+    cp zgit "$DEST/zgit"
+  else
+    need_cmd sudo
+    sudo cp zgit "$DEST/zgit"
+  fi
+  chmod +x "$DEST/zgit"
+
+  "$DEST/zgit" --help >/dev/null || die "installed binary failed to run"
+  echo "install: zgit ${VERSION} installed to $DEST/zgit"
+
+  if [ "${ZGIT_NO_DESKTOP:-0}" != "1" ]; then
+    install_desktop || echo "install: warning: desktop app skipped ($?)"
+  fi
+}
+
+# resolve_dest picks the install directory: explicit override, system
+# default, or user fallback when the system dir is not writable.
+resolve_dest() {
+  DEST="${ZGIT_INSTALL_DIR:-/usr/local/bin}"
+  if [ "$DEST" != "/usr/local/bin" ]; then
+    # Explicit directory: create it, then require writability.
+    mkdir -p "$DEST" || die "cannot create $DEST"
+    [ -w "$DEST" ] || die "$DEST is not writable"
+  elif [ ! -w "$DEST" ]; then
+    DEST="$HOME/.local/bin"
+    mkdir -p "$DEST" || die "cannot create $DEST"
+    echo "install: /usr/local/bin not writable, using $DEST"
+    case ":$PATH:" in
+      *":$DEST:"*) ;;
+      *) echo "install: note: add $DEST to your PATH" ;;
+    esac
+  fi
+}
+
+# installed_tui_version prints the installed TUI version tag (e.g. v0.1.1)
+# or nothing when unknown (missing binary, dev builds).
+installed_tui_version() {
+  local bin=""
+  if [ -x "$DEST/zgit" ]; then
+    bin="$DEST/zgit"
+  elif command -v zgit >/dev/null 2>&1; then
+    bin="zgit"
+  else
+    return 0
+  fi
+  local out
+  out="$("$bin" --version 2>/dev/null)" || return 0
+  # Expected format: "zgit v0.1.1" or "zgit 0.1.1" (release builds strip
+  # the "v"). Anything else (e.g. "zgit dev") is unknown.
+  local ver="${out#zgit }"
+  case "$ver" in
+    [0-9]*.[0-9]*) echo "$ver" ;;
+  esac
+  return 0
+}
+
+# desktop_present is true when a zgit-desktop binary is reachable.
+desktop_present() {
+  [ -x "$DEST/zgit-desktop" ] || command -v zgit-desktop >/dev/null 2>&1
+}
+
+# install_desktop fetches the desktop bundle and installs the GUI binary
+# plus (on Linux) its .desktop entry and icon. Missing assets (e.g. a
+# platform not shipped yet for this version) warn and return non-zero
+# without failing the TUI install above.
+install_desktop() {
+  local asset="zgit-desktop-${VERSION}-${OS}-${ARCH}.tar.gz"
+  local ddir="$TMPDIR/desk"
+  mkdir -p "$ddir"
+  cd "$ddir"
+
+  echo "install: downloading ${asset}..."
+  if ! curl -fsSL -o "$asset" "${BASE}/${asset}"; then
+    echo "install: no desktop build for ${OS}/${ARCH} in ${VERSION} (TUI installed, skipping desktop)" >&2
+    return 0
+  fi
+
+  echo "install: verifying desktop checksum..."
+  if ! curl -fsSL -o "${asset}.sha256" "${BASE}/${asset}.sha256"; then
+    die "no checksum published for ${asset} (use a newer release, or set ZGIT_NO_DESKTOP=1)"
+  fi
+  want="$(cut -d' ' -f1 < "${asset}.sha256")"
+  [ -n "$want" ] || die "empty checksum file for ${asset}"
+  got="$(sha256_of "$asset")"
+  [ "$want" = "$got" ] || die "checksum mismatch for ${asset}"
+
+  tar xzf "$asset"
+  # The GUI binary is the executable file in the bundle root.
+  local bin
+  bin="$(find . -maxdepth 1 -type f -perm -111 -print -quit)"
+  [ -n "$bin" ] || die "desktop bundle has no executable binary"
+
+  if [ -w "$DEST" ]; then
+    cp "$bin" "$DEST/zgit-desktop"
+  else
+    need_cmd sudo
+    sudo cp "$bin" "$DEST/zgit-desktop"
+  fi
+  if [ -w "$DEST/zgit-desktop" ]; then
+    chmod +x "$DEST/zgit-desktop" 2>/dev/null || sudo chmod +x "$DEST/zgit-desktop"
+  else
+    sudo chmod +x "$DEST/zgit-desktop"
+  fi
+  echo "install: zgit-desktop ${VERSION} installed to $DEST/zgit-desktop"
+
+  if [ "$OS" = "linux" ] && [ -f zgit.desktop ]; then
+    install_linux_desktop_entry
+  fi
+  return 0
+}
+
+# install_linux_desktop_entry registers the app in menus (or user menus
+# for user-scope installs) and installs its icon.
+install_linux_desktop_entry() {
+  local data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+  if [ "$DEST" = "/usr/local/bin" ]; then
+    data_home="/usr/share"
+  fi
+  local app_dir="$data_home/applications"
+  local icon_dir="$data_home/icons/hicolor/512x512/apps"
+  if [ -w "$data_home" ]; then
+    mkdir -p "$app_dir" "$icon_dir"
+    sed -e "s|^Exec=.*|Exec=$DEST/zgit-desktop|" \
+        -e "s|^Icon=.*|Icon=$icon_dir/zgit.png|" \
+        zgit.desktop > "$app_dir/zgit.desktop"
+    [ -f zgit.png ] && cp zgit.png "$icon_dir/zgit.png"
+  else
+    need_cmd sudo
+    sudo mkdir -p "$app_dir" "$icon_dir"
+    sed -e "s|^Exec=.*|Exec=$DEST/zgit-desktop|" \
+        -e "s|^Icon=.*|Icon=$icon_dir/zgit.png|" \
+        zgit.desktop | sudo tee "$app_dir/zgit.desktop" >/dev/null
+    [ -f zgit.png ] && sudo cp zgit.png "$icon_dir/zgit.png"
+  fi
+  command -v update-desktop-database >/dev/null 2>&1 && (update-desktop-database "$app_dir" 2>/dev/null || true)
+  echo "install: desktop menu entry installed"
+}
+
+main "$@"

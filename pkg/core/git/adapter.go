@@ -22,6 +22,9 @@ type LogOptions struct {
 	NoMerges bool   // exclude merge commits
 	Format   string // overrides default format (used internally)
 	Graph    bool   // include --topo-order --parents for graph topology
+	Follow   bool   // follow file renames (requires File)
+	Pickaxe  string // -S: commits changing occurrences of string
+	PickaxeR string // -G: commits with diff hunks matching regex
 }
 
 // DiffOptions controls git diff output.
@@ -104,6 +107,9 @@ type GitAdapter interface {
 	Log(ctx context.Context, opts LogOptions) ([]*models.Commit, error)
 	RevList(ctx context.Context, ref string, count int) ([]string, error)
 
+	// File history & blame
+	Blame(ctx context.Context, path string, opts models.BlameOptions) ([]*models.BlameLine, error)
+
 	// Branch management
 	Branches(ctx context.Context) ([]*models.Branch, error)
 	CurrentBranch(ctx context.Context) (string, error)
@@ -174,6 +180,15 @@ type GitAdapter interface {
 	// Reflog
 	Reflog(ctx context.Context, count int) ([]models.ReflogEntry, error)
 	UndoLastAction(ctx context.Context) (string, error)
+
+	// Worktrees
+	WorktreeList(ctx context.Context) ([]*models.Worktree, error)
+	WorktreeAdd(ctx context.Context, path, ref string, opts models.WorktreeAddOptions) error
+	WorktreeRemove(ctx context.Context, path string, force bool) error
+	WorktreeLock(ctx context.Context, path, reason string) error
+	WorktreeUnlock(ctx context.Context, path string) error
+	WorktreePrune(ctx context.Context) error
+	WorktreeRepair(ctx context.Context) error
 
 	// Misc
 	MergeBase(ctx context.Context, a, b string) (string, error)

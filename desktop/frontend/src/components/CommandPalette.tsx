@@ -65,6 +65,8 @@ export default function CommandPalette({ open, onClose, onNavigate }: CommandPal
     { id: "nav-status",   label: "Go to Status",     icon: <GitCommitHorizontal className="w-4 h-4" />, action: () => { onNavigate("status"); onClose(); }, category: "Navigation" },
     { id: "nav-log",      label: "Go to Log",        icon: <History className="w-4 h-4" />, action: () => { onNavigate("log"); onClose(); }, category: "Navigation" },
     { id: "nav-branches", label: "Go to Branches",   icon: <GitBranch className="w-4 h-4" />, action: () => { onNavigate("branches"); onClose(); }, category: "Navigation" },
+    { id: "nav-worktrees", label: "Go to Worktrees", icon: <GitFork className="w-4 h-4" />, action: () => { onNavigate("worktrees"); onClose(); }, category: "Navigation" },
+    { id: "nav-history", label: "Go to File History", icon: <History className="w-4 h-4" />, action: () => { onNavigate("history"); onClose(); }, category: "Navigation" },
     { id: "nav-prs",      label: "Go to Pull Requests", icon: <GitPullRequest className="w-4 h-4" />, action: () => { onNavigate("pull-requests"); onClose(); }, category: "Navigation" },
     { id: "nav-issues",   label: "Go to Issues",     icon: <CircleDot className="w-4 h-4" />, action: () => { onNavigate("issues"); onClose(); }, category: "Navigation" },
     { id: "nav-actions",  label: "Go to Actions",    icon: <Play className="w-4 h-4" />, action: () => { onNavigate("actions"); onClose(); }, category: "Navigation" },

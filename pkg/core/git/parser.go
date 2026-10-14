@@ -270,6 +270,107 @@ func parseCommitLine(line string) (*models.Commit, error) {
 	return c, nil
 }
 
+// --- git blame porcelain ---
+// Block format:
+//
+//	<sha> <orig_line> <final_line> <group_count>
+//	author <name>
+//	author-mail <<email>>
+//	author-time <unix>
+//	summary <subject>
+//	filename <path>
+//	<TAB><content>
+//
+// Uncommitted lines carry the all-zero SHA. Moved lines add a
+// `previous <sha> <path>` header which is ignored here.
+func ParseBlamePorcelain(data []byte) ([]*models.BlameLine, error) {
+	lines := make([]*models.BlameLine, 0)
+	var current *models.BlameLine
+
+	flush := func() {
+		if current != nil {
+			lines = append(lines, current)
+		}
+		current = nil
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if sha, orig, final, ok := parseBlameHeader(line); ok {
+			flush()
+			current = &models.BlameLine{
+				Hash:          sha,
+				OrigLineNo:    orig,
+				LineNo:        final,
+				IsUncommitted: isZeroSHA(sha),
+			}
+			continue
+		}
+		if current == nil {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "author "):
+			current.Author = strings.TrimPrefix(line, "author ")
+		case strings.HasPrefix(line, "author-mail "):
+			current.Email = strings.Trim(strings.TrimPrefix(line, "author-mail "), "<>")
+		case strings.HasPrefix(line, "author-time "):
+			if ts, err := strconv.ParseInt(strings.TrimPrefix(line, "author-time "), 10, 64); err == nil {
+				current.Timestamp = time.Unix(ts, 0).UTC()
+			}
+		case strings.HasPrefix(line, "summary "):
+			current.Summary = strings.TrimPrefix(line, "summary ")
+		case strings.HasPrefix(line, "\t"):
+			current.Content = strings.TrimPrefix(line, "\t")
+			flush() // content always terminates the block
+		}
+	}
+	flush()
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return lines, nil
+}
+
+// parseBlameHeader parses `<sha> <orig> <final> <count>` block headers.
+func parseBlameHeader(line string) (sha string, orig, final int, ok bool) {
+	if strings.HasPrefix(line, "boundary ") {
+		line = strings.TrimPrefix(line, "boundary ")
+	}
+	fields := strings.Fields(line)
+	if len(fields) != 4 || len(fields[0]) != 40 || !isHexSHA(fields[0]) {
+		return "", 0, 0, false
+	}
+	orig, err1 := strconv.Atoi(fields[1])
+	final, err2 := strconv.Atoi(fields[2])
+	if err1 != nil || err2 != nil {
+		return "", 0, 0, false
+	}
+	return fields[0], orig, final, true
+}
+
+// isHexSHA reports whether s is a 40-char hex string or the all-zero SHA.
+func isHexSHA(s string) bool {
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// isZeroSHA reports whether sha is the all-zero (uncommitted) SHA.
+func isZeroSHA(sha string) bool {
+	for _, r := range sha {
+		if r != '0' {
+			return false
+		}
+	}
+	return len(sha) > 0
+}
+
 // --- git branch format ---
 // Delimiter: %09 (tab). Avoid %xNN hex codes — not supported in some git versions.
 const branchFormat = "%(refname:short)%09%(HEAD)%09%(upstream:short)%09%(upstream:track,nobracket)%09%(objectname:short)%09%(subject)"
@@ -474,4 +575,83 @@ func ParseRevList(data []byte) ([]string, error) {
 		hashes = append(hashes, line)
 	}
 	return hashes, scanner.Err()
+}
+
+// ParseWorktreePorcelain parses `git worktree list --porcelain` output.
+// Block format (blank-line separated):
+//
+//	worktree /path/to/main
+//	HEAD abc123...
+//	branch refs/heads/main
+//
+//	worktree /path/to/linked
+//	HEAD abc123...
+//	branch refs/heads/feature
+//
+// Detached HEAD uses "detached" instead of "branch".
+// Bare entries carry "bare". Locked entries carry "locked" (+ optional reason
+// on the same line). Prunable entries carry "prunable" (+ optional reason).
+// The first block is the main worktree.
+func ParseWorktreePorcelain(data []byte) ([]*models.Worktree, error) {
+	worktrees := make([]*models.Worktree, 0)
+	var current *models.Worktree
+
+	flush := func() {
+		if current != nil && current.Path != "" {
+			worktrees = append(worktrees, current)
+		}
+		current = nil
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	// Worktree paths can be long; allow generous lines.
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "" {
+			flush()
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			flush()
+			current = &models.Worktree{
+				Path:   unquoteWorktreePath(strings.TrimPrefix(line, "worktree ")),
+				IsMain: len(worktrees) == 0,
+			}
+		case current != nil && strings.HasPrefix(line, "HEAD "):
+			current.Head = strings.TrimSpace(strings.TrimPrefix(line, "HEAD "))
+		case current != nil && strings.HasPrefix(line, "branch "):
+			ref := strings.TrimSpace(strings.TrimPrefix(line, "branch "))
+			current.Branch = strings.TrimPrefix(ref, "refs/heads/")
+		case current != nil && line == "detached":
+			current.IsDetached = true
+		case current != nil && line == "bare":
+			current.IsBare = true
+		case current != nil && (line == "locked" || strings.HasPrefix(line, "locked ")):
+			current.Locked = true
+			if rest := strings.TrimSpace(strings.TrimPrefix(line, "locked")); rest != "" {
+				current.LockReason = rest
+			}
+		case current != nil && (line == "prunable" || strings.HasPrefix(line, "prunable ")):
+			current.Prunable = true
+		}
+	}
+	flush()
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return worktrees, nil
+}
+
+// unquoteWorktreePath strips git's C-style quoting from worktree paths.
+// Porcelain quotes paths containing special characters:
+// `worktree "/repo/weird\"name"` → /repo/weird"name.
+func unquoteWorktreePath(p string) string {
+	if len(p) >= 2 && p[0] == '"' && p[len(p)-1] == '"' {
+		if unquoted, err := strconv.Unquote(p); err == nil {
+			return unquoted
+		}
+	}
+	return p
 }

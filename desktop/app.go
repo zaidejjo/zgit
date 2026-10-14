@@ -9,10 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -255,6 +253,42 @@ func (a *App) GetGraphLog(count int) ([]*models.Commit, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.Log(ctx, git.LogOptions{Count: count, Graph: true})
+}
+
+// GetBlame returns per-line commit attribution for a file.
+func (a *App) GetBlame(path, ref, lines string) ([]*models.BlameLine, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	result, err := a.engine.Git.Blame(ctx, path, models.BlameOptions{Ref: ref, Lines: lines})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return []*models.BlameLine{}, nil
+	}
+	return result, nil
+}
+
+// GetFileHistory returns commit history for a file, optionally following
+// renames (--follow) or filtering by pickaxe (-S/-G).
+func (a *App) GetFileHistory(path, branch string, follow bool, pickaxe, pickaxeRe string, count int) ([]*models.Commit, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	result, err := a.engine.Git.Log(ctx, git.LogOptions{
+		Count:    count,
+		Branch:   branch,
+		File:     path,
+		Follow:   follow,
+		Pickaxe:  pickaxe,
+		PickaxeR: pickaxeRe,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return []*models.Commit{}, nil
+	}
+	return result, nil
 }
 
 // GetBranches returns all local branches.
@@ -571,6 +605,62 @@ func (a *App) TagDelete(name string) error {
 	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
 	defer cancel()
 	return a.engine.Git.TagDelete(ctx, name)
+}
+
+// --- Worktrees ---
+
+// GetWorktrees returns all linked worktrees (main first).
+func (a *App) GetWorktrees() ([]*models.Worktree, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	list, err := a.engine.Git.WorktreeList(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if list == nil {
+		return []*models.Worktree{}, nil
+	}
+	return list, nil
+}
+
+// AddWorktree creates a new worktree at path checking out ref.
+// When createBranch is true, ref is treated as a new branch name.
+func (a *App) AddWorktree(path, ref string, createBranch, force, detach bool) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+	return a.engine.Git.WorktreeAdd(ctx, path, ref, models.WorktreeAddOptions{
+		CreateBranch: createBranch,
+		Force:        force,
+		Detach:       detach,
+	})
+}
+
+// RemoveWorktree removes the worktree at path.
+func (a *App) RemoveWorktree(path string, force bool) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+	return a.engine.Git.WorktreeRemove(ctx, path, force)
+}
+
+// LockWorktree locks a worktree with an optional reason.
+func (a *App) LockWorktree(path, reason string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.WorktreeLock(ctx, path, reason)
+}
+
+// UnlockWorktree unlocks a worktree.
+func (a *App) UnlockWorktree(path string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.WorktreeUnlock(ctx, path)
+}
+
+// PruneWorktrees prunes metadata for worktrees deleted on disk.
+func (a *App) PruneWorktrees() error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return a.engine.Git.WorktreePrune(ctx)
 }
 
 // ConfigGet gets a git config value.
@@ -1017,11 +1107,33 @@ Return ONLY the PR title and description. No extra commentary.`
 
 // aiConfig extracts AI provider config from the engine settings.
 func (a *App) aiConfig() ai.Config {
+	cfg := a.engine.Config
+	cfgDir := cfg.ConfigPath()
+	provider := ai.ProviderKind(cfg.GetString("ai.provider"))
+	// Try to decrypt the top-level API key; fall back to per-provider key if decryption fails
+	var apiKey string
+	topLevelKey := cfg.GetString("ai.api_key")
+	if topLevelKey != "" {
+		plaintext, err := ai.DecryptAPIKey(topLevelKey, cfgDir)
+		if err == nil {
+			apiKey = plaintext
+		}
+	}
+	// If top-level decryption failed, try per-provider key
+	if apiKey == "" {
+		pc := cfg.GetProviderConfig(string(provider))
+		if pc.APIKey != "" {
+			plaintext, err := ai.DecryptAPIKey(pc.APIKey, cfgDir)
+			if err == nil {
+				apiKey = plaintext
+			}
+		}
+	}
 	return ai.Config{
-		Provider: ai.ProviderKind(a.engine.Config.GetString("ai.provider")),
-		APIKey:   a.engine.Config.GetString("ai.api_key"),
-		Model:    a.engine.Config.GetString("ai.model"),
-		Endpoint: a.engine.Config.GetString("ai.endpoint"),
+		Provider: provider,
+		APIKey:   apiKey,
+		Model:    cfg.GetString("ai.model"),
+		Endpoint: cfg.GetString("ai.endpoint"),
 	}
 }
 
@@ -1147,11 +1259,33 @@ func (a *App) AgentGetHistory() ([]ai.Message, error) {
 
 // getAskConfig reads AI config from viper and returns a Config for Ask mode.
 func (a *App) getAskConfig() ai.Config {
+	cfg := a.engine.Config
+	cfgDir := cfg.ConfigPath()
+	provider := ai.ProviderKind(cfg.GetString("ai.provider"))
+	// Try to decrypt the top-level API key; fall back to per-provider key if decryption fails
+	var apiKey string
+	topLevelKey := cfg.GetString("ai.api_key")
+	if topLevelKey != "" {
+		plaintext, err := ai.DecryptAPIKey(topLevelKey, cfgDir)
+		if err == nil {
+			apiKey = plaintext
+		}
+	}
+	// If top-level decryption failed, try per-provider key
+	if apiKey == "" {
+		pc := cfg.GetProviderConfig(string(provider))
+		if pc.APIKey != "" {
+			plaintext, err := ai.DecryptAPIKey(pc.APIKey, cfgDir)
+			if err == nil {
+				apiKey = plaintext
+			}
+		}
+	}
 	return ai.Config{
-		Provider: ai.ProviderKind(a.engine.Config.GetString("ai.provider")),
-		APIKey:   a.engine.Config.GetString("ai.api_key"),
-		Model:    a.engine.Config.GetString("ai.model"),
-		Endpoint: a.engine.Config.GetString("ai.endpoint"),
+		Provider: provider,
+		APIKey:   apiKey,
+		Model:    cfg.GetString("ai.model"),
+		Endpoint: cfg.GetString("ai.endpoint"),
 	}
 }
 
@@ -1536,31 +1670,6 @@ func (a *App) CancelDeviceFlow() {
 		a.devicePollCancel()
 		a.devicePollCancel = nil
 	}
-}
-
-// OpenURL opens the given URL in the system browser without blocking the Wails bridge.
-// Uses os/exec with .Start() (detached) instead of Wails' synchronous BrowserOpenURL,
-// which can block on Linux when xdg-open waits for the browser process.
-func (a *App) OpenURL(url string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	default:
-		cmd = exec.Command("xdg-open", url)
-	}
-	// Detach so the Go process doesn't wait for the browser/xdg-open to finish
-	if cmd != nil {
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		if err := cmd.Start(); err == nil {
-			return nil
-		}
-	}
-	// Fallback: Wails runtime (may block on xdg-open but works everywhere)
-	wailsRuntime.BrowserOpenURL(a.ctx, url)
-	return nil
 }
 
 // GetGitHubUser returns the authenticated GitHub user.

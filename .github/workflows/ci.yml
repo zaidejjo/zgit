@@ -1,0 +1,111 @@
+# CI — checks on every PR to dev/main and every push to dev/main.
+# Fast feedback: lint, unit + integration tests, frontend build.
+name: ci
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: '1.26.x'
+  BUN_VERSION: '1.4.0'
+
+jobs:
+  lint:
+    name: Lint & Vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: gofmt check (list mode — never mutates)
+        run: test -z "$(gofmt -l .)" || (echo "gofmt found unformatted files — run 'gofmt -w .'"; exit 1)
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run tests (unit + integration)
+        run: go test ./... -count=1 -timeout=120s
+
+  frontend:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck + build
+        run: bun run build
+
+  cross-compile:
+    name: Cross-compile (${{ matrix.goos }}, ${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [windows, darwin]
+        module: [root, desktop]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Setup Bun (desktop embed needs frontend/dist)
+        if: matrix.module == 'desktop'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Build frontend for embed
+        if: matrix.module == 'desktop'
+        working-directory: desktop/frontend
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Build ${{ matrix.module }} for ${{ matrix.goos }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          CGO_ENABLED: 0
+        run: |
+          if [ "${{ matrix.module }}" = "desktop" ]; then cd desktop; fi
+          go build ./...
+        # Catches platform-specific breakage (e.g. Unix-only syscalls)
+        # long before the release matrix runs.
