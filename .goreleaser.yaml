@@ -43,6 +43,17 @@ checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
+homebrew_casks:
+  - name: zgit
+    repository:
+      owner: zaidejjo
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/zaidejjo/zgit
+    description: Modern, fast Git and GitHub client (TUI)
+    binaries:
+      - zgit
+
 snapshot:
   version_template: "{{ .Version }}-next"
 
