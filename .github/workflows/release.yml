@@ -56,18 +56,21 @@ jobs:
             runner: ubuntu-latest
             arch: amd64
             bin: zgit
+            bundle: ''
             wails_tags: webkit2_41
             pkg_ext: tar.gz
           - os: darwin
             runner: macos-latest
             arch: arm64
-            bin: zgit
+            bin: zgit.app/Contents/MacOS/zgit
+            bundle: zgit.app
             wails_tags: ''
             pkg_ext: tar.gz
           - os: windows
             runner: windows-latest
             arch: amd64
             bin: zgit.exe
+            bundle: ''
             wails_tags: ''
             pkg_ext: zip
     steps:
@@ -109,10 +112,17 @@ jobs:
           BIN="desktop/build/bin/${{ matrix.bin }}"
           test -f "$BIN" || { echo "expected binary missing: $BIN"; ls -la desktop/build/bin/; exit 1; }
           rm -rf dist/stage && mkdir -p dist/stage dist
-          cp "$BIN" "dist/stage/${{ matrix.bin }}"
-          cp images/logo_512.png dist/stage/zgit.png
-          cp dist/aur/zgit-desktop-bin/zgit.desktop dist/stage/
-          cp dist/flatpak/com.zaidejjo.zgit.metainfo.xml dist/stage/
+          if [ -n "${{ matrix.bundle }}" ]; then
+            # macOS: ship the whole .app bundle (Linux .desktop files don't apply).
+            cp -r "desktop/build/bin/${{ matrix.bundle }}" dist/stage/
+          else
+            cp "$BIN" "dist/stage/${{ matrix.bin }}"
+            if [ "${{ matrix.os }}" = "linux" ]; then
+              cp images/logo_512.png dist/stage/zgit.png
+              cp dist/aur/zgit-desktop-bin/zgit.desktop dist/stage/
+              cp dist/flatpak/com.zaidejjo.zgit.metainfo.xml dist/stage/
+            fi
+          fi
           if [ "${{ matrix.pkg_ext }}" = "zip" ]; then
             (cd dist/stage && 7z a "../zgit-desktop-v${VERSION}-${{ matrix.os }}-${{ matrix.arch }}.zip" .)
           else
@@ -127,9 +137,13 @@ jobs:
           done
 
       - name: Upload release assets (same GitHub Release, always)
+        # Exact per-OS patterns: a combined tar.gz+zip glob fails the job
+        # when only one format exists (fail_on_unmatched_files).
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/zgit-desktop-v*.tar.gz,dist/zgit-desktop-v*.zip,dist/zgit-desktop-v*.sha256
+          files: |
+            dist/zgit-desktop-v*-${{ matrix.os }}-${{ matrix.arch }}.${{ matrix.pkg_ext }}
+            dist/zgit-desktop-v*-${{ matrix.os }}-${{ matrix.arch }}.${{ matrix.pkg_ext }}.sha256
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
