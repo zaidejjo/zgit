@@ -15,11 +15,19 @@ finish-args:
   - --talk-name=org.freedesktop.Flatpak
   - --device=dri
 build-options:
-  append-path: /usr/lib/sdk/golang/bin:/usr/lib/sdk/node20/bin
+  append-path: /usr/lib/sdk/golang/bin:/usr/lib/sdk/node20/bin:/app/bin
   env:
     CGO_ENABLED: '1'
     GOPROXY: https://proxy.golang.org,direct
 modules:
+  - name: bun
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 bun-linux-x64/bun /app/bin/bun
+    sources:
+      - type: archive
+        url: https://github.com/oven-sh/bun/releases/download/bun-v1.4.0/bun-linux-x64.zip
+        sha256: 2d03fb5fb83ac8b567aca0a281b2ce1a1a19d488f56c2968d88c3f25e92fe452
   - name: wails-cli
     buildsystem: simple
     build-commands:
@@ -37,8 +45,8 @@ modules:
     build-commands:
       # Build TUI binary
       - go build -ldflags="-s -w -X main.Version=${VERSION}" -o /app/bin/zgit ./cmd/zgit/
-      # Install frontend dependencies
-      - npm ci --prefix desktop/frontend
+      # Install frontend dependencies (bun is vendored as a module above)
+      - cd desktop/frontend && /app/bin/bun install --frozen-lockfile
       # Build Wails desktop app
       - cd desktop && wails build -clean -o zgit-desktop -ldflags="-s -w -X main.Version=${VERSION}"
       # Install desktop binary

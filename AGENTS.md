@@ -34,7 +34,7 @@ make fmt          # go fmt ./...
 make dev          # fmt → vet → test → build
 
 # Desktop frontend only (Wails-less)
-cd desktop/frontend && npm run build   # tsc && vite build
+cd desktop/frontend && bun run build   # tsc && vite build
 
 # Full desktop binary (requires Wails CLI + webkit2gtk-4.0)
 cd desktop && wails build
