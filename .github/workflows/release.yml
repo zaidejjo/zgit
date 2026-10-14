@@ -190,3 +190,125 @@ jobs:
 
       - name: Run installed binary
         run: zgit --help
+
+  deb:
+    name: Debian packages
+    needs: [goreleaser]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            deb_arch: amd64
+          - arch: arm64
+            deb_arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download linux tarball
+        run: |
+          gh release download "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "zgit-v*-linux-${{ matrix.arch }}.tar.gz"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build .deb with dpkg-deb
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          TARBALL="zgit-v${VERSION}-linux-${{ matrix.arch }}.tar.gz"
+          test -f "$TARBALL" || { echo "missing $TARBALL"; exit 1; }
+          PKGDIR="pkg/zgit_${VERSION}_${{ matrix.deb_arch }}"
+          rm -rf pkg && mkdir -p "$PKGDIR/DEBIAN" "$PKGDIR/usr/bin" "$PKGDIR/usr/share/doc/zgit"
+          tar xzf "$TARBALL" -C /tmp
+          cp /tmp/zgit "$PKGDIR/usr/bin/zgit"
+          chmod 755 "$PKGDIR/usr/bin/zgit"
+          cp LICENSE README.md "$PKGDIR/usr/share/doc/zgit/"
+          cat > "$PKGDIR/DEBIAN/control" <<CONTROL
+          Package: zgit
+          Version: ${VERSION}
+          Section: vcs
+          Priority: optional
+          Architecture: ${{ matrix.deb_arch }}
+          Maintainer: zaidejjo
+          Depends: git
+          Description: Modern, fast Git and GitHub client
+           TUI and desktop companion for Git and GitHub workflows:
+           status, log, branches, worktrees, PRs, issues and AI assistance.
+          CONTROL
+          dpkg-deb --build "$PKGDIR" "zgit_${VERSION}_${{ matrix.deb_arch }}.deb"
+          dpkg-deb --info "zgit_${VERSION}_${{ matrix.deb_arch }}.deb"
+          dpkg-deb --contents "zgit_${VERSION}_${{ matrix.deb_arch }}.deb"
+
+      - name: Upload .deb to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: zgit_*.deb
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  apt-repo:
+    name: Publish APT repository
+    needs: [deb]
+    runs-on: ubuntu-latest
+    if: github.repository == 'zaidejjo/zgit'
+    steps:
+      - name: Checkout apt repo (PAT has cross-repo write)
+        uses: actions/checkout@v4
+        with:
+          repository: zaidejjo/apt
+          token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          path: apt
+
+      - name: Download .debs from release
+        run: |
+          mkdir -p apt/pool
+          cd apt/pool
+          gh release download "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "zgit_*.deb" \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Import GPG key
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: |
+          test -n "$APT_GPG_PRIVATE_KEY" || { echo "missing secret APT_GPG_PRIVATE_KEY"; exit 1; }
+          printf '%s' "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --batch --armor --export > apt/key.asc
+          echo "key fingerprint: $(gpg --batch --list-keys --with-colons | awk -F: '/^fpr:/ {print $10; exit}')"
+
+      - name: Rebuild Packages index + signed Release
+        env:
+          APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          cd apt
+          sudo apt-get update -qq && sudo apt-get install -y -qq apt-utils
+          for arch in amd64 arm64; do
+            mkdir -p "dists/stable/main/binary-$arch"
+          done
+          # One multi-arch Packages file served per arch dir (apt filters by Architecture field).
+          apt-ftparchive packages pool/ > dists/stable/main/binary-amd64/Packages
+          cp dists/stable/main/binary-amd64/Packages dists/stable/main/binary-arm64/Packages
+          gzip -kf dists/stable/main/binary-amd64/Packages dists/stable/main/binary-arm64/Packages
+          apt-ftparchive -c dists/stable/Release.conf release dists/stable > dists/stable/Release
+          SIGN_ARGS=(--batch --yes --pinentry-mode loopback)
+          if [ -n "${APT_GPG_PASSPHRASE:-}" ]; then
+            SIGN_ARGS+=(--passphrase "$APT_GPG_PASSPHRASE")
+          fi
+          gpg "${SIGN_ARGS[@]}" --clearsign -o dists/stable/InRelease dists/stable/Release
+          gpg "${SIGN_ARGS[@]}" -abs -o dists/stable/Release.gpg dists/stable/Release
+
+      - name: Push updated repo
+        run: |
+          cd apt
+          git add -A
+          git -c user.name "${{ github.actor }}" -c user.email "${{ github.actor }}@users.noreply.github.com" \
+            commit -m "apt: publish ${GITHUB_REF_NAME}" || echo "nothing to commit"
+          git push origin HEAD:main
