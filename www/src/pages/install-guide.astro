@@ -24,7 +24,7 @@ import InstallBlock from '../components/InstallBlock.astro';
         <section class="mb-12">
           <h2 class="text-xl font-semibold mb-4">Quick Install</h2>
           <p class="text-sm text-foreground-secondary mb-4">
-            One command for any OS:
+            One command installs <strong>both</strong> the terminal client and the desktop app. Re-run anytime to update.
           </p>
           <div class="relative group">
             <div class="absolute -inset-0.5 bg-gradient-to-r from-primary/20 to-accent/20 rounded-2xl blur-xl opacity-60" />
@@ -58,8 +58,8 @@ import InstallBlock from '../components/InstallBlock.astro';
             Linux
           </h2>
           <div class="space-y-4">
-            <InstallBlock label="Arch Linux (AUR)" cmd="yay -S zgit-bin" />
-            <InstallBlock label="Homebrew" cmd="brew install zgit" />
+            <InstallBlock label="Arch Linux (AUR)" cmd="yay -S zgit-bin zgit-desktop-bin" />
+            <InstallBlock label="Debian / Ubuntu (APT)" cmd={`curl -fsSL https://zaidejjo.github.io/apt/key.asc | sudo gpg --dearmor -o /usr/share/keyrings/zgit.gpg\necho "deb [signed-by=/usr/share/keyrings/zgit.gpg] https://zaidejjo.github.io/apt stable main" | sudo tee /etc/apt/sources.list.d/zgit.list\nsudo apt update && sudo apt install zgit`} />
             <InstallBlock label="Go Install" cmd="go install github.com/zaidejjo/zgit/cmd/zgit@latest" />
             <InstallBlock label="Build from source" cmd={`git clone https://github.com/zaidejjo/zgit.git\ncd zgit\nmake build\nsudo mv zgit /usr/local/bin/`} />
           </div>
@@ -75,7 +75,7 @@ import InstallBlock from '../components/InstallBlock.astro';
             macOS
           </h2>
           <div class="space-y-4">
-            <InstallBlock label="Homebrew" cmd="brew install zaid-commits/tap/zgit" />
+            <InstallBlock label="Homebrew" cmd={`brew tap zaidejjo/tap\nbrew trust zaidejjo/tap\nbrew install --cask zaidejjo/tap/zgit`} />
             <InstallBlock label="Go Install" cmd="go install github.com/zaidejjo/zgit/cmd/zgit@latest" />
             <InstallBlock label="Build from source" cmd={`git clone https://github.com/zaidejjo/zgit.git\ncd zgit\nmake build\nsudo mv zgit /usr/local/bin/`} />
           </div>
@@ -93,8 +93,7 @@ import InstallBlock from '../components/InstallBlock.astro';
             Windows
           </h2>
           <div class="space-y-4">
-            <InstallBlock label="Scoop" cmd={`scoop bucket add zgit https://github.com/zaid-commits/scoop-zgit\nscoop install zgit`} />
-            <InstallBlock label="Winget" cmd="winget install zgit" />
+            <InstallBlock label="PowerShell (recommended)" cmd="irm https://zgit.pages.dev/install.ps1 | iex" />
             <InstallBlock label="Go Install" cmd="go install github.com/zaidejjo/zgit/cmd/zgit@latest" />
             <InstallBlock label="Build from source" cmd={`git clone https://github.com/zaidejjo/zgit.git\ncd zgit\nmake build\nmove zgit.exe %USERPROFILE%\\bin\\`} />
           </div>
@@ -111,11 +110,11 @@ import InstallBlock from '../components/InstallBlock.astro';
               </li>
               <li class="flex items-start gap-3">
                 <span class="text-primary mt-0.5">2.</span>
-                <span>Launch desktop app: <code class="font-mono text-xs bg-code-bg px-1.5 py-0.5 rounded border border-code-border">zgit desktop</code>.</span>
+                <span>Launch desktop app: <code class="font-mono text-xs bg-code-bg px-1.5 py-0.5 rounded border border-code-border">zgit-desktop</code>.</span>
               </li>
               <li class="flex items-start gap-3">
                 <span class="text-primary mt-0.5">3.</span>
-                <span>Configure AI providers: <code class="font-mono text-xs bg-code-bg px-1.5 py-0.5 rounded border border-code-border">zgit config set-ai</code>.</span>
+                <span>Configure AI providers in Settings, then generate commit messages with AI.</span>
               </li>
               <li class="flex items-start gap-3">
                 <span class="text-primary mt-0.5">4.</span>
