@@ -234,10 +234,22 @@ func (n *NativeExec) gitDir(ctx context.Context) string {
 // --- Log ---
 
 func (n *NativeExec) Log(ctx context.Context, opts LogOptions) ([]*models.Commit, error) {
+	if opts.Follow && opts.File == "" {
+		return nil, fmt.Errorf("--follow requires a file path")
+	}
 	args := []string{"log", "--format=" + logFormat}
 
 	if opts.Graph {
 		args = append(args, "--topo-order")
+	}
+	if opts.Follow {
+		args = append(args, "--follow")
+	}
+	if opts.Pickaxe != "" {
+		args = append(args, "-S"+opts.Pickaxe)
+	}
+	if opts.PickaxeR != "" {
+		args = append(args, "-G"+opts.PickaxeR)
 	}
 	if opts.Count > 0 {
 		args = append(args, fmt.Sprintf("-%d", opts.Count))
@@ -261,6 +273,9 @@ func (n *NativeExec) Log(ctx context.Context, opts LogOptions) ([]*models.Commit
 		args = append(args, "--until="+opts.Until)
 	}
 	if opts.File != "" {
+		if opts.Branch != "" {
+			args = append(args, opts.Branch)
+		}
 		args = append(args, "--", opts.File)
 	} else if opts.Branch != "" {
 		args = append(args, opts.Branch)
@@ -1448,6 +1463,51 @@ func (n *NativeExec) IsWorkTreeClean(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	return len(bytes.TrimSpace(data)) == 0, nil
+}
+
+// Blame attributes each line of path to its last-modifying commit.
+// Uses porcelain format for machine-readable output.
+func (n *NativeExec) Blame(ctx context.Context, path string, opts models.BlameOptions) ([]*models.BlameLine, error) {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return nil, fmt.Errorf("file path is required")
+	}
+	if strings.ContainsRune(trimmed, '\x00') || strings.Contains(trimmed, "\n") {
+		return nil, fmt.Errorf("invalid file path %q", path)
+	}
+	args := []string{"blame", "--porcelain"}
+	if strings.TrimSpace(opts.Lines) != "" {
+		if !validLineRange(opts.Lines) {
+			return nil, fmt.Errorf("invalid line range %q, want e.g. \"10,20\"", opts.Lines)
+		}
+		args = append(args, "-L", strings.TrimSpace(opts.Lines))
+	}
+	if strings.TrimSpace(opts.Ref) != "" {
+		args = append(args, strings.TrimSpace(opts.Ref))
+	}
+	args = append(args, "--", trimmed)
+	data, err := n.run(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBlamePorcelain(data)
+}
+
+// validLineRange reports whether s looks like git's -L range ("10,20", "10,+5", "/regex/").
+func validLineRange(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	if strings.HasPrefix(s, "/") {
+		return true // regex range: /pattern/[,offset]
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && r != ',' && r != '+' && r != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 // RevList returns commit hashes reachable from ref, up to count.

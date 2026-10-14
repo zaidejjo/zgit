@@ -270,6 +270,107 @@ func parseCommitLine(line string) (*models.Commit, error) {
 	return c, nil
 }
 
+// --- git blame porcelain ---
+// Block format:
+//
+//	<sha> <orig_line> <final_line> <group_count>
+//	author <name>
+//	author-mail <<email>>
+//	author-time <unix>
+//	summary <subject>
+//	filename <path>
+//	<TAB><content>
+//
+// Uncommitted lines carry the all-zero SHA. Moved lines add a
+// `previous <sha> <path>` header which is ignored here.
+func ParseBlamePorcelain(data []byte) ([]*models.BlameLine, error) {
+	lines := make([]*models.BlameLine, 0)
+	var current *models.BlameLine
+
+	flush := func() {
+		if current != nil {
+			lines = append(lines, current)
+		}
+		current = nil
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if sha, orig, final, ok := parseBlameHeader(line); ok {
+			flush()
+			current = &models.BlameLine{
+				Hash:          sha,
+				OrigLineNo:    orig,
+				LineNo:        final,
+				IsUncommitted: isZeroSHA(sha),
+			}
+			continue
+		}
+		if current == nil {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "author "):
+			current.Author = strings.TrimPrefix(line, "author ")
+		case strings.HasPrefix(line, "author-mail "):
+			current.Email = strings.Trim(strings.TrimPrefix(line, "author-mail "), "<>")
+		case strings.HasPrefix(line, "author-time "):
+			if ts, err := strconv.ParseInt(strings.TrimPrefix(line, "author-time "), 10, 64); err == nil {
+				current.Timestamp = time.Unix(ts, 0).UTC()
+			}
+		case strings.HasPrefix(line, "summary "):
+			current.Summary = strings.TrimPrefix(line, "summary ")
+		case strings.HasPrefix(line, "\t"):
+			current.Content = strings.TrimPrefix(line, "\t")
+			flush() // content always terminates the block
+		}
+	}
+	flush()
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return lines, nil
+}
+
+// parseBlameHeader parses `<sha> <orig> <final> <count>` block headers.
+func parseBlameHeader(line string) (sha string, orig, final int, ok bool) {
+	if strings.HasPrefix(line, "boundary ") {
+		line = strings.TrimPrefix(line, "boundary ")
+	}
+	fields := strings.Fields(line)
+	if len(fields) != 4 || len(fields[0]) != 40 || !isHexSHA(fields[0]) {
+		return "", 0, 0, false
+	}
+	orig, err1 := strconv.Atoi(fields[1])
+	final, err2 := strconv.Atoi(fields[2])
+	if err1 != nil || err2 != nil {
+		return "", 0, 0, false
+	}
+	return fields[0], orig, final, true
+}
+
+// isHexSHA reports whether s is a 40-char hex string or the all-zero SHA.
+func isHexSHA(s string) bool {
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// isZeroSHA reports whether sha is the all-zero (uncommitted) SHA.
+func isZeroSHA(sha string) bool {
+	for _, r := range sha {
+		if r != '0' {
+			return false
+		}
+	}
+	return len(sha) > 0
+}
+
 // --- git branch format ---
 // Delimiter: %09 (tab). Avoid %xNN hex codes — not supported in some git versions.
 const branchFormat = "%(refname:short)%09%(HEAD)%09%(upstream:short)%09%(upstream:track,nobracket)%09%(objectname:short)%09%(subject)"

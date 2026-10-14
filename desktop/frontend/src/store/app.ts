@@ -107,6 +107,18 @@ export interface Worktree {
   prunable: boolean;
 }
 
+export interface BlameLine {
+  line_no: number;
+  orig_line_no: number;
+  hash: string;
+  author: string;
+  email: string;
+  timestamp: string;
+  summary: string;
+  content: string;
+  is_uncommitted: boolean;
+}
+
 export interface CheckRun {
   name: string;
   state: string;
@@ -556,6 +568,11 @@ interface AppState {
   // Worktrees
   worktrees: Worktree[];
 
+  // File history & blame
+  blame: BlameLine[];
+  fileHistory: Commit[];
+  historyPath: string;
+
   // Git config
   gitConfig: Record<string, string>;
 
@@ -719,6 +736,11 @@ interface AppState {
   unlockWorktree: (path: string) => Promise<void>;
   pruneWorktrees: () => Promise<void>;
 
+  // File history & blame
+  fetchBlame: (path: string, ref?: string, lines?: string) => Promise<void>;
+  fetchFileHistory: (path: string, opts?: { branch?: string; follow?: boolean; pickaxe?: string; pickaxeRe?: string; count?: number }) => Promise<void>;
+  clearHistory: () => void;
+
   // Config
   fetchGitConfig: () => Promise<void>;
   setGitConfig: (key: string, value: string, global?: boolean) => Promise<void>;
@@ -848,6 +870,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   remotes: [],
   tags: [],
   worktrees: [],
+  blame: [],
+  fileHistory: [],
+  historyPath: "",
   gitConfig: {},
   conflictResolutions: {},
   conflictFiles: [],
@@ -1648,6 +1673,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         stashes: [],
         remotes: [],
         worktrees: [],
+        blame: [],
+        fileHistory: [],
+        historyPath: "",
         error: null,
         loading: { ...get().loading, repo: false },
       });
@@ -1960,6 +1988,36 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ error: e.message || "Failed to prune worktrees" });
     }
   },
+
+  // File history & blame
+  fetchBlame: async (path, ref = "", lines = "") => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, blame: true } }));
+    try {
+      const blame = await backend.GetBlame(path, ref, lines);
+      set({ blame: blame || [], historyPath: path, loading: { ...get().loading, blame: false } });
+    } catch (e: any) {
+      set({ blame: [], error: e.message || `Failed to blame ${path}`, loading: { ...get().loading, blame: false } });
+    }
+  },
+
+  fetchFileHistory: async (path, opts = {}) => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, fileHistory: true } }));
+    try {
+      const fileHistory = await backend.GetFileHistory(
+        path, opts.branch || "", !!opts.follow,
+        opts.pickaxe || "", opts.pickaxeRe || "", opts.count || 100,
+      );
+      set({ fileHistory: fileHistory || [], historyPath: path, loading: { ...get().loading, fileHistory: false } });
+    } catch (e: any) {
+      set({ fileHistory: [], error: e.message || `Failed to fetch history for ${path}`, loading: { ...get().loading, fileHistory: false } });
+    }
+  },
+
+  clearHistory: () => set({ blame: [], fileHistory: [], historyPath: "" }),
 
   // Config
   fetchGitConfig: async () => {

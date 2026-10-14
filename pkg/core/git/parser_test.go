@@ -568,6 +568,54 @@ func TestCommitRefNames(t *testing.T) {
 	}
 }
 
+func TestParseBlamePorcelain(t *testing.T) {
+	data := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1 1 2\n" +
+		"author Alice\n" +
+		"author-mail <alice@ex.com>\n" +
+		"author-time 1700000100\n" +
+		"author-tz +0100\n" +
+		"summary First line\n" +
+		"filename f.txt\n" +
+		"\tline one\n" +
+		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 2 2 2\n" +
+		"author Alice\n" +
+		"author-mail <alice@ex.com>\n" +
+		"author-time 1700000100\n" +
+		"summary First line\n" +
+		"filename f.txt\n" +
+		"\tline two\n" +
+		"0000000000000000000000000000000000000000 3 3 1\n" +
+		"author Not Committed Yet\n" +
+		"author-mail <not.committed.yet>\n" +
+		"author-time 0\n" +
+		"summary Version of f.txt from f.txt that has not been committed\n" +
+		"filename f.txt\n" +
+		"\tline three\n"
+
+	got, err := ParseBlamePorcelain([]byte(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3", len(got))
+	}
+	if got[0].LineNo != 1 || got[0].Content != "line one" {
+		t.Errorf("[0] = %+v, want line 1 %q", got[0], "line one")
+	}
+	if got[0].Author != "Alice" || got[0].Email != "alice@ex.com" {
+		t.Errorf("[0] author = %q <%q>", got[0].Author, got[0].Email)
+	}
+	if got[0].Summary != "First line" {
+		t.Errorf("[0] summary = %q", got[0].Summary)
+	}
+	if got[0].Timestamp.Unix() != 1700000100 {
+		t.Errorf("[0] timestamp = %v", got[0].Timestamp)
+	}
+	if got[2].IsUncommitted != true || got[2].Content != "line three" {
+		t.Errorf("[2] = %+v, want uncommitted %q", got[2], "line three")
+	}
+}
+
 func TestParseWorktreePorcelain(t *testing.T) {
 	tests := []struct {
 		name string

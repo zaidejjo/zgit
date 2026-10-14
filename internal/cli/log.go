@@ -10,15 +10,18 @@ import (
 )
 
 var logOpts struct {
-	count    int
-	branch   string
-	author   string
-	since    string
-	until    string
-	all      bool
-	merges   bool
-	noMerges bool
-	file     string
+	count     int
+	branch    string
+	author    string
+	since     string
+	until     string
+	all       bool
+	merges    bool
+	noMerges  bool
+	file      string
+	follow    bool
+	pickaxe   string
+	pickaxeRe string
 }
 
 var logCmd = &cobra.Command{
@@ -38,6 +41,9 @@ var logCmd = &cobra.Command{
 			Merges:   logOpts.merges,
 			NoMerges: logOpts.noMerges,
 			File:     logOpts.file,
+			Follow:   logOpts.follow,
+			Pickaxe:  logOpts.pickaxe,
+			PickaxeR: logOpts.pickaxeRe,
 		}
 
 		commits, err := gitExec.Log(ctx, opts)
@@ -81,4 +87,7 @@ func init() {
 	logCmd.Flags().BoolVar(&logOpts.merges, "merges", false, "show only merges")
 	logCmd.Flags().BoolVar(&logOpts.noMerges, "no-merges", false, "exclude merges")
 	logCmd.Flags().StringVarP(&logOpts.file, "file", "f", "", "show log for file")
+	logCmd.Flags().BoolVar(&logOpts.follow, "follow", false, "follow file across renames (requires --file)")
+	logCmd.Flags().StringVar(&logOpts.pickaxe, "pickaxe", "", "show commits changing occurrences of string (git -S)")
+	logCmd.Flags().StringVar(&logOpts.pickaxeRe, "pickaxe-regex", "", "show commits with diff hunks matching regex (git -G)")
 }
