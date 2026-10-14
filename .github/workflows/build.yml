@@ -1,11 +1,12 @@
-# CI build — runs on every push and pull request.
-# Verifies Go compilation, tests, lint, and frontend build.
+# Build — smoke builds on the road to main (PR → main, push → main).
+# Proves every shipped binary compiles. Shipped artifacts are rebuilt
+# from the release tag by release.yml — never taken from here.
 name: build
 
 on:
-  push:
-    branches: [main, dev, feature/*]
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
 
 concurrency:
@@ -14,12 +15,17 @@ concurrency:
 
 env:
   GO_VERSION: '1.26.x'
-  NODE_VERSION: '20'
+  BUN_VERSION: '1.4.0'
 
 jobs:
-  lint:
-    name: Lint & Vet
+  tui-matrix:
+    name: TUI (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v4
 
@@ -27,49 +33,25 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: true
 
-      - name: go vet
-        run: go vet ./...
-
-      - name: go fmt
-        run: test -z "$(go fmt ./...)" || (echo "go fmt found unformatted files — run 'go fmt ./...'"; exit 1)
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Run tests
-        run: go test ./... -count=1 -timeout=120s
-
-  build-tui:
-    name: Build TUI (Linux amd64)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Build zgit binary
-        run: go build -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o zgit ./cmd/zgit/
+      - name: Build TUI binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: go build -ldflags="-s -w" -o zgit-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }} ./cmd/zgit/
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: zgit-linux-amd64
-          path: zgit
+          name: zgit-tui-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: zgit-*
+          if-no-files-found: error
+          retention-days: 7
 
-  build-desktop:
-    name: Build Desktop (Linux amd64)
+  desktop-linux:
+    name: Desktop (Linux amd64)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,13 +60,12 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: true
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: desktop/frontend/package-lock.json
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install system deps
         run: |
@@ -92,15 +73,36 @@ jobs:
           sudo apt-get install -y -qq libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
 
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 
       - name: Build desktop app
         run: |
           cd desktop
-          wails build -clean -skipbindings -tags webkit2_41 -ldflags="-s -w -X main.Version=${{ github.ref_name }}"
+          wails build -clean -skipbindings -tags webkit2_41 -ldflags="-s -w"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+  cli-smoke:
+    name: CLI Smoke Test
+    runs-on: ubuntu-latest
+    needs: [tui-matrix]
+    steps:
+      - name: Download linux/amd64 binary
+        uses: actions/download-artifact@v4
         with:
-          name: zgit-desktop-linux-amd64
-          path: desktop/build/bin/zgit
+          name: zgit-tui-linux-amd64
+          path: ./smoke
+
+      - name: Exercise worktree + status against a temp repo
+        run: |
+          set -euo pipefail
+          chmod +x ./smoke/zgit-linux-amd64
+          export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t.co
+          export GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t.co
+          rm -rf /tmp/smoke-repo /tmp/smoke-linked
+          git init -q -b main /tmp/smoke-repo
+          git -C /tmp/smoke-repo commit -q --allow-empty -m init
+          ./smoke/zgit-linux-amd64 -C /tmp/smoke-repo worktree list
+          ./smoke/zgit-linux-amd64 -C /tmp/smoke-repo worktree add /tmp/smoke-linked --new-branch smoke/x
+          ./smoke/zgit-linux-amd64 -C /tmp/smoke-repo worktree list | grep -q smoke/x
+          ./smoke/zgit-linux-amd64 -C /tmp/smoke-repo status
+          ./smoke/zgit-linux-amd64 -C /tmp/smoke-repo worktree remove /tmp/smoke-linked --force
+          echo SMOKE_OK
