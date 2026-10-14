@@ -177,3 +177,16 @@ jobs:
           commit_email: ${{ github.actor }}@users.noreply.github.com
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
           known_hosts: ${{ secrets.AUR_SSH_HOST_KEY }}
+
+  brew-smoke:
+    name: Brew install smoke (macOS)
+    needs: [goreleaser]
+    runs-on: macos-latest
+    steps:
+      - name: Install zgit from tap
+        run: |
+          brew tap zaidejjo/tap
+          brew install --cask zgit
+
+      - name: Run installed binary
+        run: zgit --help
