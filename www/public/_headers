@@ -1,8 +1,5 @@
-/*
-  X-Frame-Options: DENY
-  X-Content-Type-Options: nosniff
-  Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: camera=(), microphone=(), geolocation=()
-
-/docs/*
-  Access-Control-Allow-Origin: https://zgit.pages.dev
+# Serve the install scripts as plain text so curl|bash/iex work reliably.
+/install
+  Content-Type: text/x-shellscript; charset=utf-8
+/install.ps1
+  Content-Type: text/plain; charset=utf-8
