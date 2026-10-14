@@ -67,21 +67,41 @@ yay -S zgit-desktop-bin
 ### Debian / Ubuntu (APT)
 
 ```bash
+# Add the signing key and repository
 curl -fsSL https://zaidejjo.github.io/apt/key.asc | sudo gpg --dearmor -o /usr/share/keyrings/zgit.gpg
 echo "deb [signed-by=/usr/share/keyrings/zgit.gpg] https://zaidejjo.github.io/apt stable main" | sudo tee /etc/apt/sources.list.d/zgit.list
+
+# Install (amd64 and arm64 supported)
 sudo apt update && sudo apt install zgit
+
+# Verify
+zgit --help
+
+# Uninstall
+sudo apt remove zgit
+sudo rm /etc/apt/sources.list.d/zgit.list /usr/share/keyrings/zgit.gpg
 ```
 
 ### macOS (Homebrew)
 
 ```bash
 brew install --cask zaidejjo/tap/zgit
+
+# Verify
+zgit --help
+
+# Uninstall
+brew uninstall --cask zgit
 ```
 
-### Flatpak
+### Flatpak (build from manifest)
+
+The app is not on Flathub yet — build it locally from the manifest:
 
 ```bash
-flatpak install com.zaidejjo.zgit
+flatpak install flathub org.gnome.Platform//48 org.gnome.Sdk//48 \
+  org.freedesktop.Sdk.Extension.golang//24.08 org.freedesktop.Sdk.Extension.node20//24.08
+flatpak-builder --install --user build dist/flatpak/com.zaidejjo.zgit.yml
 flatpak run com.zaidejjo.zgit
 ```
 
