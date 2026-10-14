@@ -87,4 +87,5 @@ func init() {
 	rootCmd.AddCommand(prCmd)
 	rootCmd.AddCommand(issueCmd)
 	rootCmd.AddCommand(actionsCmd)
+	rootCmd.AddCommand(worktreeCmd)
 }

@@ -573,6 +573,62 @@ func (a *App) TagDelete(name string) error {
 	return a.engine.Git.TagDelete(ctx, name)
 }
 
+// --- Worktrees ---
+
+// GetWorktrees returns all linked worktrees (main first).
+func (a *App) GetWorktrees() ([]*models.Worktree, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	list, err := a.engine.Git.WorktreeList(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if list == nil {
+		return []*models.Worktree{}, nil
+	}
+	return list, nil
+}
+
+// AddWorktree creates a new worktree at path checking out ref.
+// When createBranch is true, ref is treated as a new branch name.
+func (a *App) AddWorktree(path, ref string, createBranch, force, detach bool) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+	return a.engine.Git.WorktreeAdd(ctx, path, ref, models.WorktreeAddOptions{
+		CreateBranch: createBranch,
+		Force:        force,
+		Detach:       detach,
+	})
+}
+
+// RemoveWorktree removes the worktree at path.
+func (a *App) RemoveWorktree(path string, force bool) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+	return a.engine.Git.WorktreeRemove(ctx, path, force)
+}
+
+// LockWorktree locks a worktree with an optional reason.
+func (a *App) LockWorktree(path, reason string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.WorktreeLock(ctx, path, reason)
+}
+
+// UnlockWorktree unlocks a worktree.
+func (a *App) UnlockWorktree(path string) error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	return a.engine.Git.WorktreeUnlock(ctx, path)
+}
+
+// PruneWorktrees prunes metadata for worktrees deleted on disk.
+func (a *App) PruneWorktrees() error {
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return a.engine.Git.WorktreePrune(ctx)
+}
+
 // ConfigGet gets a git config value.
 func (a *App) ConfigGet(key string) (string, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 5e9)

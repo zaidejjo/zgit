@@ -567,3 +567,109 @@ func TestCommitRefNames(t *testing.T) {
 		t.Errorf("RefNames = %q, want %q", got[0].RefNames, "(tag: v1.0, main)")
 	}
 }
+
+func TestParseWorktreePorcelain(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+		want []models.Worktree
+	}{
+		{
+			name: "main only",
+			data: "worktree /repo\nHEAD abc1234567890\nbranch refs/heads/main\n\n",
+			want: []models.Worktree{
+				{Path: "/repo", Head: "abc1234567890", Branch: "main", IsMain: true},
+			},
+		},
+		{
+			name: "main plus linked detached locked",
+			data: "worktree /repo\n" +
+				"HEAD abc1234567890\n" +
+				"branch refs/heads/main\n" +
+				"\n" +
+				"worktree /tmp/linked\n" +
+				"HEAD def4567890123\n" +
+				"detached\n" +
+				"locked maintenance\n" +
+				"\n",
+			want: []models.Worktree{
+				{Path: "/repo", Head: "abc1234567890", Branch: "main", IsMain: true},
+				{Path: "/tmp/linked", Head: "def4567890123", IsDetached: true, Locked: true, LockReason: "maintenance"},
+			},
+		},
+		{
+			name: "bare and prunable",
+			data: "worktree /repo\n" +
+				"HEAD abc1234567890\n" +
+				"branch refs/heads/main\n" +
+				"\n" +
+				"worktree /tmp/gone\n" +
+				"HEAD abc1234567890\n" +
+				"branch refs/heads/feature\n" +
+				"prunable\n" +
+				"\n" +
+				"worktree /tmp/bare\n" +
+				"bare\n" +
+				"\n",
+			want: []models.Worktree{
+				{Path: "/repo", Head: "abc1234567890", Branch: "main", IsMain: true},
+				{Path: "/tmp/gone", Head: "abc1234567890", Branch: "feature", Prunable: true},
+				{Path: "/tmp/bare", IsBare: true},
+			},
+		},
+		{
+			name: "empty",
+			data: "",
+			want: []models.Worktree{},
+		},
+		{
+			name: "quoted path with special chars",
+			data: "worktree \"/repo/weird\\\"name\"\nHEAD abc1234567890\nbranch refs/heads/main\n\n",
+			want: []models.Worktree{
+				{Path: `/repo/weird"name`, Head: "abc1234567890", Branch: "main", IsMain: true},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseWorktreePorcelain([]byte(tt.data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("len = %d, want %d (%v)", len(got), len(tt.want), got)
+			}
+			for i, w := range tt.want {
+				g := got[i]
+				if g.Path != w.Path {
+					t.Errorf("[%d] Path = %q, want %q", i, g.Path, w.Path)
+				}
+				if g.Head != w.Head {
+					t.Errorf("[%d] Head = %q, want %q", i, g.Head, w.Head)
+				}
+				if g.Branch != w.Branch {
+					t.Errorf("[%d] Branch = %q, want %q", i, g.Branch, w.Branch)
+				}
+				if g.IsMain != w.IsMain {
+					t.Errorf("[%d] IsMain = %v, want %v", i, g.IsMain, w.IsMain)
+				}
+				if g.IsBare != w.IsBare {
+					t.Errorf("[%d] IsBare = %v, want %v", i, g.IsBare, w.IsBare)
+				}
+				if g.IsDetached != w.IsDetached {
+					t.Errorf("[%d] IsDetached = %v, want %v", i, g.IsDetached, w.IsDetached)
+				}
+				if g.Locked != w.Locked {
+					t.Errorf("[%d] Locked = %v, want %v", i, g.Locked, w.Locked)
+				}
+				if g.LockReason != w.LockReason {
+					t.Errorf("[%d] LockReason = %q, want %q", i, g.LockReason, w.LockReason)
+				}
+				if g.Prunable != w.Prunable {
+					t.Errorf("[%d] Prunable = %v, want %v", i, g.Prunable, w.Prunable)
+				}
+			}
+		})
+	}
+}

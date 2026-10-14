@@ -475,3 +475,82 @@ func ParseRevList(data []byte) ([]string, error) {
 	}
 	return hashes, scanner.Err()
 }
+
+// ParseWorktreePorcelain parses `git worktree list --porcelain` output.
+// Block format (blank-line separated):
+//
+//	worktree /path/to/main
+//	HEAD abc123...
+//	branch refs/heads/main
+//
+//	worktree /path/to/linked
+//	HEAD abc123...
+//	branch refs/heads/feature
+//
+// Detached HEAD uses "detached" instead of "branch".
+// Bare entries carry "bare". Locked entries carry "locked" (+ optional reason
+// on the same line). Prunable entries carry "prunable" (+ optional reason).
+// The first block is the main worktree.
+func ParseWorktreePorcelain(data []byte) ([]*models.Worktree, error) {
+	worktrees := make([]*models.Worktree, 0)
+	var current *models.Worktree
+
+	flush := func() {
+		if current != nil && current.Path != "" {
+			worktrees = append(worktrees, current)
+		}
+		current = nil
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	// Worktree paths can be long; allow generous lines.
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "" {
+			flush()
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			flush()
+			current = &models.Worktree{
+				Path:   unquoteWorktreePath(strings.TrimPrefix(line, "worktree ")),
+				IsMain: len(worktrees) == 0,
+			}
+		case current != nil && strings.HasPrefix(line, "HEAD "):
+			current.Head = strings.TrimSpace(strings.TrimPrefix(line, "HEAD "))
+		case current != nil && strings.HasPrefix(line, "branch "):
+			ref := strings.TrimSpace(strings.TrimPrefix(line, "branch "))
+			current.Branch = strings.TrimPrefix(ref, "refs/heads/")
+		case current != nil && line == "detached":
+			current.IsDetached = true
+		case current != nil && line == "bare":
+			current.IsBare = true
+		case current != nil && (line == "locked" || strings.HasPrefix(line, "locked ")):
+			current.Locked = true
+			if rest := strings.TrimSpace(strings.TrimPrefix(line, "locked")); rest != "" {
+				current.LockReason = rest
+			}
+		case current != nil && (line == "prunable" || strings.HasPrefix(line, "prunable ")):
+			current.Prunable = true
+		}
+	}
+	flush()
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return worktrees, nil
+}
+
+// unquoteWorktreePath strips git's C-style quoting from worktree paths.
+// Porcelain quotes paths containing special characters:
+// `worktree "/repo/weird\"name"` → /repo/weird"name.
+func unquoteWorktreePath(p string) string {
+	if len(p) >= 2 && p[0] == '"' && p[len(p)-1] == '"' {
+		if unquoted, err := strconv.Unquote(p); err == nil {
+			return unquoted
+		}
+	}
+	return p
+}

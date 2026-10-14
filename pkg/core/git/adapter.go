@@ -175,6 +175,15 @@ type GitAdapter interface {
 	Reflog(ctx context.Context, count int) ([]models.ReflogEntry, error)
 	UndoLastAction(ctx context.Context) (string, error)
 
+	// Worktrees
+	WorktreeList(ctx context.Context) ([]*models.Worktree, error)
+	WorktreeAdd(ctx context.Context, path, ref string, opts models.WorktreeAddOptions) error
+	WorktreeRemove(ctx context.Context, path string, force bool) error
+	WorktreeLock(ctx context.Context, path, reason string) error
+	WorktreeUnlock(ctx context.Context, path string) error
+	WorktreePrune(ctx context.Context) error
+	WorktreeRepair(ctx context.Context) error
+
 	// Misc
 	MergeBase(ctx context.Context, a, b string) (string, error)
 	RefExists(ctx context.Context, ref string) (bool, error)

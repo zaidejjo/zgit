@@ -10,3 +10,6 @@
 /desktop/build/bin/
 *.sum
 
+# Opencode session goals (local-only state)
+.opencode/goals
+

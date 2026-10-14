@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -174,7 +176,12 @@ func (n *NativeExec) Status(ctx context.Context) (*models.Status, error) {
 	s := ParsePorcelainV2(data, bi)
 
 	// Detect merge/rebase/cherry-pick/revert state by checking for sentinel files.
-	gitDir := n.repoPath + "/.git"
+	// Resolve via gitDir() so linked worktrees (where .git is a file)
+	// report state correctly instead of silently showing none.
+	gitDir := n.gitDir(ctx)
+	if !filepath.IsAbs(gitDir) {
+		gitDir = filepath.Join(n.repoPath, gitDir)
+	}
 	if fi, err := os.Stat(gitDir); err == nil && fi.IsDir() {
 		s.IsMerging = fileExists(gitDir + "/MERGE_HEAD")
 		s.IsRebasing = fileExists(gitDir + "/REBASE_HEAD")
@@ -1245,6 +1252,168 @@ func parseBranchNameFromSubject(subject string) string {
 
 // --- Misc ---
 
+// WorktreeList returns all worktrees (main first) via `git worktree list --porcelain`.
+func (n *NativeExec) WorktreeList(ctx context.Context) ([]*models.Worktree, error) {
+	data, err := n.run(ctx, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil, err
+	}
+	return ParseWorktreePorcelain(data)
+}
+
+// validateWorktreePath cleans and validates a worktree path argument.
+func validateWorktreePath(path string) (string, error) {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return "", fmt.Errorf("worktree path is required")
+	}
+	if strings.ContainsRune(trimmed, '\x00') || strings.Contains(trimmed, "\n") {
+		return "", fmt.Errorf("invalid worktree path %q", path)
+	}
+	return filepath.Clean(trimmed), nil
+}
+
+// worktreeMainPath resolves the main worktree path for safety checks.
+// Returns "" when the list cannot be determined (caller proceeds and lets git enforce).
+func (n *NativeExec) worktreeMainPath(ctx context.Context) string {
+	data, err := n.run(ctx, "worktree", "list", "--porcelain")
+	if err != nil {
+		return ""
+	}
+	list, err := ParseWorktreePorcelain(data)
+	if err != nil || len(list) == 0 {
+		return ""
+	}
+	return list[0].Path
+}
+
+// WorktreeAdd creates a new worktree at path checking out ref.
+// When opts.CreateBranch is set, ref is treated as a new branch name (-b).
+// When opts.Detach is set, HEAD is detached and CreateBranch is ignored.
+func (n *NativeExec) WorktreeAdd(ctx context.Context, path, ref string, opts models.WorktreeAddOptions) error {
+	cleanPath, err := validateWorktreePath(path)
+	if err != nil {
+		return err
+	}
+	args := []string{"worktree", "add"}
+	if opts.Force {
+		args = append(args, "--force")
+	}
+	if opts.Detach {
+		args = append(args, "--detach")
+	} else if opts.CreateBranch {
+		branch := strings.TrimSpace(ref)
+		if branch == "" {
+			return fmt.Errorf("branch name is required when creating a new branch")
+		}
+		args = append(args, "-b", branch)
+		args = append(args, cleanPath)
+		_, err := n.run(ctx, args...)
+		return err
+	}
+	args = append(args, cleanPath)
+	if strings.TrimSpace(ref) != "" {
+		args = append(args, strings.TrimSpace(ref))
+	}
+	_, err = n.run(ctx, args...)
+	return err
+}
+
+// WorktreeRemove removes the worktree at path. Refuses the main worktree.
+func (n *NativeExec) WorktreeRemove(ctx context.Context, path string, force bool) error {
+	cleanPath, err := validateWorktreePath(path)
+	if err != nil {
+		return err
+	}
+	if main := n.worktreeMainPath(ctx); main != "" {
+		// Compare repo-anchored absolute paths: a relative argument must
+		// resolve against the repo dir, not the process working directory.
+		if samePath(main, n.absInRepo(cleanPath)) {
+			return fmt.Errorf("cannot remove the main worktree %q", cleanPath)
+		}
+	}
+	args := []string{"worktree", "remove"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, cleanPath)
+	_, err = n.run(ctx, args...)
+	return err
+}
+
+// WorktreeLock locks the worktree at path with an optional reason.
+func (n *NativeExec) WorktreeLock(ctx context.Context, path, reason string) error {
+	cleanPath, err := validateWorktreePath(path)
+	if err != nil {
+		return err
+	}
+	args := []string{"worktree", "lock"}
+	if strings.TrimSpace(reason) != "" {
+		args = append(args, "--reason", strings.TrimSpace(reason))
+	}
+	args = append(args, cleanPath)
+	_, err = n.run(ctx, args...)
+	return err
+}
+
+// WorktreeUnlock unlocks the worktree at path.
+func (n *NativeExec) WorktreeUnlock(ctx context.Context, path string) error {
+	cleanPath, err := validateWorktreePath(path)
+	if err != nil {
+		return err
+	}
+	_, err = n.run(ctx, "worktree", "unlock", cleanPath)
+	return err
+}
+
+// WorktreePrune prunes worktree metadata for directories deleted on disk.
+func (n *NativeExec) WorktreePrune(ctx context.Context) error {
+	_, err := n.run(ctx, "worktree", "prune")
+	return err
+}
+
+// WorktreeRepair repairs worktree metadata (git >= 2.27).
+func (n *NativeExec) WorktreeRepair(ctx context.Context) error {
+	_, err := n.run(ctx, "worktree", "repair")
+	return err
+}
+
+// absInRepo resolves p to an absolute path, anchoring relative paths at the
+// open repository directory instead of the process working directory.
+func (n *NativeExec) absInRepo(p string) string {
+	if filepath.IsAbs(p) {
+		return filepath.Clean(p)
+	}
+	n.mu.RLock()
+	rp := n.repoPath
+	n.mu.RUnlock()
+	if rp == "" {
+		if abs, err := filepath.Abs(p); err == nil {
+			return abs
+		}
+		return filepath.Clean(p)
+	}
+	if !filepath.IsAbs(rp) {
+		if abs, err := filepath.Abs(rp); err == nil {
+			rp = abs
+		}
+	}
+	return filepath.Join(rp, p)
+}
+
+// samePath reports whether two paths resolve to the same absolute location.
+// Falls back to cleaned-string comparison when Abs fails.
+// Note: symlinked prefixes (e.g. /tmp on macOS) can defeat string comparison;
+// git itself re-validates removal targets, so this guard is defense-in-depth.
+func samePath(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return filepath.Clean(a) == filepath.Clean(b)
+	}
+	return absA == absB
+}
+
 func (n *NativeExec) MergeBase(ctx context.Context, a, b string) (string, error) {
 	data, err := n.run(ctx, "merge-base", a, b)
 	if err != nil {
@@ -1296,10 +1465,10 @@ func (n *NativeExec) RevList(ctx context.Context, ref string, count int) ([]stri
 }
 
 // asGitErr unwraps err to *GitError if possible.
+// Uses errors.As so wrapped errors (fmt.Errorf ... %w) still match.
 func asGitErr(err error, target **GitError) bool {
 	if err == nil {
 		return false
 	}
-	*target, _ = err.(*GitError) // direct cast OK here — we wrap at origin
-	return *target != nil
+	return errors.As(err, target)
 }
