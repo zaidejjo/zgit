@@ -581,7 +581,7 @@ func (a *App) GetWorktrees() ([]*models.Worktree, error) {
 	defer cancel()
 	list, err := a.engine.Git.WorktreeList(ctx)
 	if err != nil {
-		return []*models.Worktree{}, nil
+		return nil, err
 	}
 	if list == nil {
 		return []*models.Worktree{}, nil

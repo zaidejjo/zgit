@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -175,7 +176,12 @@ func (n *NativeExec) Status(ctx context.Context) (*models.Status, error) {
 	s := ParsePorcelainV2(data, bi)
 
 	// Detect merge/rebase/cherry-pick/revert state by checking for sentinel files.
-	gitDir := n.repoPath + "/.git"
+	// Resolve via gitDir() so linked worktrees (where .git is a file)
+	// report state correctly instead of silently showing none.
+	gitDir := n.gitDir(ctx)
+	if !filepath.IsAbs(gitDir) {
+		gitDir = filepath.Join(n.repoPath, gitDir)
+	}
 	if fi, err := os.Stat(gitDir); err == nil && fi.IsDir() {
 		s.IsMerging = fileExists(gitDir + "/MERGE_HEAD")
 		s.IsRebasing = fileExists(gitDir + "/REBASE_HEAD")
@@ -1320,7 +1326,9 @@ func (n *NativeExec) WorktreeRemove(ctx context.Context, path string, force bool
 		return err
 	}
 	if main := n.worktreeMainPath(ctx); main != "" {
-		if samePath(main, cleanPath) {
+		// Compare repo-anchored absolute paths: a relative argument must
+		// resolve against the repo dir, not the process working directory.
+		if samePath(main, n.absInRepo(cleanPath)) {
 			return fmt.Errorf("cannot remove the main worktree %q", cleanPath)
 		}
 	}
@@ -1370,8 +1378,33 @@ func (n *NativeExec) WorktreeRepair(ctx context.Context) error {
 	return err
 }
 
+// absInRepo resolves p to an absolute path, anchoring relative paths at the
+// open repository directory instead of the process working directory.
+func (n *NativeExec) absInRepo(p string) string {
+	if filepath.IsAbs(p) {
+		return filepath.Clean(p)
+	}
+	n.mu.RLock()
+	rp := n.repoPath
+	n.mu.RUnlock()
+	if rp == "" {
+		if abs, err := filepath.Abs(p); err == nil {
+			return abs
+		}
+		return filepath.Clean(p)
+	}
+	if !filepath.IsAbs(rp) {
+		if abs, err := filepath.Abs(rp); err == nil {
+			rp = abs
+		}
+	}
+	return filepath.Join(rp, p)
+}
+
 // samePath reports whether two paths resolve to the same absolute location.
 // Falls back to cleaned-string comparison when Abs fails.
+// Note: symlinked prefixes (e.g. /tmp on macOS) can defeat string comparison;
+// git itself re-validates removal targets, so this guard is defense-in-depth.
 func samePath(a, b string) bool {
 	absA, errA := filepath.Abs(a)
 	absB, errB := filepath.Abs(b)
@@ -1432,10 +1465,10 @@ func (n *NativeExec) RevList(ctx context.Context, ref string, count int) ([]stri
 }
 
 // asGitErr unwraps err to *GitError if possible.
+// Uses errors.As so wrapped errors (fmt.Errorf ... %w) still match.
 func asGitErr(err error, target **GitError) bool {
 	if err == nil {
 		return false
 	}
-	*target, _ = err.(*GitError) // direct cast OK here — we wrap at origin
-	return *target != nil
+	return errors.As(err, target)
 }

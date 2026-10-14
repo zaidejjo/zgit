@@ -1909,7 +1909,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       await backend.AddWorktree(path, ref, createBranch, force, detach);
       await get().fetchWorktrees();
-      set({ successMessage: `Worktree added at ${path}` });
+      get().setSuccessMessage(`Worktree added at ${path}`);
     } catch (e: any) {
       set({ error: e.message || `Failed to add worktree at ${path}` });
     }
@@ -1921,7 +1921,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       await backend.RemoveWorktree(path, force);
       await get().fetchWorktrees();
-      set({ successMessage: `Worktree removed: ${path}` });
+      get().setSuccessMessage(`Worktree removed: ${path}`);
     } catch (e: any) {
       set({ error: e.message || `Failed to remove worktree ${path}` });
     }
@@ -1955,7 +1955,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       await backend.PruneWorktrees();
       await get().fetchWorktrees();
-      set({ successMessage: "Pruned worktrees" });
+      get().setSuccessMessage("Pruned worktrees");
     } catch (e: any) {
       set({ error: e.message || "Failed to prune worktrees" });
     }

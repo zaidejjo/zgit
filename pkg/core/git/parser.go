@@ -515,7 +515,7 @@ func ParseWorktreePorcelain(data []byte) ([]*models.Worktree, error) {
 		case strings.HasPrefix(line, "worktree "):
 			flush()
 			current = &models.Worktree{
-				Path:   strings.TrimPrefix(line, "worktree "),
+				Path:   unquoteWorktreePath(strings.TrimPrefix(line, "worktree ")),
 				IsMain: len(worktrees) == 0,
 			}
 		case current != nil && strings.HasPrefix(line, "HEAD "):
@@ -541,4 +541,16 @@ func ParseWorktreePorcelain(data []byte) ([]*models.Worktree, error) {
 		return nil, err
 	}
 	return worktrees, nil
+}
+
+// unquoteWorktreePath strips git's C-style quoting from worktree paths.
+// Porcelain quotes paths containing special characters:
+// `worktree "/repo/weird\"name"` → /repo/weird"name.
+func unquoteWorktreePath(p string) string {
+	if len(p) >= 2 && p[0] == '"' && p[len(p)-1] == '"' {
+		if unquoted, err := strconv.Unquote(p); err == nil {
+			return unquoted
+		}
+	}
+	return p
 }

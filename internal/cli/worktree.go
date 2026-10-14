@@ -63,6 +63,12 @@ Use --detach to check out HEAD detached:
 		if len(args) > 1 {
 			ref = args[1]
 		}
+		if worktreeAddDetach && worktreeAddBranch != "" {
+			return fmt.Errorf("--detach and --new-branch are mutually exclusive")
+		}
+		if ref != "" && worktreeAddBranch != "" {
+			return fmt.Errorf("cannot specify both <ref> %q and --new-branch %q", ref, worktreeAddBranch)
+		}
 		// --new-branch <name> creates a new branch for the worktree.
 		createBranch := worktreeAddBranch != ""
 		if createBranch {

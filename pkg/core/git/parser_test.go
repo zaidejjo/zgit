@@ -622,6 +622,13 @@ func TestParseWorktreePorcelain(t *testing.T) {
 			data: "",
 			want: []models.Worktree{},
 		},
+		{
+			name: "quoted path with special chars",
+			data: "worktree \"/repo/weird\\\"name\"\nHEAD abc1234567890\nbranch refs/heads/main\n\n",
+			want: []models.Worktree{
+				{Path: `/repo/weird"name`, Head: "abc1234567890", Branch: "main", IsMain: true},
+			},
+		},
 	}
 
 	for _, tt := range tests {
