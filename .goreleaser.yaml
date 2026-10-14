@@ -4,6 +4,11 @@ version: 2
 
 project_name: zgit
 
+# Keep build outputs out of dist/: that directory holds TRACKED
+# packaging manifests (AUR, flatpak, msix). goreleaser --clean would
+# delete them, leaving git dirty and failing the release.
+dist: .goreleaser-dist
+
 before:
   hooks:
     - go mod tidy
