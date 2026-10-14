@@ -64,6 +64,20 @@ yay -S zgit-bin
 yay -S zgit-desktop-bin
 ```
 
+### Debian / Ubuntu (APT)
+
+```bash
+curl -fsSL https://zaidejjo.github.io/apt/key.asc | sudo gpg --dearmor -o /usr/share/keyrings/zgit.gpg
+echo "deb [signed-by=/usr/share/keyrings/zgit.gpg] https://zaidejjo.github.io/apt stable main" | sudo tee /etc/apt/sources.list.d/zgit.list
+sudo apt update && sudo apt install zgit
+```
+
+### macOS (Homebrew)
+
+```bash
+brew install --cask zaidejjo/tap/zgit
+```
+
 ### Flatpak
 
 ```bash
