@@ -118,11 +118,18 @@ jobs:
           else
             tar czf "dist/zgit-desktop-v${VERSION}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz" -C dist/stage .
           fi
+          # Per-artifact checksum sidecar (release checksums.txt only covers
+          # GoReleaser archives; the install script verifies against this).
+          cd dist
+          for f in zgit-desktop-v${VERSION}-*; do
+            case "$f" in *.sha256) continue;; esac
+            sha256sum "$f" > "$f.sha256"
+          done
 
       - name: Upload release assets (same GitHub Release, always)
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/zgit-desktop-v*.tar.gz,dist/zgit-desktop-v*.zip
+          files: dist/zgit-desktop-v*.tar.gz,dist/zgit-desktop-v*.zip,dist/zgit-desktop-v*.sha256
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
