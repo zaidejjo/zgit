@@ -209,6 +209,14 @@ install_desktop() {
   [ "$want" = "$got" ] || die "checksum mismatch for ${asset}"
 
   tar xzf "$asset"
+  # macOS ships a .app bundle: install it into Applications and stop here
+  # (no binary/menu-entry handling applies inside a bundle).
+  local app
+  app="$(find . -maxdepth 1 -type d -name '*.app' -print -quit)"
+  if [ -n "$app" ]; then
+    install_mac_app "$app"
+    return 0
+  fi
   # The GUI binary is the executable file in the bundle root.
   local bin
   bin="$(find . -maxdepth 1 -type f -perm -111 -print -quit)"
@@ -231,6 +239,25 @@ install_desktop() {
     install_linux_desktop_entry
   fi
   return 0
+}
+
+# install_mac_app installs a .app bundle into Applications (system-wide
+# when writable, otherwise the user's ~/Applications).
+install_mac_app() {
+  local app="$1" name
+  name="$(basename "$app")"
+  local dest_dir="/Applications"
+  [ -w "$dest_dir" ] || dest_dir="$HOME/Applications"
+  mkdir -p "$dest_dir" || die "cannot create $dest_dir"
+  if [ -w "$dest_dir" ]; then
+    rm -rf "$dest_dir/$name"
+    cp -r "$app" "$dest_dir/$name"
+  else
+    need_cmd sudo
+    sudo rm -rf "$dest_dir/$name"
+    sudo cp -r "$app" "$dest_dir/$name"
+  fi
+  echo "install: $name ${VERSION} installed to $dest_dir/$name"
 }
 
 # install_linux_desktop_entry registers the app in menus (or user menus
