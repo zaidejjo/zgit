@@ -1,0 +1,111 @@
+---
+---
+
+<section class="relative pt-32 pb-24 md:pt-40 md:pb-32 overflow-hidden">
+  <!-- Background grid -->
+  <div class="absolute inset-0 grid-bg pointer-events-none" />
+
+  <!-- Glass glow orbs -->
+  <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/8 rounded-full blur-3xl pointer-events-none" />
+  <div class="absolute bottom-1/4 right-1/4 w-64 h-64 bg-accent/6 rounded-full blur-3xl pointer-events-none" />
+
+  <div class="container-main relative z-10">
+    <div class="max-w-3xl mx-auto text-center">
+      <!-- Badge -->
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/10 bg-white/[0.04] backdrop-blur-sm text-xs font-medium text-foreground-secondary mb-8">
+        <span class="w-2 h-2 rounded-full bg-primary" style="box-shadow: 0 0 8px var(--color-primary);" />
+        v0.2.0 — Open Source
+      </div>
+
+      <!-- Headline -->
+      <h1 class="text-4xl md:text-6xl lg:text-7xl font-extrabold tracking-tight leading-tight">
+        The Git Client
+        <br />
+        <span class="gradient-text">You'll Actually Enjoy</span>
+      </h1>
+
+      <!-- Subtitle -->
+      <p class="mt-6 text-lg md:text-xl text-foreground-secondary max-w-2xl mx-auto leading-relaxed">
+        AI-powered commits, smart PR generation, beautiful desktop & TUI experience.
+        Built for developers who want to ship faster.
+      </p>
+
+      <!-- CTAs -->
+      <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <a
+          href="/install"
+          class="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-background font-semibold text-sm hover:bg-primary-hover transition-all duration-200 glow-sm"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download Zgit
+        </a>
+        <a
+          href="/docs"
+          class="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-white/10 bg-white/[0.04] backdrop-blur-sm text-foreground font-medium text-sm hover:border-white/20 transition-all duration-200"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+          </svg>
+          Read the Docs
+        </a>
+      </div>
+
+      <!-- Install snippet -->
+      <div class="mt-12 max-w-lg mx-auto">
+        <div class="relative group">
+          <div class="absolute -inset-0.5 bg-gradient-to-r from-primary/30 to-accent/30 rounded-2xl blur-xl group-hover:blur-2xl transition-all opacity-60 group-hover:opacity-90" />
+          <div class="relative bg-code-bg border border-white/[0.06] backdrop-blur-sm rounded-xl p-4">
+            <div class="flex items-center gap-2 mb-3">
+              <span class="w-3 h-3 rounded-full bg-red-500/80" />
+              <span class="w-3 h-3 rounded-full bg-yellow-500/80" />
+              <span class="w-3 h-3 rounded-full bg-green-500/80" />
+              <span class="ml-2 text-xs text-foreground-muted font-mono">install.sh</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <code class="font-mono text-sm text-foreground-secondary">
+                <span class="text-primary">$</span> curl -fsSL <span class="text-foreground">https://zgit.pages.dev/install</span> | bash
+              </code>
+              <button
+                id="copy-install-btn"
+                class="flex-shrink-0 p-1.5 rounded-lg hover:bg-white/[0.06] text-foreground-muted hover:text-foreground transition-colors"
+                aria-label="Copy install command"
+                data-cmd="curl -fsSL https://zgit.pages.dev/install | bash"
+              >
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const copyBtn = document.getElementById('copy-install-btn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      const cmd = copyBtn.getAttribute('data-cmd');
+      if (cmd) {
+        try {
+          await navigator.clipboard.writeText(cmd);
+          const svg = copyBtn.querySelector('svg');
+          if (svg) {
+            svg.innerHTML = '<polyline points="20 6 9 17 4 12" stroke-linecap="round" stroke-linejoin="round"/>';
+            setTimeout(() => {
+              svg.innerHTML = '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>';
+            }, 2000);
+          }
+        } catch {}
+      }
+    });
+  }
+</script>

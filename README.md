@@ -47,6 +47,11 @@ zgit-desktop         # desktop app
 
 New here? Start with [DOCS.md](DOCS.md). Want to hack on it? Read [CONTRIBUTING.md](CONTRIBUTING.md).
 
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request or open an Issue.
+
 ## License
 
 [Apache License 2.0](LICENSE) © 2026 zaidejjo

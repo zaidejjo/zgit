@@ -1,0 +1,151 @@
+---
+import Landing from '../layouts/Landing.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+import InstallBlock from '../components/InstallBlock.astro';
+---
+
+<Landing title="Install Zgit — Quick Start Guide">
+  <Nav />
+  <main class="pt-28 pb-16">
+    <div class="container-main">
+      <div class="max-w-3xl mx-auto">
+        <!-- Header -->
+        <div class="mb-12">
+          <h1 class="text-4xl font-bold tracking-tight">
+            Install <span class="gradient-text">Zgit</span>
+          </h1>
+          <p class="mt-3 text-lg text-foreground-secondary">
+            Choose your operating system and preferred method to get started.
+          </p>
+        </div>
+
+        <!-- Quick install -->
+        <section class="mb-12">
+          <h2 class="text-xl font-semibold mb-4">Quick Install</h2>
+          <p class="text-sm text-foreground-secondary mb-4">
+            One command for any OS:
+          </p>
+          <div class="relative group">
+            <div class="absolute -inset-0.5 bg-gradient-to-r from-primary/20 to-accent/20 rounded-2xl blur-xl opacity-60" />
+            <div class="relative bg-code-bg border border-code-border rounded-xl p-4">
+              <div class="flex items-center justify-between">
+                <code class="font-mono text-sm text-foreground-secondary">
+                  <span class="text-primary">$</span> curl -fsSL <span class="text-foreground">https://zgit.pages.dev/install</span> | bash
+                </code>
+                <button
+                  id="copy-quick"
+                  class="flex-shrink-0 ml-3 p-2 rounded-lg hover:bg-surface-raised text-foreground-muted hover:text-foreground transition-colors"
+                  aria-label="Copy install command"
+                  data-cmd="curl -fsSL https://zgit.pages.dev/install | bash"
+                >
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Linux -->
+        <section class="mb-12">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-3">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 17.5 9.5 12 4 6.5"/><path d="M12.5 19H20"/>
+            </svg>
+            Linux
+          </h2>
+          <div class="space-y-4">
+            <InstallBlock label="Arch Linux (AUR)" cmd="yay -S zgit-bin" />
+            <InstallBlock label="Homebrew" cmd="brew install zgit" />
+            <InstallBlock label="Go Install" cmd="go install github.com/zaidejjo/zgit/cmd/zgit@latest" />
+            <InstallBlock label="Build from source" cmd={`git clone https://github.com/zaidejjo/zgit.git\ncd zgit\nmake build\nsudo mv zgit /usr/local/bin/`} />
+          </div>
+        </section>
+
+        <!-- macOS -->
+        <section class="mb-12">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-3">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a4 4 0 0 0-4 4c0 2 2 4 4 4s4-2 4-4a4 4 0 0 0-4-4Z"/>
+              <path d="M4 22c0-4.42 3.58-8 8-8s8 3.58 8 8"/>
+            </svg>
+            macOS
+          </h2>
+          <div class="space-y-4">
+            <InstallBlock label="Homebrew" cmd="brew install zaid-commits/tap/zgit" />
+            <InstallBlock label="Go Install" cmd="go install github.com/zaidejjo/zgit/cmd/zgit@latest" />
+            <InstallBlock label="Build from source" cmd={`git clone https://github.com/zaidejjo/zgit.git\ncd zgit\nmake build\nsudo mv zgit /usr/local/bin/`} />
+          </div>
+        </section>
+
+        <!-- Windows -->
+        <section class="mb-12">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-3">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7"/>
+              <rect x="14" y="3" width="7" height="7"/>
+              <rect x="14" y="14" width="7" height="7"/>
+              <rect x="3" y="14" width="7" height="7"/>
+            </svg>
+            Windows
+          </h2>
+          <div class="space-y-4">
+            <InstallBlock label="Scoop" cmd={`scoop bucket add zgit https://github.com/zaid-commits/scoop-zgit\nscoop install zgit`} />
+            <InstallBlock label="Winget" cmd="winget install zgit" />
+            <InstallBlock label="Go Install" cmd="go install github.com/zaidejjo/zgit/cmd/zgit@latest" />
+            <InstallBlock label="Build from source" cmd={`git clone https://github.com/zaidejjo/zgit.git\ncd zgit\nmake build\nmove zgit.exe %USERPROFILE%\\bin\\`} />
+          </div>
+        </section>
+
+        <!-- Post-install -->
+        <section>
+          <h2 class="text-xl font-semibold mb-4">Next Steps</h2>
+          <div class="glass-card p-6">
+            <ul class="space-y-3 text-sm text-foreground-secondary">
+              <li class="flex items-start gap-3">
+                <span class="text-primary mt-0.5">1.</span>
+                <span>Run <code class="font-mono text-xs bg-code-bg px-1.5 py-0.5 rounded border border-code-border">zgit</code> to start the TUI.</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <span class="text-primary mt-0.5">2.</span>
+                <span>Launch desktop app: <code class="font-mono text-xs bg-code-bg px-1.5 py-0.5 rounded border border-code-border">zgit desktop</code>.</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <span class="text-primary mt-0.5">3.</span>
+                <span>Configure AI providers: <code class="font-mono text-xs bg-code-bg px-1.5 py-0.5 rounded border border-code-border">zgit config set-ai</code>.</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <span class="text-primary mt-0.5">4.</span>
+                <span>Read the <a href="/docs" class="text-primary hover:underline">full documentation</a>.</span>
+              </li>
+            </ul>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+  <Footer />
+</Landing>
+
+<script>
+  document.querySelectorAll('[data-cmd]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const cmd = btn.getAttribute('data-cmd');
+      if (cmd) {
+        try {
+          await navigator.clipboard.writeText(cmd);
+          const svg = btn.querySelector('svg');
+          if (svg) {
+            svg.innerHTML = '<polyline points="20 6 9 17 4 12" stroke-linecap="round" stroke-linejoin="round"/>';
+            setTimeout(() => {
+              svg.innerHTML = '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>';
+            }, 2000);
+          }
+        } catch {}
+      }
+    });
+  });
+</script>

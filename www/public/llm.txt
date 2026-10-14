@@ -1,0 +1,47 @@
+# Zgit — The Git Client You'll Actually Enjoy
+
+Zgit is an open-source Git client with AI-powered commits, smart PR generation, beautiful desktop UI (React + Wails v2), and terminal TUI (Bubble Tea).
+
+## Quick Start
+
+```bash
+curl -fsSL https://zgit.pages.dev/install | bash
+zgit desktop   # Launch desktop app
+zgit           # Launch terminal TUI
+```
+
+## Key Features
+
+- **AI-Powered Commits**: Generate commit messages from staged changes. Supports OpenAI, Anthropic, Groq, Ollama.
+- **Smart PR Generation**: Auto-generate PR descriptions from three-dot diffs.
+- **Desktop App**: React + TypeScript with glass UI, dark mode, real-time Git status.
+- **Terminal TUI**: Full Bubble Tea interface for terminal-first workflows.
+- **GitHub Integration**: PR management, workflow status, issue tracking.
+- **Encrypted API Keys**: AES-256-GCM encryption. Keys never sent to frontend.
+- **Custom Themes**: Glass morphism, per-component CSS variables.
+- **CLI-First**: Cobra CLI for power users and scripting.
+
+## Documentation
+
+- Getting Started: https://zgit.pages.dev/docs/getting-started
+- Configuration: https://zgit.pages.dev/docs/configuration
+- AI Providers: https://zgit.pages.dev/docs/ai-providers
+- PR Workflows: https://zgit.pages.dev/docs/pr-workflows
+- Keybindings: https://zgit.pages.dev/docs/keybindings
+- Troubleshooting: https://zgit.pages.dev/docs/troubleshooting
+- Install Guide: https://zgit.pages.dev/install
+
+## Tech Stack
+
+- **Backend**: Go (NativeExec Git adapter, Cobra CLI)
+- **Desktop**: Wails v2, React 18, TypeScript, shadcn/ui, Tailwind CSS
+- **TUI**: Charm Bubble Tea
+- **AI**: OpenAI SDK, Anthropic SDK
+
+## Repository
+
+https://github.com/zaidejjo/zgit
+
+## License
+
+MIT License
