@@ -24,6 +24,23 @@ Ships as **both** a terminal UI (TUI) and a desktop application.
 
 ## Installation
 
+### Quick install script (TUI only)
+
+Linux / macOS (verifies sha256 checksums, TUI binary only):
+
+```bash
+curl -fsSL https://zgit.pages.dev/install | bash
+```
+
+Windows PowerShell (verifies sha256 checksums, TUI binary only):
+
+```powershell
+irm https://zgit.pages.dev/install.ps1 | iex
+```
+
+Pin a version: `ZGIT_VERSION=v0.1.1 curl -fsSL https://zgit.pages.dev/install | bash`
+(`$env:ZGIT_VERSION='v0.1.1'` on Windows).
+
 ### Pre-built binaries
 
 Download the latest release from [GitHub Releases](https://github.com/zaidejjo/zgit/releases).
