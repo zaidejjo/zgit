@@ -1,16 +1,29 @@
-# zgit
+<p align="center">
+  <img src="images/logo.svg" width="120" alt="zgit logo" />
+</p>
 
-[![Build](https://github.com/zaidejjo/zgit/actions/workflows/build.yml/badge.svg)](https://github.com/zaidejjo/zgit/actions/workflows/build.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/zaidejjo/zgit)](https://goreportcard.com/report/github.com/zaidejjo/zgit)
+<h1 align="center">zgit</h1>
 
-A modern, fast Git & GitHub client combining local Git operations with GitHub CLI/API features (PRs, Issues, Actions, Reviews) into a clean, non-cluttered interface.
+<p align="center">
+  <a href="https://github.com/zaidejjo/zgit/actions/workflows/ci.yml"><img src="https://github.com/zaidejjo/zgit/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0" /></a>
+  <a href="https://github.com/zaidejjo/zgit/releases"><img src="https://img.shields.io/github/v/release/zaidejjo/zgit?color=orange" alt="Latest release" /></a>
+  <img src="https://img.shields.io/github/go-mod/go-version/zaidejjo/zgit" alt="Go version" />
+</p>
 
-Ships as **both** a terminal UI (TUI) and a desktop application.
+<p align="center">
+  A modern, fast Git &amp; GitHub client combining local Git operations with GitHub CLI/API features (PRs, Issues, Actions, Reviews) into a clean, non-cluttered interface.
+</p>
+
+<p align="center">
+  Ships as <b>both</b> a terminal UI (TUI) and a desktop application.
+</p>
 
 ## Features
 
 - **Full Git integration** — status, log, branches, tags, remotes
+- **Worktrees** — manage linked working trees across CLI and desktop
+- **File history & blame** — per-line attribution, rename following, pickaxe (`-S`/`-G`) search
 - **Commit management** — conventional commit tags, file checkboxes, force push options
 - **Interactive rebase** — drag-and-drop commit reordering, cherry-pick, squash
 - **3-way merge editor** — resolve conflicts inline with a visual editor
@@ -21,6 +34,7 @@ Ships as **both** a terminal UI (TUI) and a desktop application.
 - **Diff viewer** — unified/split toggle, hunk staging, syntax highlighting
 - **Remote management** — add, rename, remove, set URL
 - **Global undo** — revert the last git action
+- **Multi-platform** — Linux, macOS and Windows via tarballs, APT, Homebrew, AUR and Flatpak
 
 ## Installation
 
