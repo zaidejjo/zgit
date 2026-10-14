@@ -354,7 +354,7 @@ func (m *AISidebarModel) View() string {
 	}
 
 	// Show messages (most recent first, capped)
-	msgLines := m.renderMessages()
+	msgLines := m.renderMessages(panelW)
 	msgLines = m.truncateLines(msgLines, availH)
 
 	for _, line := range msgLines {
@@ -465,7 +465,7 @@ func (m *AISidebarModel) helpHint() string {
 	}
 }
 
-func (m *AISidebarModel) renderMessages() []string {
+func (m *AISidebarModel) renderMessages(width int) []string {
 	var lines []string
 
 	for _, msg := range m.Messages {
@@ -481,6 +481,12 @@ func (m *AISidebarModel) renderMessages() []string {
 		case "system":
 			prefix = "◆"
 			style = lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true)
+		}
+		if msg.Role == "assistant" {
+			// Render assistant markdown to ANSI; user input stays literal.
+			lines = append(lines, style.Render(prefix))
+			lines = append(lines, RenderMarkdown(msg.Content, width-4))
+			continue
 		}
 		lines = append(lines, style.Render(prefix+" "+msg.Content))
 	}

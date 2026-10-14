@@ -20,6 +20,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import Markdown from "@/components/Markdown";
 
 export default function PullRequestsPage() {
   const {
@@ -654,8 +655,8 @@ function PRDetailPanel({
 
           {/* Body */}
           {detail.body && (
-            <div className="text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground bg-muted/20 rounded-lg p-3">
-              {detail.body}
+            <div className="text-sm leading-relaxed text-muted-foreground bg-muted/20 rounded-lg p-3">
+              <Markdown text={detail.body} />
             </div>
           )}
 
@@ -715,7 +716,9 @@ function PRDetailPanel({
                       </span>
                     </div>
                     {r.body && (
-                      <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">{r.body}</p>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        <Markdown text={r.body} compact />
+                      </div>
                     )}
                   </div>
                 ))}
