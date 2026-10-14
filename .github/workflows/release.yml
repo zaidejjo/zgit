@@ -335,6 +335,10 @@ jobs:
         run: |
           cd apt
           git add -A
-          git -c user.name "${{ github.actor }}" -c user.email "${{ github.actor }}@users.noreply.github.com" \
-            commit -m "apt: publish ${GITHUB_REF_NAME}" || echo "nothing to commit"
+          # NOTE: git -c requires name=value form (space-separated eats the value).
+          export GIT_AUTHOR_NAME="${{ github.actor }}"
+          export GIT_AUTHOR_EMAIL="${{ github.actor }}@users.noreply.github.com"
+          export GIT_COMMITTER_NAME="${{ github.actor }}"
+          export GIT_COMMITTER_EMAIL="${{ github.actor }}@users.noreply.github.com"
+          git commit -m "apt: publish ${GITHUB_REF_NAME}" || echo "nothing to commit"
           git push origin HEAD:main
