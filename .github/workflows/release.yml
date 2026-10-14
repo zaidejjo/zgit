@@ -210,6 +210,8 @@ jobs:
       - name: Install zgit from tap
         run: |
           brew tap zaidejjo/tap
+          # Third-party taps are untrusted by default; casks refuse to load.
+          brew trust zaidejjo/tap
           brew install --cask zgit
 
       - name: Run installed binary

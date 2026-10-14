@@ -47,6 +47,8 @@ Uninstall: `sudo apt remove zgit && sudo rm /etc/apt/sources.list.d/zgit.list /u
 ### macOS (Homebrew)
 
 ```bash
+brew tap zaidejjo/tap
+brew trust zaidejjo/tap   # one time: third-party taps are untrusted by default
 brew install --cask zaidejjo/tap/zgit
 ```
 
