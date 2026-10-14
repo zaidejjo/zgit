@@ -8,7 +8,6 @@
 /desktop/frontend/dist/
 /desktop/frontend/node_modules/
 /desktop/build/bin/
-*.sum
 
 # Opencode session goals (local-only state)
 .opencode/goals
