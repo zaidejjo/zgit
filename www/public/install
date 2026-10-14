@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# zgit installer for Linux and macOS (amd64 + arm64).
+#
+# Usage:
+#   curl -fsSL https://zgit.pages.dev/install | bash
+#
+# Environment:
+#   ZGIT_VERSION     pinned version tag, e.g. v0.1.1 (default: latest release)
+#   ZGIT_INSTALL_DIR install directory (default: /usr/local/bin, falls back
+#                    to $HOME/.local/bin when not writable)
+#   ZGIT_OS / ZGIT_ARCH  override auto-detection (mainly for testing)
+#
+# The script verifies the sha256 checksum before installing anything.
+set -euo pipefail
+
+REPO="zaidejjo/zgit"
+VERSION="${ZGIT_VERSION:-}"
+
+die() {
+  echo "install: error: $*" >&2
+  exit 1
+}
+
+need_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+}
+
+detect_os() {
+  local os="${ZGIT_OS:-}"
+  if [ -z "$os" ]; then
+    case "$(uname -s)" in
+      Linux) os="linux" ;;
+      Darwin) os="darwin" ;;
+      *) die "unsupported OS: $(uname -s) (Linux and macOS only; Windows needs install.ps1)" ;;
+    esac
+  fi
+  case "$os" in
+    linux | darwin) echo "$os" ;;
+    *) die "unsupported OS override: $os (linux and darwin only)" ;;
+  esac
+}
+
+detect_arch() {
+  local arch="${ZGIT_ARCH:-}"
+  if [ -z "$arch" ]; then
+    case "$(uname -m)" in
+      x86_64 | amd64) arch="amd64" ;;
+      aarch64 | arm64) arch="arm64" ;;
+      *) die "unsupported architecture: $(uname -m) (amd64 and arm64 only)" ;;
+    esac
+  fi
+  case "$arch" in
+    amd64 | arm64) echo "$arch" ;;
+    *) die "unsupported architecture override: $arch (amd64 and arm64 only)" ;;
+  esac
+}
+
+latest_version() {
+  need_cmd curl
+  local tag
+  tag="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep -m1 '"tag_name"' | cut -d'"' -f4)"
+  [ -n "$tag" ] || die "could not resolve latest release (set ZGIT_VERSION=vX.Y.Z to pin one)"
+  echo "$tag"
+}
+
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
+  fi
+}
+
+main() {
+  need_cmd curl
+  need_cmd tar
+  need_cmd mktemp
+
+  [ -z "$VERSION" ] && VERSION="$(latest_version)"
+  OS="$(detect_os)"
+  ARCH="$(detect_arch)"
+
+  ASSET="zgit-${VERSION}-${OS}-${ARCH}.tar.gz"
+  BASE="https://github.com/${REPO}/releases/download/${VERSION}"
+
+  TMPDIR="$(mktemp -d)"
+  trap 'rm -rf "$TMPDIR"' EXIT
+  cd "$TMPDIR"
+
+  echo "install: downloading ${ASSET} (${VERSION})..."
+  curl -fsSL -o "$ASSET" "${BASE}/${ASSET}" || die "download failed — no ${OS}/${ARCH} build for ${VERSION} yet?"
+
+  echo "install: verifying checksum..."
+  curl -fsSL -o checksums.txt "${BASE}/checksums.txt" || die "could not download checksums.txt"
+  want="$(grep -m1 " ${ASSET}\$" checksums.txt | cut -d' ' -f1)"
+  [ -n "$want" ] || die "${ASSET} not listed in checksums.txt"
+  got="$(sha256_of "$ASSET")"
+  [ "$want" = "$got" ] || die "checksum mismatch for ${ASSET} (wanted ${want}, got ${got})"
+
+  tar xzf "$ASSET" zgit
+  [ -f zgit ] || die "archive did not contain a zgit binary"
+
+  DEST="${ZGIT_INSTALL_DIR:-/usr/local/bin}"
+  if [ "$DEST" != "/usr/local/bin" ]; then
+    # Explicit directory: create it, then require writability.
+    mkdir -p "$DEST" || die "cannot create $DEST"
+    [ -w "$DEST" ] || die "$DEST is not writable"
+  elif [ ! -w "$DEST" ]; then
+    DEST="$HOME/.local/bin"
+    mkdir -p "$DEST" || die "cannot create $DEST"
+    echo "install: /usr/local/bin not writable, using $DEST"
+    case ":$PATH:" in
+      *":$DEST:"*) ;;
+      *) echo "install: note: add $DEST to your PATH" ;;
+    esac
+  fi
+
+  if [ -w "$DEST" ]; then
+    cp zgit "$DEST/zgit"
+  else
+    need_cmd sudo
+    sudo cp zgit "$DEST/zgit"
+  fi
+  chmod +x "$DEST/zgit"
+
+  "$DEST/zgit" --help >/dev/null || die "installed binary failed to run"
+  echo "install: zgit ${VERSION} installed to $DEST/zgit"
+}
+
+main "$@"
