@@ -13,3 +13,4 @@
 # Opencode session goals (local-only state)
 .opencode/goals
 
+/desktop/*.exe

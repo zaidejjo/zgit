@@ -69,3 +69,30 @@ jobs:
 
       - name: Typecheck + build
         run: bun run build
+
+  cross-compile:
+    name: Cross-compile (${{ matrix.goos }}, ${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [windows, darwin]
+        module: [root, desktop]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build ${{ matrix.module }} for ${{ matrix.goos }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          CGO_ENABLED: 0
+        run: |
+          if [ "${{ matrix.module }}" = "desktop" ]; then cd desktop; fi
+          go build ./...
+        # Catches platform-specific breakage (e.g. Unix-only syscalls)
+        # long before the release matrix runs.

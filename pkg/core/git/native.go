@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -518,16 +519,22 @@ func (n *NativeExec) RebaseSequence(ctx context.Context, opts models.RebaseSeque
 	repoPath := n.repoPath
 	n.mu.RUnlock()
 
-	// We need a wrapper script because GIT_SEQUENCE_EDITOR receives the
-	// target filename as an argument: "$EDITOR <file>"
-	// We want to copy our todo over it. Create a shell script.
-	editorCmd := fmt.Sprintf("cp %s \"$1\"", tmpPath)
+	// GIT_SEQUENCE_EDITOR receives the target filename as an argument:
+	// `$EDITOR <file>`. We install a tiny script that copies our todo
+	// over it. A real script file (not an inline shell snippet) is used
+	// because Windows has no `cp` and CreateProcess quoting is unreliable.
+	// .bat on Windows (copy), .sh elsewhere (cp).
+	editorPath, err := writeSequenceEditorScript(tmpPath)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(editorPath)
 
 	cmd := exec.CommandContext(ctx, n.gitPath, "rebase", "-i", opts.Onto)
 	cmd.Dir = repoPath
 	cmd.Env = append(os.Environ(),
-		"GIT_SEQUENCE_EDITOR="+editorCmd,
-		"GIT_EDITOR="+editorCmd,
+		"GIT_SEQUENCE_EDITOR="+editorPath,
+		"GIT_EDITOR="+editorPath,
 	)
 
 	output, err := cmd.CombinedOutput()
@@ -546,6 +553,45 @@ func (n *NativeExec) RebaseSequence(ctx context.Context, opts models.RebaseSeque
 }
 
 // --- Commit operations ---
+
+// writeSequenceEditorScript creates an executable script that copies
+// todoPath over the file given as its first argument.
+// Returns the script path; the caller removes it when done.
+func writeSequenceEditorScript(todoPath string) (string, error) {
+	if runtime.GOOS == "windows" {
+		f, err := os.CreateTemp("", "git-seq-editor-*.bat")
+		if err != nil {
+			return "", fmt.Errorf("create editor script: %w", err)
+		}
+		scriptPath := f.Name()
+		// %1 = first argument (target file). Quoted for spaces.
+		content := "@echo off\r\ncopy /Y \"" + todoPath + "\" \"%1\"\r\n"
+		if _, err := f.WriteString(content); err != nil {
+			f.Close()
+			os.Remove(scriptPath)
+			return "", fmt.Errorf("write editor script: %w", err)
+		}
+		f.Close()
+		return scriptPath, nil
+	}
+	f, err := os.CreateTemp("", "git-seq-editor-*.sh")
+	if err != nil {
+		return "", fmt.Errorf("create editor script: %w", err)
+	}
+	scriptPath := f.Name()
+	content := "#!/bin/sh\ncp \"" + todoPath + "\" \"$1\"\n"
+	if _, err := f.WriteString(content); err != nil {
+		f.Close()
+		os.Remove(scriptPath)
+		return "", fmt.Errorf("write editor script: %w", err)
+	}
+	f.Close()
+	if err := os.Chmod(scriptPath, 0700); err != nil {
+		os.Remove(scriptPath)
+		return "", fmt.Errorf("chmod editor script: %w", err)
+	}
+	return scriptPath, nil
+}
 
 func (n *NativeExec) CherryPick(ctx context.Context, sha string) error {
 	_, err := n.run(ctx, "cherry-pick", sha)
