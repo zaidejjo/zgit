@@ -9,10 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -1672,31 +1670,6 @@ func (a *App) CancelDeviceFlow() {
 		a.devicePollCancel()
 		a.devicePollCancel = nil
 	}
-}
-
-// OpenURL opens the given URL in the system browser without blocking the Wails bridge.
-// Uses os/exec with .Start() (detached) instead of Wails' synchronous BrowserOpenURL,
-// which can block on Linux when xdg-open waits for the browser process.
-func (a *App) OpenURL(url string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	default:
-		cmd = exec.Command("xdg-open", url)
-	}
-	// Detach so the Go process doesn't wait for the browser/xdg-open to finish
-	if cmd != nil {
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		if err := cmd.Start(); err == nil {
-			return nil
-		}
-	}
-	// Fallback: Wails runtime (may block on xdg-open but works everywhere)
-	wailsRuntime.BrowserOpenURL(a.ctx, url)
-	return nil
 }
 
 // GetGitHubUser returns the authenticated GitHub user.
