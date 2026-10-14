@@ -140,6 +140,7 @@ type GitAdapter interface {
 
 	// Sync
 	Fetch(ctx context.Context, remote string, prune bool) error
+	FetchRefspec(ctx context.Context, remote, refspec string) error
 	Pull(ctx context.Context, opts PullOptions) error
 	Push(ctx context.Context, opts PushOptions) error
 

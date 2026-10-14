@@ -2052,6 +2052,73 @@ func (a *App) MergePullRequest(number int, method string) error {
 	return gh.MergePullRequest(ctx, owner, repo, number, method)
 }
 
+// CheckoutPR fetches pull/N/head and checks out a local pr/N branch.
+// Returns the local branch name.
+func (a *App) CheckoutPR(number int) (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+	return a.engine.CheckoutPR(ctx, number)
+}
+
+// PRChecks aggregates check runs + workflow runs for a PR's head commit.
+type PRChecks struct {
+	Number  int                   `json:"number"`
+	HeadSHA string                `json:"head_sha"`
+	HeadRef string                `json:"head_ref"`
+	Checks  []*models.CheckRun    `json:"checks"`
+	Runs    []*models.WorkflowRun `json:"runs"`
+}
+
+// GetPRChecks returns CI checks and workflow runs for a pull request.
+func (a *App) GetPRChecks(number int) (*PRChecks, error) {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return nil, err
+	}
+	owner, repo, err := a.guessRepo()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 20e9)
+	defer cancel()
+	detail, err := gh.GetPullRequest(ctx, owner, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	out := &PRChecks{Number: number, HeadRef: detail.HeadRef, HeadSHA: detail.HeadSHA}
+	ref := detail.HeadSHA
+	if ref == "" {
+		ref = detail.HeadRef
+	}
+	if ref == "" {
+		out.Checks = []*models.CheckRun{}
+		out.Runs = []*models.WorkflowRun{}
+		return out, nil
+	}
+	checks, err := gh.ListCheckRunsForRef(ctx, owner, repo, ref)
+	if err != nil {
+		return nil, err
+	}
+	out.Checks = checks
+	if out.Checks == nil {
+		out.Checks = []*models.CheckRun{}
+	}
+	if detail.HeadSHA != "" {
+		runs, err := gh.ListWorkflowRuns(ctx, owner, repo, github.RunsFilter{
+			HeadSHA: detail.HeadSHA,
+			Limit:   10,
+		})
+		if err != nil {
+			return nil, err
+		}
+		out.Runs = runs
+	}
+	if out.Runs == nil {
+		out.Runs = []*models.WorkflowRun{}
+	}
+	return out, nil
+}
+
 // guessRepo extracts owner/repo from git remotes.
 func (a *App) guessRepo() (string, string, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 5e9)

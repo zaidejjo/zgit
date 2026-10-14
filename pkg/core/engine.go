@@ -247,6 +247,63 @@ func (e *Engine) LogoutGitHub() error {
 	return e.Config.Save()
 }
 
+// CheckoutPR fetches a pull request by number and checks it out locally.
+// It uses the pull/N/head ref so fork PRs work without extra remotes.
+// The local branch is named pr/N (force-updated on re-checkout).
+// Returns the local branch name.
+func (e *Engine) CheckoutPR(ctx context.Context, number int) (string, error) {
+	if number <= 0 {
+		return "", fmt.Errorf("invalid pull request number: %d", number)
+	}
+	if e.GitHub == nil {
+		return "", fmt.Errorf("GitHub not authenticated — set a token first")
+	}
+
+	remotes, err := e.Git.RemoteList(ctx)
+	if err != nil {
+		return "", fmt.Errorf("list remotes: %w", err)
+	}
+	remote := preferredRemote(remotes)
+	if remote == nil {
+		return "", fmt.Errorf("no git remotes found")
+	}
+	owner, repo, err := guessOwnerFromRemoteURL(remote.URL)
+	if err != nil {
+		return "", err
+	}
+
+	// Validate the PR exists (and surface its state in errors).
+	pr, err := e.GitHub.GetPullRequest(ctx, owner, repo, number)
+	if err != nil {
+		return "", fmt.Errorf("get PR #%d: %w", number, err)
+	}
+	_ = pr
+
+	refspec, branch := gitpkg.PRRefspec(number)
+	if err := e.Git.FetchRefspec(ctx, remote.Name, refspec); err != nil {
+		return "", fmt.Errorf("fetch PR #%d: %w", number, err)
+	}
+	if err := e.Git.Checkout(ctx, branch); err != nil {
+		return "", fmt.Errorf("checkout %s: %w", branch, err)
+	}
+	return branch, nil
+}
+
+// preferredRemote picks origin, then upstream, then the first remote.
+func preferredRemote(remotes []*models.Remote) *models.Remote {
+	for _, want := range []string{"origin", "upstream"} {
+		for _, r := range remotes {
+			if r.Name == want {
+				return r
+			}
+		}
+	}
+	if len(remotes) > 0 {
+		return remotes[0]
+	}
+	return nil
+}
+
 // NewAgent creates an AI agent wired to this engine's git adapter.
 func (e *Engine) NewAgent(cfg ai.Config) (*ai.Agent, error) {
 	return ai.NewAgent(cfg, e.Git)

@@ -319,3 +319,64 @@ func TestCloseIssue(t *testing.T) {
 		t.Errorf("CloseIssue() = %v, want nil", err)
 	}
 }
+
+func TestListCheckRunsForRef(t *testing.T) {
+	server, client := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if want := "/repos/owner/repo/commits/abc123/check-runs"; r.URL.Path != want {
+			t.Errorf("path = %s, want %s", r.URL.Path, want)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"total_count": 2,
+			"check_runs": []github.CheckRun{
+				{
+					Name:       github.String("ci"),
+					Status:     github.String("completed"),
+					Conclusion: github.String("success"),
+				},
+				{
+					Name:   github.String("lint"),
+					Status: github.String("in_progress"),
+				},
+			},
+		})
+	})
+	defer server.Close()
+
+	runs, err := client.ListCheckRunsForRef(context.Background(), "owner", "repo", "abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("len = %d, want 2", len(runs))
+	}
+	if runs[0].Name != "ci" || runs[0].Conclusion != "success" {
+		t.Errorf("[0] = %+v, want ci/success", runs[0])
+	}
+	if runs[1].State != "in_progress" || runs[1].Conclusion != "" {
+		t.Errorf("[1] = %+v, want in_progress/empty", runs[1])
+	}
+
+	if _, err := client.ListCheckRunsForRef(context.Background(), "owner", "repo", ""); err == nil {
+		t.Errorf("empty ref = nil, want error")
+	}
+}
+
+func TestListWorkflowRunsHeadSHA(t *testing.T) {
+	server, client := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("head_sha"); got != "abc123" {
+			t.Errorf("head_sha = %q, want abc123", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"total_count":   0,
+			"workflow_runs": []github.WorkflowRun{},
+		})
+	})
+	defer server.Close()
+
+	_, err := client.ListWorkflowRuns(context.Background(), "owner", "repo", RunsFilter{HeadSHA: "abc123"})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
