@@ -13,6 +13,7 @@ import {
   DialogDescription, DialogClose,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import Markdown from "@/components/Markdown";
 
 export default function IssuesPage() {
   const {
@@ -410,8 +411,8 @@ function IssueDetailPanel({
 
           {/* Body */}
           {issue.body && (
-            <div className="text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground bg-muted/20 rounded-lg p-3">
-              {issue.body}
+            <div className="text-sm leading-relaxed text-muted-foreground bg-muted/20 rounded-lg p-3">
+              <Markdown text={issue.body} />
             </div>
           )}
 
