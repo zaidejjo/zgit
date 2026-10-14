@@ -17,7 +17,8 @@ source=("${url}/releases/download/v${pkgver}/zgit-v${pkgver}-linux-amd64.tar.gz"
 sha256sums=('__SHA256SUM__')
 
 package() {
-  install -Dm755 "zgit-v${pkgver}-linux-amd64/zgit" "${pkgdir}/usr/bin/zgit"
+  # GoReleaser archives place the binary at the tarball root (no parent dir).
+  install -Dm755 "zgit" "${pkgdir}/usr/bin/zgit"
 }
 
 # vim:set ts=2 sw=2 et:
