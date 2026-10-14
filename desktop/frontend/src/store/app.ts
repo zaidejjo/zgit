@@ -95,6 +95,18 @@ export interface Remote {
   type: string; // "fetch" or "push"
 }
 
+export interface Worktree {
+  path: string;
+  head?: string;
+  branch?: string;
+  is_main: boolean;
+  is_bare: boolean;
+  is_detached: boolean;
+  locked: boolean;
+  lock_reason?: string;
+  prunable: boolean;
+}
+
 export interface CheckRun {
   name: string;
   state: string;
@@ -541,6 +553,9 @@ interface AppState {
   // Tags
   tags: string[];
 
+  // Worktrees
+  worktrees: Worktree[];
+
   // Git config
   gitConfig: Record<string, string>;
 
@@ -696,6 +711,14 @@ interface AppState {
   createTag: (name: string, target: string, message: string) => Promise<void>;
   deleteTag: (name: string) => Promise<void>;
 
+  // Worktrees
+  fetchWorktrees: () => Promise<void>;
+  addWorktree: (path: string, ref: string, createBranch?: boolean, force?: boolean, detach?: boolean) => Promise<void>;
+  removeWorktree: (path: string, force?: boolean) => Promise<void>;
+  lockWorktree: (path: string, reason?: string) => Promise<void>;
+  unlockWorktree: (path: string) => Promise<void>;
+  pruneWorktrees: () => Promise<void>;
+
   // Config
   fetchGitConfig: () => Promise<void>;
   setGitConfig: (key: string, value: string, global?: boolean) => Promise<void>;
@@ -824,6 +847,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedIssueDetail: null,
   remotes: [],
   tags: [],
+  worktrees: [],
   gitConfig: {},
   conflictResolutions: {},
   conflictFiles: [],
@@ -1623,6 +1647,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         rebaseCommits: [],
         stashes: [],
         remotes: [],
+        worktrees: [],
         error: null,
         loading: { ...get().loading, repo: false },
       });
@@ -1665,6 +1690,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       s.fetchWorkflowRuns(),
       s.fetchStashes(),
       s.fetchConflictFiles(),
+      s.fetchWorktrees(),
     ]);
   },
 
@@ -1861,6 +1887,77 @@ export const useAppStore = create<AppState>((set, get) => ({
       await get().fetchTags();
     } catch (e: any) {
       set({ error: e.message || `Failed to delete tag ${name}` });
+    }
+  },
+
+  // Worktrees
+  fetchWorktrees: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, worktrees: true } }));
+    try {
+      const worktrees = await backend.GetWorktrees();
+      set({ worktrees: worktrees || [], loading: { ...get().loading, worktrees: false } });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch worktrees", loading: { ...get().loading, worktrees: false } });
+    }
+  },
+
+  addWorktree: async (path, ref, createBranch = false, force = false, detach = false) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.AddWorktree(path, ref, createBranch, force, detach);
+      await get().fetchWorktrees();
+      set({ successMessage: `Worktree added at ${path}` });
+    } catch (e: any) {
+      set({ error: e.message || `Failed to add worktree at ${path}` });
+    }
+  },
+
+  removeWorktree: async (path, force = false) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.RemoveWorktree(path, force);
+      await get().fetchWorktrees();
+      set({ successMessage: `Worktree removed: ${path}` });
+    } catch (e: any) {
+      set({ error: e.message || `Failed to remove worktree ${path}` });
+    }
+  },
+
+  lockWorktree: async (path, reason = "") => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.LockWorktree(path, reason);
+      await get().fetchWorktrees();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to lock worktree ${path}` });
+    }
+  },
+
+  unlockWorktree: async (path) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.UnlockWorktree(path);
+      await get().fetchWorktrees();
+    } catch (e: any) {
+      set({ error: e.message || `Failed to unlock worktree ${path}` });
+    }
+  },
+
+  pruneWorktrees: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.PruneWorktrees();
+      await get().fetchWorktrees();
+      set({ successMessage: "Pruned worktrees" });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to prune worktrees" });
     }
   },
 
