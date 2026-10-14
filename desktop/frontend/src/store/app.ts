@@ -126,6 +126,14 @@ export interface CheckRun {
   details_url?: string;
 }
 
+export interface PRChecks {
+  number: number;
+  head_sha: string;
+  head_ref: string;
+  checks: CheckRun[];
+  runs: WorkflowRun[];
+}
+
 export interface PullRequestDetail {
   number: number;
   title: string;
@@ -558,6 +566,8 @@ interface AppState {
   selectedPRDetail: PullRequestDetail | null;
   // Issue detail
   selectedIssueDetail: Issue | null;
+  // CI checks per PR number
+  prChecks: Record<number, PRChecks>;
 
   // Remote management
   remotes: Remote[];
@@ -657,10 +667,12 @@ interface AppState {
   fetchPullRequests: () => Promise<void>;
   fetchPRDetail: (number: number) => Promise<void>;
   clearPRDetail: () => void;
+  checkoutPR: (number: number) => Promise<string | null>;
   createPullRequest: (title: string, body: string, head: string, base: string, draft?: boolean) => Promise<PRSummary | null>;
   mergePullRequest: (number: number, method: string) => Promise<boolean>;
   fetchIssueDetail: (number: number) => Promise<void>;
   clearIssueDetail: () => void;
+  fetchPRChecks: (number: number) => Promise<void>;
   createIssue: (title: string, body: string) => Promise<Issue | null>;
   closeIssue: (number: number) => Promise<boolean>;
   fetchIssues: () => Promise<void>;
@@ -867,6 +879,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentBranch: "",
   selectedPRDetail: null,
   selectedIssueDetail: null,
+  prChecks: {},
   remotes: [],
   tags: [],
   worktrees: [],
@@ -1345,6 +1358,35 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   clearPRDetail: () => set({ selectedPRDetail: null }),
+
+  checkoutPR: async (number) => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      const branch = await backend.CheckoutPR(number);
+      await Promise.all([get().fetchStatus(), get().fetchBranches()]);
+      get().setSuccessMessage(`Checked out PR #${number} on ${branch}`);
+      return branch;
+    } catch (e: any) {
+      set({ error: e.message || `Failed to checkout PR #${number}` });
+      return null;
+    }
+  },
+
+  fetchPRChecks: async (number) => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, prChecks: true } }));
+    try {
+      const checks = await backend.GetPRChecks(number);
+      set((s) => ({
+        prChecks: { ...s.prChecks, [number]: checks || { number, head_sha: "", head_ref: "", checks: [], runs: [] } },
+        loading: { ...get().loading, prChecks: false },
+      }));
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch PR checks", loading: { ...get().loading, prChecks: false } });
+    }
+  },
 
   createPullRequest: async (title, body, head, base, draft = false) => {
     const backend = getBackend();

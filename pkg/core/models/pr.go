@@ -24,6 +24,7 @@ type PullRequestSummary struct {
 	Mergeable   string           `json:"mergeable"` // MERGEABLE, CONFLICTING, UNKNOWN
 	HeadRef     string           `json:"head_ref"`
 	BaseRef     string           `json:"base_ref"`
+	HeadSHA     string           `json:"head_sha,omitempty"`
 	StatusEmoji string           `json:"status_emoji"` // ✓ / ✗ / pending
 	ReviewState string           `json:"review_state"` // APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED
 	Labels      []string         `json:"labels,omitempty"`

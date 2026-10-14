@@ -334,6 +334,9 @@ func (c *RESTClient) ListWorkflowRuns(ctx context.Context, owner, repo string, o
 	if opts.Branch != "" {
 		opt.Branch = opts.Branch
 	}
+	if opts.HeadSHA != "" {
+		opt.HeadSHA = opts.HeadSHA
+	}
 	if opts.Event != "" {
 		opt.Event = opts.Event
 	}
@@ -423,6 +426,43 @@ func (c *RESTClient) ListWorkflowJobs(ctx context.Context, owner, repo string, r
 		opt.Page = resp.NextPage
 	}
 	return all, nil
+}
+
+// ListCheckRunsForRef returns check runs for a commit SHA or branch name.
+func (c *RESTClient) ListCheckRunsForRef(ctx context.Context, owner, repo, ref string) ([]*models.CheckRun, error) {
+	if ref == "" {
+		return nil, fmt.Errorf("ref is required")
+	}
+	opt := &github.ListCheckRunsOptions{
+		ListOptions: github.ListOptions{PerPage: 50},
+	}
+	var all []*models.CheckRun
+	for {
+		results, resp, err := c.client.Checks.ListCheckRunsForRef(ctx, owner, repo, ref, opt)
+		if err != nil {
+			return nil, fmt.Errorf("list check runs for %s: %w", ref, err)
+		}
+		for _, r := range results.CheckRuns {
+			all = append(all, convertCheckRun(r))
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opt.Page = resp.NextPage
+	}
+	return all, nil
+}
+
+func convertCheckRun(r *github.CheckRun) *models.CheckRun {
+	if r == nil {
+		return nil
+	}
+	return &models.CheckRun{
+		Name:       r.GetName(),
+		State:      r.GetStatus(),
+		Conclusion: r.GetConclusion(),
+		DetailsURL: r.GetDetailsURL(),
+	}
 }
 
 // --- Composite (GraphQL stubs for REST-only mode) ---
@@ -567,6 +607,7 @@ func convertPRSummary(pr *github.PullRequest) *models.PullRequestSummary {
 		Mergeable: pr.GetMergeableState(),
 		HeadRef:   pr.GetHead().GetRef(),
 		BaseRef:   pr.GetBase().GetRef(),
+		HeadSHA:   pr.GetHead().GetSHA(),
 		Labels:    labels,
 	}
 }

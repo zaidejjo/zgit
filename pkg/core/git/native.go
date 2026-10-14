@@ -1002,6 +1002,27 @@ func (n *NativeExec) Fetch(ctx context.Context, remote string, prune bool) error
 	return err
 }
 
+// FetchRefspec fetches a single refspec (e.g. "+pull/42/head:refs/heads/pr/42").
+func (n *NativeExec) FetchRefspec(ctx context.Context, remote, refspec string) error {
+	if strings.TrimSpace(remote) == "" {
+		return fmt.Errorf("remote is required")
+	}
+	if strings.TrimSpace(refspec) == "" {
+		return fmt.Errorf("refspec is required")
+	}
+	_, err := n.run(ctx, "fetch", strings.TrimSpace(remote), strings.TrimSpace(refspec))
+	return err
+}
+
+// PRRefspec returns the fetch refspec and local branch name for checking
+// out a GitHub pull request by number. The leading "+" force-updates the
+// local branch so re-checkout after new pushes just works.
+func PRRefspec(number int) (refspec, branch string) {
+	branch = fmt.Sprintf("pr/%d", number)
+	refspec = fmt.Sprintf("+pull/%d/head:refs/heads/%s", number, branch)
+	return refspec, branch
+}
+
 func (n *NativeExec) Pull(ctx context.Context, opts PullOptions) error {
 	args := []string{"pull"}
 	if opts.Rebase {

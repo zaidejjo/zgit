@@ -31,10 +31,11 @@ type PRFilter struct {
 
 // RunsFilter controls workflow run list queries.
 type RunsFilter struct {
-	Branch string
-	Event  string // "push", "pull_request", etc.
-	Status string // "completed", "in_progress", "queued"
-	Limit  int
+	Branch  string
+	HeadSHA string // filter runs for a specific commit SHA
+	Event   string // "push", "pull_request", etc.
+	Status  string // "completed", "in_progress", "queued"
+	Limit   int
 }
 
 // IssueRequest holds fields for creating/updating an issue.
@@ -95,6 +96,7 @@ type GitHubClient interface {
 	CancelWorkflowRun(ctx context.Context, owner, repo string, runID int64) error
 	ListWorkflowJobs(ctx context.Context, owner, repo string, runID int64) ([]*models.Job, error)
 	GetWorkflowJobLogs(ctx context.Context, owner, repo string, jobID int64) (string, error)
+	ListCheckRunsForRef(ctx context.Context, owner, repo, ref string) ([]*models.CheckRun, error)
 
 	// Composite queries (GraphQL)
 	GetDashboard(ctx context.Context) (*models.Dashboard, error)

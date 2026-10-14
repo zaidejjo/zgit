@@ -3,10 +3,11 @@ import {
   GitPullRequest, GitPullRequestDraft, GitMerge, GitBranch, Plus, X,
   CheckCheck, MessageSquare, ArrowUpWideNarrow, ArrowDownWideNarrow,
   FileText, SquarePen, ExternalLink, ArrowRight, Check, ListChecks,
-  AlertTriangle, LoaderCircle, ChevronDown, Sparkles,
+  AlertTriangle, LoaderCircle, ChevronDown, Sparkles, Download,
+  RotateCw,
 } from "lucide-react";
 import { useAppStore } from "@/store/app";
-import type { PRSummary, PullRequestDetail, AIConfig } from "@/store/app";
+import type { PRSummary, PullRequestDetail, AIConfig, PRChecks, WorkflowRun } from "@/store/app";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -27,6 +28,7 @@ export default function PullRequestsPage() {
     setLoginDialogOpen, fetchPullRequests, fetchPRDetail, clearPRDetail,
     createPullRequest, mergePullRequest, fetchBranches,
     generatePRDescription, generatePRMetadata, fetchAIConfig,
+    checkoutPR,
   } = useAppStore();
 
   // Selection
@@ -338,6 +340,7 @@ export default function PullRequestsPage() {
                   onClose={() => setSelectedPRNum(null)}
                   onOpenMerge={() => setShowMerge(true)}
                   onRefresh={() => fetchPRDetail(selectedPRNum)}
+                  onCheckout={() => checkoutPR(selectedPRNum)}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -474,16 +477,88 @@ function PRListItem({ pr, selected, onClick }: { pr: PRSummary; selected: boolea
   );
 }
 
+/* ─── PR CI Runs Section ─── */
+
+function PRRunsSection({ number }: { number: number }) {
+  const { prChecks, loading, fetchPRChecks, reRunWorkflow } = useAppStore();
+  const data: PRChecks | undefined = prChecks[number];
+  const [rerunning, setRerunning] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchPRChecks(number);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [number]);
+
+  const handleRerun = async (run: WorkflowRun) => {
+    setRerunning(run.id);
+    await reRunWorkflow(run.id);
+    setRerunning(null);
+    fetchPRChecks(number);
+  };
+
+  if (!data || (!!loading.prChecks && data.runs.length === 0)) {
+    return null;
+  }
+  if (data.runs.length === 0) {
+    return null;
+  }
+
+  return (
+    <div>
+      <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+        CI Runs ({data.runs.length})
+      </h4>
+      <div className="space-y-1">
+        {data.runs.map((run) => {
+          const failed = run.conclusion === "failure" || run.conclusion === "cancelled" || run.conclusion === "timed_out";
+          const ok = run.conclusion === "success";
+          return (
+            <div key={run.id} className="flex items-center gap-2 text-xs px-2 py-1 rounded hover:bg-accent/30">
+              <span className={cn(
+                "w-2 h-2 rounded-full shrink-0",
+                ok && "bg-green-500",
+                failed && "bg-red-500",
+                !ok && !failed && "bg-yellow-500",
+              )} />
+              <span className="truncate">{run.workflow_name}</span>
+              <span className="text-muted-foreground ml-auto shrink-0">
+                {run.conclusion || run.status}
+              </span>
+              {failed && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-1.5 text-xs shrink-0"
+                  disabled={rerunning === run.id}
+                  onClick={() => handleRerun(run)}
+                  title="Re-run failed workflow"
+                >
+                  {rerunning === run.id ? (
+                    <LoaderCircle className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <RotateCw className="w-3 h-3" />
+                  )}
+                </Button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ─── PR Detail Panel ─── */
 
 function PRDetailPanel({
-  detail, loading, onClose, onOpenMerge, onRefresh,
+  detail, loading, onClose, onOpenMerge, onRefresh, onCheckout,
 }: {
   detail: PullRequestDetail;
   loading: boolean;
   onClose: () => void;
   onOpenMerge: () => void;
   onRefresh: () => void;
+  onCheckout: () => void;
 }) {
   const canMerge = detail.state === "OPEN" && detail.mergeable === "MERGEABLE";
   const stateColor = {
@@ -506,6 +581,18 @@ function PRDetailPanel({
           </span>
         </div>
         <div className="flex gap-1 shrink-0">
+          {detail.state === "OPEN" && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={onCheckout}
+              title={`Fetch and check out PR #${detail.number} on a local pr/${detail.number} branch`}
+            >
+              <Download className="w-3.5 h-3.5 mr-1" />
+              Checkout
+            </Button>
+          )}
           {canMerge && (
             <>
               <Button size="sm" className="h-7 text-xs" onClick={onOpenMerge}>
@@ -597,6 +684,9 @@ function PRDetailPanel({
               </div>
             </div>
           )}
+
+          {/* CI Runs (workflow runs for the head commit, with re-run) */}
+          <PRRunsSection number={detail.number} />
 
           {/* Reviews */}
           {detail.reviews && detail.reviews.length > 0 && (

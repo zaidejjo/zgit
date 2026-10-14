@@ -95,6 +95,14 @@ func (c *CombinedClient) GetPullRequest(ctx context.Context, owner, repo string,
 	// Try GraphQL first for richer data
 	detail, err := c.graphql.GetPullRequestGraphQL(ctx, owner, repo, number)
 	if err == nil {
+		// GraphQL shape has no head SHA; fill it from REST so check
+		// runs and checkouts work for fork PRs too. Best effort:
+		// a missing SHA surfaces as a clear error downstream.
+		if detail != nil && detail.HeadSHA == "" {
+			if restDetail, restErr := c.rest.GetPullRequest(ctx, owner, repo, number); restErr == nil && restDetail != nil {
+				detail.HeadSHA = restDetail.HeadSHA
+			}
+		}
 		return detail, nil
 	}
 	// Fall back to REST
@@ -141,6 +149,10 @@ func (c *CombinedClient) ListWorkflowJobs(ctx context.Context, owner, repo strin
 
 func (c *CombinedClient) GetWorkflowJobLogs(ctx context.Context, owner, repo string, jobID int64) (string, error) {
 	return c.rest.GetWorkflowJobLogs(ctx, owner, repo, jobID)
+}
+
+func (c *CombinedClient) ListCheckRunsForRef(ctx context.Context, owner, repo, ref string) ([]*models.CheckRun, error) {
+	return c.rest.ListCheckRunsForRef(ctx, owner, repo, ref)
 }
 
 // --- Composite (GraphQL) ---
