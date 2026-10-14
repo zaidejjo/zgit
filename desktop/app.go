@@ -257,6 +257,42 @@ func (a *App) GetGraphLog(count int) ([]*models.Commit, error) {
 	return a.engine.Git.Log(ctx, git.LogOptions{Count: count, Graph: true})
 }
 
+// GetBlame returns per-line commit attribution for a file.
+func (a *App) GetBlame(path, ref, lines string) ([]*models.BlameLine, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	result, err := a.engine.Git.Blame(ctx, path, models.BlameOptions{Ref: ref, Lines: lines})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return []*models.BlameLine{}, nil
+	}
+	return result, nil
+}
+
+// GetFileHistory returns commit history for a file, optionally following
+// renames (--follow) or filtering by pickaxe (-S/-G).
+func (a *App) GetFileHistory(path, branch string, follow bool, pickaxe, pickaxeRe string, count int) ([]*models.Commit, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	result, err := a.engine.Git.Log(ctx, git.LogOptions{
+		Count:    count,
+		Branch:   branch,
+		File:     path,
+		Follow:   follow,
+		Pickaxe:  pickaxe,
+		PickaxeR: pickaxeRe,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return []*models.Commit{}, nil
+	}
+	return result, nil
+}
+
 // GetBranches returns all local branches.
 func (a *App) GetBranches() ([]*models.Branch, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)

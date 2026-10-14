@@ -22,6 +22,9 @@ type LogOptions struct {
 	NoMerges bool   // exclude merge commits
 	Format   string // overrides default format (used internally)
 	Graph    bool   // include --topo-order --parents for graph topology
+	Follow   bool   // follow file renames (requires File)
+	Pickaxe  string // -S: commits changing occurrences of string
+	PickaxeR string // -G: commits with diff hunks matching regex
 }
 
 // DiffOptions controls git diff output.
@@ -103,6 +106,9 @@ type GitAdapter interface {
 	// Commit history
 	Log(ctx context.Context, opts LogOptions) ([]*models.Commit, error)
 	RevList(ctx context.Context, ref string, count int) ([]string, error)
+
+	// File history & blame
+	Blame(ctx context.Context, path string, opts models.BlameOptions) ([]*models.BlameLine, error)
 
 	// Branch management
 	Branches(ctx context.Context) ([]*models.Branch, error)
