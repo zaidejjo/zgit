@@ -681,7 +681,7 @@ func (a *App) PruneWorktrees() error {
 
 // GetRepoDashboard returns status overviews for favorite + recent repos.
 // Snapshots run in parallel; unreadable paths come back with Error set.
-func (a *App) GetRepoDashboard() ([]*models.RepoOverview, error) {
+func (a *App) GetRepoDashboard(force bool) ([]*models.RepoOverview, error) {
 	paths := a.engine.DashboardRepos()
 	out := make([]*models.RepoOverview, len(paths))
 	var wg sync.WaitGroup
@@ -689,7 +689,7 @@ func (a *App) GetRepoDashboard() ([]*models.RepoOverview, error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			out[i] = a.engine.RepoOverview(p)
+			out[i] = a.engine.RepoOverview(p, force)
 		}()
 	}
 	wg.Wait()

@@ -132,19 +132,19 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="h-full flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+    <div className="h-full flex flex-col gap-3 min-h-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 mr-auto">
           <h2 className="text-xl font-bold">Projects</h2>
           {projects.length > 0 && (
-            <Badge variant="outline" className="text-xs">{projects.length}</Badge>
+            <Badge variant="outline" className="text-xs tabular-nums">{projects.length}</Badge>
           )}
         </div>
       </div>
 
       {projects.length === 0 ? (
-        <div className="flex-1 min-h-0 flex gap-4">
-          <div className="w-72 shrink-0 flex flex-col gap-2">
+        <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4">
+          <div className="w-full md:w-72 shrink-0 flex flex-col gap-2">
             <div className="rounded-xl border border-dashed border-border/70 p-4 bg-card/30">
               <p className="text-sm font-medium mb-1">Start your first project</p>
               <p className="text-xs text-muted-foreground mb-3">
@@ -182,10 +182,10 @@ export default function ProjectsPage() {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-4 flex-1 min-h-0">
+          <div className="flex flex-col xl:flex-row gap-4 flex-1 min-h-0">
             {/* Project rail */}
-            <div className="w-72 shrink-0 flex flex-col gap-2 min-h-0">
-              <ScrollArea className="flex-1 min-h-0">
+            <div className="w-full xl:w-72 shrink-0 flex flex-col gap-2 min-h-0">
+              <ScrollArea className="max-h-44 xl:max-h-none xl:flex-1 min-h-0">
                 <div className="space-y-1.5 pr-1">
                   {projects.map((p) => (
                     <ProjectRow
@@ -214,7 +214,7 @@ export default function ProjectsPage() {
 
             {/* Active project */}
             {active && (
-              <div className="flex-1 min-w-0 flex gap-4">
+              <div className="flex-1 min-w-0 flex flex-col lg:flex-row gap-4 min-h-0">
                 <ProjectZone
                   project={active}
                   statusByPath={statusByPath}

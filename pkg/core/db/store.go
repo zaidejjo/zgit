@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -85,7 +86,51 @@ func (s *Store) migrate() error {
 	if _, err := s.db.Exec(`INSERT OR IGNORE INTO meta(k, v) VALUES('schema_version', ?)`, schemaVersion); err != nil {
 		return fmt.Errorf("migrate version: %w", err)
 	}
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS overview_cache(
+		path TEXT PRIMARY KEY,
+		data TEXT NOT NULL,
+		fetched_at INTEGER NOT NULL
+	);`); err != nil {
+		return fmt.Errorf("migrate overview_cache: %w", err)
+	}
 	return nil
+}
+
+// CachedOverviewTTLSeconds bounds how long a snapshot is served as-is.
+const CachedOverviewTTLSeconds = 120
+
+// GetCachedOverview returns the snapshot when fresher than ttlSeconds.
+func (s *Store) GetCachedOverview(path string, ttlSeconds int64) (*models.RepoOverview, bool) {
+	var data string
+	var fetchedAt int64
+	if err := s.db.QueryRow(`SELECT data, fetched_at FROM overview_cache WHERE path = ?`, path).Scan(&data, &fetchedAt); err != nil {
+		return nil, false
+	}
+	if time.Now().Unix()-fetchedAt > ttlSeconds {
+		return nil, false
+	}
+	var ov models.RepoOverview
+	if err := json.Unmarshal([]byte(data), &ov); err != nil {
+		return nil, false
+	}
+	return &ov, true
+}
+
+// SetCachedOverview stores a snapshot (best effort by callers).
+func (s *Store) SetCachedOverview(ov *models.RepoOverview) error {
+	data, err := json.Marshal(ov)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT INTO overview_cache(path, data, fetched_at) VALUES(?, ?, ?)
+		ON CONFLICT(path) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at`,
+		ov.Path, string(data), time.Now().Unix())
+	return err
+}
+
+// InvalidateOverview drops one cached snapshot.
+func (s *Store) InvalidateOverview(path string) {
+	_, _ = s.db.Exec(`DELETE FROM overview_cache WHERE path = ?`, path)
 }
 
 func (s *Store) getMeta(key string) string {
@@ -142,9 +187,12 @@ func (s *Store) TrackRepo(path string) error {
 }
 
 // RemoveRepo forgets a repo (files on disk are untouched). Also drops
-// its project memberships.
+// its project memberships and cached overview.
 func (s *Store) RemoveRepo(path string) error {
 	if _, err := s.db.Exec(`DELETE FROM project_repos WHERE path = ?`, path); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`DELETE FROM overview_cache WHERE path = ?`, path); err != nil {
 		return err
 	}
 	_, err := s.db.Exec(`DELETE FROM repos WHERE path = ?`, path)
@@ -210,6 +258,9 @@ func (s *Store) PruneDead(exists func(path string) bool) (int, error) {
 	rows.Close()
 	for _, p := range dead {
 		if _, err := s.db.Exec(`DELETE FROM repos WHERE path = ?`, p); err != nil {
+			return 0, err
+		}
+		if _, err := s.db.Exec(`DELETE FROM overview_cache WHERE path = ?`, p); err != nil {
 			return 0, err
 		}
 	}

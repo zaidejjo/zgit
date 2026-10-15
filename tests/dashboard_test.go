@@ -53,7 +53,7 @@ func TestRepoOverview(t *testing.T) {
 	e := testEngine(t)
 	repo := initBlameRepo(t)
 
-	ov := e.RepoOverview(repo)
+	ov := e.RepoOverview(repo, true)
 	if ov.Error != "" {
 		t.Fatalf("Error = %q", ov.Error)
 	}
@@ -75,13 +75,18 @@ func TestRepoOverview(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Untracked files are not in ls-files based flows, but status sees them.
-	ov = e.RepoOverview(repo)
+	// Second call serves the cached snapshot.
+	cached := e.RepoOverview(repo, false)
+	if cached.DirtyCount != ov.DirtyCount || cached.Branch != ov.Branch {
+		t.Errorf("cached snapshot differs: %+v vs %+v", cached, ov)
+	}
+	ov = e.RepoOverview(repo, true)
 	if ov.IsClean {
 		t.Errorf("want dirty after new untracked file")
 	}
 
 	// Missing path comes back as an error card, not a failure.
-	ov = e.RepoOverview(filepath.Join(t.TempDir(), "nope"))
+	ov = e.RepoOverview(filepath.Join(t.TempDir(), "nope"), true)
 	if ov.Error == "" {
 		t.Errorf("want Error set for missing path")
 	}

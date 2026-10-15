@@ -135,7 +135,7 @@ export function GetReflog(arg1:number):Promise<Array<models.ReflogEntry>>;
 
 export function GetRemotes():Promise<Array<models.Remote>>;
 
-export function GetRepoDashboard():Promise<Array<models.RepoOverview>>;
+export function GetRepoDashboard(arg1:boolean):Promise<Array<models.RepoOverview>>;
 
 export function GetRepoFiles():Promise<Array<string>>;
 

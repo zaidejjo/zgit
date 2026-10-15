@@ -57,7 +57,7 @@ desktop dashboard.`,
 					continue
 				}
 			}
-			ov := engine.RepoOverview(p)
+			ov := engine.RepoOverview(p, true)
 			fmt.Fprintln(os.Stdout, formatOverview(ov))
 		}
 		return nil

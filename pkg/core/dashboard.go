@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zaidejjo/zgit/pkg/core/db"
 	gitpkg "github.com/zaidejjo/zgit/pkg/core/git"
 	"github.com/zaidejjo/zgit/pkg/core/models"
 )
@@ -31,6 +32,7 @@ func (e *Engine) ToggleFavoriteRepo(path string) (bool, error) {
 	if err := e.Store.SetFavorite(path, fav); err != nil {
 		return false, err
 	}
+	e.Store.InvalidateOverview(path)
 	return fav, nil
 }
 
@@ -68,7 +70,27 @@ func (e *Engine) RemoveRepo(path string) error {
 // RepoOverview builds a one-glance status card for a local repo path.
 // It never fails: unreadable paths come back with Error set so the UI
 // can show dead entries instead of dropping them silently.
-func (e *Engine) RepoOverview(repoPath string) *models.RepoOverview {
+// RepoOverview builds a one-glance status card for a local repo path.
+// Snapshots younger than the cache TTL are served instantly; force
+// recomputes (used by explicit Refresh).
+func (e *Engine) RepoOverview(repoPath string, force bool) *models.RepoOverview {
+	if !force && e.Store != nil {
+		if cached, ok := e.Store.GetCachedOverview(repoPath, db.CachedOverviewTTLSeconds); ok {
+			// Favorite is cheap and live — overlay so toggles never look stale.
+			cached.Favorite = e.Store.IsFavorite(repoPath)
+			return cached
+		}
+	}
+	ov := e.computeOverview(repoPath)
+	if e.Store != nil && ov.Error == "" {
+		if err := e.Store.SetCachedOverview(ov); err != nil {
+			log.Printf("warning: cache overview: %v", err)
+		}
+	}
+	return ov
+}
+
+func (e *Engine) computeOverview(repoPath string) *models.RepoOverview {
 	fav := false
 	if e.Store != nil {
 		fav = e.Store.IsFavorite(repoPath)
