@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/zaidejjo/zgit/internal/cli"
+	"github.com/zaidejjo/zgit/pkg/tui"
 )
 
 // Version is injected at build time via ldflags (e.g. -X main.Version=0.1.0).
@@ -20,5 +21,6 @@ func main() {
 			return
 		}
 	}
+	tui.AppVersion = Version
 	cli.Execute()
 }

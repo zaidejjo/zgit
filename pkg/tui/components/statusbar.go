@@ -93,6 +93,7 @@ func (s StatusBar) View() string {
 		right += styles.StatusBarInfoStyle.Render(fmt.Sprintf(" %s/%s ", s.Data.GhOwner, s.Data.GhRepo))
 	}
 	right += styles.StatusBarInfoStyle.Render(" ?help qquit ")
+	right += styles.HintStyle.Render(" tab 1-4 /filter ^p ")
 
 	return styles.StatusBarStyle.
 		Width(s.Width).
