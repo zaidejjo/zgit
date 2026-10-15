@@ -130,6 +130,26 @@ export interface Project {
   repos: string[];
 }
 
+export interface CleanupCandidate {
+  repo_path: string;
+  repo_name: string;
+  branch: string;
+  last_message?: string;
+  last_time?: number;
+}
+
+export interface WithheldBranch {
+  repo_path: string;
+  repo_name: string;
+  branch: string;
+  reason: string;
+}
+
+export interface ProjectCleanup {
+  candidates: CleanupCandidate[];
+  withheld: WithheldBranch[];
+}
+
 export interface BlameLine {
   line_no: number;
   orig_line_no: number;
@@ -607,6 +627,7 @@ interface AppState {
   dashboard: RepoOverview[];
   projects: Project[];
   activeProjectId: string | null;
+  projectCleanup: Record<string, ProjectCleanup>;
 
   // File history & blame
   blame: BlameLine[];
@@ -792,6 +813,8 @@ interface AppState {
   removeProjectRepo: (id: string, path: string) => Promise<void>;
   setProjectRepos: (id: string, paths: string[]) => Promise<void>;
   fetchProject: (id: string) => Promise<void>;
+  fetchProjectCleanup: (id: string, base: string) => Promise<void>;
+  deleteRepoBranch: (repoPath: string, branch: string) => Promise<boolean>;
   removeRepo: (path: string) => Promise<void>;
 
   // File history & blame
@@ -938,6 +961,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   repoFiles: [],
   projects: [],
   activeProjectId: null,
+  projectCleanup: {},
   gitConfig: {},
   conflictResolutions: {},
   conflictFiles: [],
@@ -1802,6 +1826,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         repoFiles: [],
         projects: [],
         activeProjectId: null,
+        projectCleanup: {},
         error: null,
         loading: { ...get().loading, repo: false },
       });
@@ -2252,6 +2277,36 @@ export const useAppStore = create<AppState>((set, get) => ({
       await get().fetchProjects();
     } catch (e: any) {
       set({ error: e.message || "Failed to reorder project" });
+    }
+  },
+
+  fetchProjectCleanup: async (id, base) => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, projectCleanup: true } }));
+    try {
+      const result = await backend.GetProjectCleanup(id, base);
+      set((s) => ({
+        projectCleanup: {
+          ...s.projectCleanup,
+          [id]: result || { candidates: [], withheld: [] },
+        },
+        loading: { ...get().loading, projectCleanup: false },
+      }));
+    } catch (e: any) {
+      set({ error: e.message || "Failed to scan project", loading: { ...get().loading, projectCleanup: false } });
+    }
+  },
+
+  deleteRepoBranch: async (repoPath, branch) => {
+    const backend = getBackend();
+    if (!backend) return false;
+    try {
+      await backend.DeleteRepoBranch(repoPath, branch);
+      return true;
+    } catch (e: any) {
+      set({ error: e.message || `Failed to delete ${branch}` });
+      return false;
     }
   },
 

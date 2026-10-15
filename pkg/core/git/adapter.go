@@ -115,6 +115,7 @@ type GitAdapter interface {
 	Branches(ctx context.Context) ([]*models.Branch, error)
 	CurrentBranch(ctx context.Context) (string, error)
 	BranchCreate(ctx context.Context, name string) error
+	BranchMerged(ctx context.Context, base string) ([]string, error)
 	BranchDelete(ctx context.Context, name string, force bool) error
 	BranchRename(ctx context.Context, oldName, newName string) error
 

@@ -8,7 +8,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  FolderKanban, Plus, Trash2, FolderOpen, RefreshCw, X, Pencil, Check, GripVertical,
+  FolderKanban, Plus, Trash2, FolderOpen, RefreshCw, X, Pencil, Check, GripVertical, Brush,
 } from "lucide-react";
 import { useAppStore, type Project, type RepoOverview } from "@/store/app";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 import EmptyState from "@/components/EmptyState";
 
 const asMemberId = (path: string) => `member::${path}`;
@@ -34,6 +35,7 @@ export default function ProjectsPage() {
 
   const [newName, setNewName] = useState("");
   const [showDelete, setShowDelete] = useState(false);
+  const [showCleanup, setShowCleanup] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState("");
   const [activeDrag, setActiveDrag] = useState<string | null>(null);
@@ -175,6 +177,7 @@ export default function ProjectsPage() {
                   onRename={handleRename}
                   onDelete={() => setShowDelete(true)}
                   onFetch={() => fetchProject(active.id)}
+                  onCleanup={() => setShowCleanup(true)}
                   onOpen={openRepo}
                   onRemove={(path) => removeProjectRepo(active.id, path)}
                   onReorder={(order) => setProjectRepos(active.id, order)}
@@ -210,6 +213,16 @@ export default function ProjectsPage() {
             ) : null}
           </DragOverlay>
         </DndContext>
+      )}
+
+      {/* Cleanup dialog */}
+      {active && (
+        <CleanupDialog
+          open={showCleanup}
+          onOpenChange={setShowCleanup}
+          projectId={active.id}
+          projectName={active.name}
+        />
       )}
 
       {/* Delete dialog */}
@@ -281,6 +294,7 @@ function ProjectZone(props: {
   onRename: () => void;
   onDelete: () => void;
   onFetch: () => void;
+  onCleanup: () => void;
   onOpen: (path: string) => void;
   onRemove: (path: string) => void;
   onReorder: (order: string[]) => void;
@@ -323,6 +337,10 @@ function ProjectZone(props: {
           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={props.onFetch} title="Fetch all member repos">
             <RefreshCw className="w-3.5 h-3.5 mr-1" />
             Fetch
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={props.onCleanup} title="Preview and delete merged branches">
+            <Brush className="w-3.5 h-3.5 mr-1" />
+            Cleanup
           </Button>
           {!props.renaming && (
             <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={props.onStartRename} title="Rename project">
@@ -431,5 +449,143 @@ function PoolCard({ path, name }: { path: string; name: string }) {
       <p className="text-xs font-medium truncate">{name}</p>
       <p className="text-[10px] text-muted-foreground truncate font-mono">{path}</p>
     </div>
+  );
+}
+
+/* ─── Branch Cleanup Dialog ─── */
+
+function CleanupDialog({ open, onOpenChange, projectId, projectName }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  projectId: string;
+  projectName: string;
+}) {
+  const { projectCleanup, loading, fetchProjectCleanup, deleteRepoBranch, fetchDashboard } = useAppStore();
+  const [base, setBase] = useState("main");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+
+  const data = projectCleanup[projectId];
+  const scanning = !!loading.projectCleanup;
+
+  useEffect(() => {
+    if (open) {
+      setSelected(new Set());
+      fetchProjectCleanup(projectId, base.trim());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, projectId]);
+
+  const toggle = (key: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (!data) return;
+    if (selected.size === data.candidates.length) setSelected(new Set());
+    else setSelected(new Set(data.candidates.map((c) => c.repo_path + "\0" + c.branch)));
+  };
+
+  const handleDelete = async () => {
+    if (!data || selected.size === 0 || deleting) return;
+    setDeleting(true);
+    for (const key of selected) {
+      const sep = key.indexOf("\0");
+      await deleteRepoBranch(key.slice(0, sep), key.slice(sep + 1));
+    }
+    setDeleting(false);
+    setSelected(new Set());
+    await fetchProjectCleanup(projectId, base.trim());
+    await fetchDashboard();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Brush className="w-5 h-5" />
+            Cleanup {projectName}
+          </DialogTitle>
+          <DialogDescription>
+            Branches fully merged into the base. Protected, checked-out and base
+            branches are never listed.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <input
+              className="flex h-9 w-40 rounded-md border border-input bg-background px-3 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              placeholder="base (e.g. main)"
+              value={base}
+              onChange={(e) => setBase(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && fetchProjectCleanup(projectId, base.trim())}
+            />
+            <Button size="sm" onClick={() => fetchProjectCleanup(projectId, base.trim())} disabled={scanning}>
+              <RefreshCw className={cn("w-4 h-4 mr-1.5", scanning && "animate-spin")} />
+              {scanning ? "Scanning..." : "Scan"}
+            </Button>
+            {data && data.candidates.length > 0 && (
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer ml-auto">
+                <Checkbox checked={selected.size === data.candidates.length && data.candidates.length > 0} onChange={toggleAll} />
+                All
+              </label>
+            )}
+          </div>
+
+          {scanning && !data ? (
+            <p className="text-sm text-muted-foreground text-center py-6">Scanning member repos...</p>
+          ) : !data || data.candidates.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              Nothing to clean — no merged branches found.
+              {data && data.withheld.length > 0 && ` (${data.withheld.length} protected withheld)`}
+            </p>
+          ) : (
+            <ScrollArea className="max-h-64">
+              <div className="space-y-0.5 pr-2">
+                {data.candidates.map((c) => {
+                  const key = c.repo_path + "\0" + c.branch;
+                  return (
+                    <label
+                      key={key}
+                      className="flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-accent/40 cursor-pointer transition-colors"
+                    >
+                      <Checkbox checked={selected.has(key)} onChange={() => toggle(key)} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-mono truncate">
+                          <span className="text-muted-foreground">{c.repo_name}/</span>{c.branch}
+                        </p>
+                        {c.last_message && (
+                          <p className="text-xs text-muted-foreground truncate">{c.last_message}</p>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <DialogClose asChild>
+              <Button variant="outline">Close</Button>
+            </DialogClose>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={selected.size === 0 || deleting}
+            >
+              <Trash2 className="w-4 h-4 mr-1.5" />
+              {deleting ? "Deleting..." : `Delete ${selected.size > 0 ? `(${selected.size})` : ""}`}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

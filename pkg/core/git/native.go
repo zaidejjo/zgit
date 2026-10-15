@@ -458,6 +458,18 @@ func (n *NativeExec) BranchRename(ctx context.Context, oldName, newName string) 
 	return err
 }
 
+// BranchMerged lists local branches fully merged into base.
+func (n *NativeExec) BranchMerged(ctx context.Context, base string) ([]string, error) {
+	if strings.TrimSpace(base) == "" {
+		return nil, fmt.Errorf("base branch is required")
+	}
+	data, err := n.run(ctx, "branch", "--merged", strings.TrimSpace(base), "--format=%(refname:short)")
+	if err != nil {
+		return nil, err
+	}
+	return ParsePathList(data), nil
+}
+
 // --- Checkout ---
 
 func (n *NativeExec) Checkout(ctx context.Context, ref string) error {
