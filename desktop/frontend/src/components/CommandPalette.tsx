@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   GitCommitHorizontal, History, GitBranch, GitPullRequest,
-  CircleDot, Play, Globe, Tag, Settings,
+  CircleDot, Play, Globe, Tag, Settings, Bell,
   Upload, Download, RotateCcw, Archive, Undo2,
   Sparkles, Search, ArrowRight, GitFork,
   FileText, Star, Plus, Trash2, Merge, Palette, LayoutDashboard, FolderKanban,
@@ -74,6 +74,7 @@ export default function CommandPalette({ open, onClose, onNavigate }: CommandPal
     { id: "nav-prs",      label: "Go to Pull Requests", icon: <GitPullRequest className="w-4 h-4" />, action: () => { onNavigate("pull-requests"); onClose(); }, category: "Navigation" },
     { id: "nav-issues",   label: "Go to Issues",     icon: <CircleDot className="w-4 h-4" />, action: () => { onNavigate("issues"); onClose(); }, category: "Navigation" },
     { id: "nav-actions",  label: "Go to Actions",    icon: <Play className="w-4 h-4" />, action: () => { onNavigate("actions"); onClose(); }, category: "Navigation" },
+    { id: "nav-notifications", label: "Go to Notifications", icon: <Bell className="w-4 h-4" />, action: () => { onNavigate("notifications"); onClose(); }, category: "Navigation" },
     { id: "nav-remotes",  label: "Go to Remotes",    icon: <Globe className="w-4 h-4" />, action: () => { onNavigate("remotes"); onClose(); }, category: "Navigation" },
     { id: "nav-tags",     label: "Go to Tags",       icon: <Tag className="w-4 h-4" />, action: () => { onNavigate("tags"); onClose(); }, category: "Navigation" },
     { id: "nav-settings", label: "Go to Settings",   icon: <Settings className="w-4 h-4" />, action: () => { onNavigate("settings"); onClose(); }, category: "Navigation" },

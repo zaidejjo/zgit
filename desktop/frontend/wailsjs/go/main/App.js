@@ -70,6 +70,18 @@ export function CancelWorkflowRun(arg1) {
   return window['go']['main']['App']['CancelWorkflowRun'](arg1);
 }
 
+export function GetNotifications(arg1) {
+  return window['go']['main']['App']['GetNotifications'](arg1);
+}
+
+export function MarkAllNotificationsRead() {
+  return window['go']['main']['App']['MarkAllNotificationsRead']();
+}
+
+export function MarkNotificationRead(arg1) {
+  return window['go']['main']['App']['MarkNotificationRead'](arg1);
+}
+
 export function CheckoutBranch(arg1) {
   return window['go']['main']['App']['CheckoutBranch'](arg1);
 }

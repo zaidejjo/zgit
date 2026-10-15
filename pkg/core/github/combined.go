@@ -155,6 +155,20 @@ func (c *CombinedClient) ListCheckRunsForRef(ctx context.Context, owner, repo, r
 	return c.rest.ListCheckRunsForRef(ctx, owner, repo, ref)
 }
 
+// --- Notifications (REST) ---
+
+func (c *CombinedClient) ListNotifications(ctx context.Context, all bool, limit int) ([]*models.Notification, error) {
+	return c.rest.ListNotifications(ctx, all, limit)
+}
+
+func (c *CombinedClient) MarkNotificationRead(ctx context.Context, threadID string) error {
+	return c.rest.MarkNotificationRead(ctx, threadID)
+}
+
+func (c *CombinedClient) MarkAllNotificationsRead(ctx context.Context) error {
+	return c.rest.MarkAllNotificationsRead(ctx)
+}
+
 // --- Composite (GraphQL) ---
 
 func (c *CombinedClient) GetDashboard(ctx context.Context) (*models.Dashboard, error) {

@@ -380,3 +380,100 @@ func TestListWorkflowRunsHeadSHA(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestListNotifications(t *testing.T) {
+	server, client := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/notifications" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]github.Notification{
+			{
+				ID:     github.String("1001"),
+				Reason: github.String("review_requested"),
+				Unread: github.Bool(true),
+				Subject: &github.NotificationSubject{
+					Title: github.String("Add feature"),
+					Type:  github.String("PullRequest"),
+					URL:   github.String("https://api.github.com/repos/owner/repo/pulls/42"),
+				},
+				Repository: &github.Repository{
+					FullName: github.String("owner/repo"),
+					HTMLURL:  github.String("https://github.com/owner/repo"),
+				},
+			},
+			{
+				ID:     github.String("1002"),
+				Reason: github.String("mention"),
+				Unread: github.Bool(false),
+				Subject: &github.NotificationSubject{
+					Title: github.String("Bug report"),
+					Type:  github.String("Issue"),
+					URL:   github.String("https://api.github.com/repos/owner/repo/issues/7"),
+				},
+				Repository: &github.Repository{
+					FullName: github.String("owner/repo"),
+					HTMLURL:  github.String("https://github.com/owner/repo"),
+				},
+			},
+		})
+	})
+	defer server.Close()
+
+	items, err := client.ListNotifications(context.Background(), false, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("len = %d, want 2", len(items))
+	}
+	if items[0].ID != "1001" || !items[0].Unread || items[0].Reason != "review_requested" {
+		t.Errorf("[0] = %+v, want unread review_requested", items[0])
+	}
+	if items[0].HTMLURL != "https://github.com/owner/repo/pull/42" {
+		t.Errorf("[0].HTMLURL = %q", items[0].HTMLURL)
+	}
+	if items[1].HTMLURL != "https://github.com/owner/repo/issues/7" {
+		t.Errorf("[1].HTMLURL = %q", items[1].HTMLURL)
+	}
+	if items[1].Unread {
+		t.Errorf("[1] should be read")
+	}
+}
+
+func TestMarkNotificationRead(t *testing.T) {
+	server, client := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/notifications/threads/1001" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPatch {
+			t.Errorf("method = %s, want PATCH", r.Method)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	defer server.Close()
+
+	if err := client.MarkNotificationRead(context.Background(), "1001"); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.MarkNotificationRead(context.Background(), ""); err == nil {
+		t.Errorf("empty thread id = nil, want error")
+	}
+}
+
+func TestMarkAllNotificationsRead(t *testing.T) {
+	server, client := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/notifications" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %s, want PUT", r.Method)
+		}
+		w.WriteHeader(http.StatusResetContent)
+	})
+	defer server.Close()
+
+	if err := client.MarkAllNotificationsRead(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}

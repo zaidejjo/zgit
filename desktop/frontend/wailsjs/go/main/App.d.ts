@@ -39,6 +39,11 @@ export function CancelDeviceFlow():Promise<void>;
 
 export function CancelWorkflowRun(arg1:number):Promise<void>;
 
+export function GetNotifications(arg1:boolean):Promise<Array<models.Notification>>;
+
+export function MarkAllNotificationsRead():Promise<void>;
+
+export function MarkNotificationRead(arg1:string):Promise<void>;
 export function CheckoutBranch(arg1:string):Promise<void>;
 
 export function CheckoutOurs(arg1:string):Promise<void>;

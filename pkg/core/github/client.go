@@ -98,6 +98,11 @@ type GitHubClient interface {
 	GetWorkflowJobLogs(ctx context.Context, owner, repo string, jobID int64) (string, error)
 	ListCheckRunsForRef(ctx context.Context, owner, repo, ref string) ([]*models.CheckRun, error)
 
+	// Notifications (REST, global — no repo scope)
+	ListNotifications(ctx context.Context, all bool, limit int) ([]*models.Notification, error)
+	MarkNotificationRead(ctx context.Context, threadID string) error
+	MarkAllNotificationsRead(ctx context.Context) error
+
 	// Composite queries (GraphQL)
 	GetDashboard(ctx context.Context) (*models.Dashboard, error)
 	GetPullRequestGraphQL(ctx context.Context, owner, repo string, number int) (*models.PullRequestDetail, error)
