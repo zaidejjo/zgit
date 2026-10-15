@@ -34,7 +34,9 @@ export default function CommandPalette({ open, onClose, onNavigate }: CommandPal
     toggleAIPanel,
     fetchStashes, stashPop, stashApply, stashDrop,
     stashes, theme, setTheme,
+    userPreferences,
   } = useAppStore();
+  const aiShortcut = userPreferences?.keybindings?.toggle_ai_panel || "Ctrl+Shift+A";
 
   const [query, setQuery] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -85,7 +87,7 @@ export default function CommandPalette({ open, onClose, onNavigate }: CommandPal
     { id: "undo",        label: "Undo",     description: undoDescription || "Undo last git action", icon: <Undo2 className="w-4 h-4" />, action: () => { undoLastAction(); onClose(); }, category: "Git" },
 
     // AI
-    { id: "ai-panel",    label: "Toggle AI Assistant", description: "Open or close AI panel", icon: <Sparkles className="w-4 h-4" />, action: () => { toggleAIPanel(); onClose(); }, category: "AI", shortcut: "Ctrl+Shift+A" },
+    { id: "ai-panel",    label: "Toggle AI Assistant", description: "Open or close AI panel", icon: <Sparkles className="w-4 h-4" />, action: () => { toggleAIPanel(); onClose(); }, category: "AI", shortcut: aiShortcut },
 
     // Theme switching
     ...THEMES.map((t) => ({
@@ -97,7 +99,7 @@ export default function CommandPalette({ open, onClose, onNavigate }: CommandPal
       category: "Appearance",
       shortcut: theme === t.id ? "active" : undefined,
     })),
-  ], [onNavigate, onClose, gitFetch, gitPull, gitPush, stageAll, unstageAll, stashPush, undoLastAction, undoDescription, toggleAIPanel, theme, setTheme]);
+  ], [onNavigate, onClose, gitFetch, gitPull, gitPush, stageAll, unstageAll, stashPush, undoLastAction, undoDescription, toggleAIPanel, theme, setTheme, aiShortcut]);
 
   // Filter commands by query
   const filtered = useMemo(() => {

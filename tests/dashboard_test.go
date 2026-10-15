@@ -7,6 +7,7 @@ import (
 
 	"github.com/zaidejjo/zgit/pkg/core"
 	"github.com/zaidejjo/zgit/pkg/core/config"
+	"github.com/zaidejjo/zgit/pkg/core/db"
 )
 
 func testEngine(t *testing.T) *core.Engine {
@@ -16,14 +17,19 @@ func testEngine(t *testing.T) *core.Engine {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &core.Engine{Config: cfg}
+	store, err := db.Open(filepath.Join(t.TempDir(), "zgit.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	return &core.Engine{Config: cfg, Store: store}
 }
 
 func TestDashboardReposOrdering(t *testing.T) {
 	e := testEngine(t)
-	e.Config.AddRecentRepo("/r/a")
-	e.Config.AddRecentRepo("/r/b")
-	e.Config.AddRecentRepo("/r/a") // dedupe bump
+	e.TrackRepo("/r/a")
+	e.TrackRepo("/r/b")
+	e.TrackRepo("/r/a") // recency bump
 	if _, err := e.ToggleFavoriteRepo("/r/b"); err != nil {
 		t.Fatal(err)
 	}
@@ -85,11 +91,8 @@ func TestPruneDeadRepos(t *testing.T) {
 	e := testEngine(t)
 	alive := t.TempDir()
 	dead := filepath.Join(t.TempDir(), "gone")
-	e.Config.AddRecentRepo(alive)
-	e.Config.AddRecentRepo(dead)
-	if err := e.Config.Save(); err != nil {
-		t.Fatal(err)
-	}
+	e.TrackRepo(alive)
+	e.TrackRepo(dead)
 	removed, err := e.PruneDeadRepos()
 	if err != nil {
 		t.Fatal(err)
@@ -97,9 +100,44 @@ func TestPruneDeadRepos(t *testing.T) {
 	if removed != 1 {
 		t.Errorf("removed = %d, want 1", removed)
 	}
-	for _, p := range e.Config.GetRecentRepos() {
+	for _, p := range e.DashboardRepos() {
 		if p == dead {
 			t.Errorf("dead path still listed")
 		}
+	}
+}
+
+func TestEngineMigratesLegacyRecents(t *testing.T) {
+	gitTestPath(t)
+	t.Setenv("HOME", t.TempDir())
+
+	// Seed legacy viper state before the engine exists.
+	cfg, err := config.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.AddRecentRepo("/r/legacy-a")
+	cfg.AddRecentRepo("/r/legacy-b")
+	cfg.Set("favorite_repos", []string{"/r/legacy-b"})
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	e, err := core.New(core.DefaultEngineOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := e.DashboardRepos()
+	if len(got) != 2 || got[0] != "/r/legacy-b" || got[1] != "/r/legacy-a" {
+		t.Fatalf("migrated = %v, want [/r/legacy-b /r/legacy-a]", got)
+	}
+
+	// Second boot must not duplicate or lose anything.
+	e2, err := core.New(core.DefaultEngineOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2 := e2.DashboardRepos(); len(got2) != 2 {
+		t.Fatalf("second boot = %v, want 2 entries", got2)
 	}
 }

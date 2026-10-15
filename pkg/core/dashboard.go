@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -12,41 +14,68 @@ import (
 
 // DashboardRepos returns favorite repos first, then recent ones (deduped).
 func (e *Engine) DashboardRepos() []string {
-	seen := make(map[string]bool)
-	var out []string
-	for _, p := range e.Config.GetFavoriteRepos() {
-		if !seen[p] {
-			seen[p] = true
-			out = append(out, p)
-		}
+	if e.Store == nil {
+		return nil
 	}
-	for _, p := range e.Config.GetRecentRepos() {
-		if !seen[p] {
-			seen[p] = true
-			out = append(out, p)
-		}
-	}
-	return out
+	return e.Store.DashboardRepos()
 }
 
 // ToggleFavoriteRepo pins or unpins a repo and persists the change.
 // Returns true when the repo is now pinned.
 func (e *Engine) ToggleFavoriteRepo(path string) (bool, error) {
-	pinned := e.Config.ToggleFavoriteRepo(path)
-	if err := e.Config.Save(); err != nil {
-		return pinned, err
+	if e.Store == nil {
+		return false, fmt.Errorf("store not initialized")
 	}
-	return pinned, nil
+	fav := !e.Store.IsFavorite(path)
+	if err := e.Store.SetFavorite(path, fav); err != nil {
+		return false, err
+	}
+	return fav, nil
+}
+
+// TrackRepo records a repo open (recency + legacy viper mirror).
+func (e *Engine) TrackRepo(path string) {
+	if e.Store != nil {
+		if err := e.Store.TrackRepo(path); err != nil {
+			log.Printf("warning: track repo: %v", err)
+		}
+	}
+	e.Config.AddRecentRepo(path)
+	if err := e.Config.Save(); err != nil {
+		log.Printf("warning: save config after TrackRepo: %v", err)
+	}
+}
+
+// RemoveRepo forgets a repo in the app (files on disk are untouched).
+func (e *Engine) RemoveRepo(path string) error {
+	if e.Store != nil {
+		if err := e.Store.RemoveRepo(path); err != nil {
+			return err
+		}
+	}
+	// Keep the legacy viper list consistent too.
+	kept := make([]string, 0)
+	for _, r := range e.Config.GetRecentRepos() {
+		if r != path {
+			kept = append(kept, r)
+		}
+	}
+	e.Config.Set("recent_repos", kept)
+	return e.Config.Save()
 }
 
 // RepoOverview builds a one-glance status card for a local repo path.
 // It never fails: unreadable paths come back with Error set so the UI
 // can show dead entries instead of dropping them silently.
 func (e *Engine) RepoOverview(repoPath string) *models.RepoOverview {
+	fav := false
+	if e.Store != nil {
+		fav = e.Store.IsFavorite(repoPath)
+	}
 	ov := &models.RepoOverview{
 		Path:     repoPath,
 		Name:     filepath.Base(repoPath),
-		Favorite: e.Config.IsFavoriteRepo(repoPath),
+		Favorite: fav,
 	}
 
 	git, err := gitpkg.NewNativeExec("")
@@ -83,26 +112,29 @@ func (e *Engine) RepoOverview(repoPath string) *models.RepoOverview {
 	return ov
 }
 
-// PruneDeadRepos drops recent entries whose paths no longer exist on disk.
+// PruneDeadRepos drops entries whose paths no longer exist on disk.
 // Favorites are kept (they may live on unmounted drives). Returns the
 // number of entries removed.
 func (e *Engine) PruneDeadRepos() (int, error) {
+	if e.Store == nil {
+		return 0, fmt.Errorf("store not initialized")
+	}
+	removed, err := e.Store.PruneDead(func(p string) bool {
+		_, statErr := os.Stat(p)
+		return statErr == nil
+	})
+	if err != nil {
+		return removed, err
+	}
+	// Keep the legacy viper list consistent too.
 	kept := make([]string, 0)
-	removed := 0
-	for _, p := range e.Config.GetRecentRepos() {
-		if _, err := os.Stat(p); err != nil {
-			removed++
-			continue
-		}
-		kept = append(kept, p)
-	}
-	if removed > 0 {
-		e.Config.Set("recent_repos", kept)
-		if err := e.Config.Save(); err != nil {
-			return removed, err
+	for _, r := range e.Config.GetRecentRepos() {
+		if _, statErr := os.Stat(r); statErr == nil {
+			kept = append(kept, r)
 		}
 	}
-	return removed, nil
+	e.Config.Set("recent_repos", kept)
+	return removed, e.Config.Save()
 }
 
 // FetchRepo fetches the default remote of the repo at repoPath (with prune)

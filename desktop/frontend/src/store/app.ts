@@ -775,6 +775,7 @@ interface AppState {
   toggleFavorite: (path: string) => Promise<void>;
   fetchAllRepos: () => Promise<void>;
   pruneDeadRepos: () => Promise<void>;
+  removeRepo: (path: string) => Promise<void>;
 
   // File history & blame
   fetchBlame: (path: string, ref?: string, lines?: string) => Promise<void>;
@@ -2131,6 +2132,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       await get().fetchDashboard();
     } finally {
       set((s) => ({ loading: { ...s.loading, dashboardFetch: false } }));
+    }
+  },
+
+  removeRepo: async (path) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.RemoveRepo(path);
+      await get().fetchDashboard();
+      get().setSuccessMessage("Removed from app (files untouched)");
+    } catch (e: any) {
+      set({ error: e.message || "Failed to remove repo" });
     }
   },
 

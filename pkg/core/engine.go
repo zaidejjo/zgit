@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/zaidejjo/zgit/pkg/core/ai"
 	"github.com/zaidejjo/zgit/pkg/core/cache"
 	"github.com/zaidejjo/zgit/pkg/core/config"
+	"github.com/zaidejjo/zgit/pkg/core/db"
 	gitpkg "github.com/zaidejjo/zgit/pkg/core/git"
 	"github.com/zaidejjo/zgit/pkg/core/github"
 	"github.com/zaidejjo/zgit/pkg/core/models"
@@ -46,6 +48,7 @@ type Engine struct {
 	GitHub github.GitHubClient
 	Config *config.Manager
 	Cache  *cache.Cache
+	Store  *db.Store
 
 	opts EngineOptions
 	mu   sync.Mutex
@@ -78,6 +81,28 @@ func New(opts EngineOptions) (*Engine, error) {
 		Config: cfg,
 		Cache:  c,
 		opts:   opts,
+	}
+
+	// SQLite store for repo bookkeeping; migrates YAML recents once.
+	store, err := db.Open(filepath.Join(cfg.ConfigPath(), "zgit.db"))
+	if err != nil {
+		return nil, fmt.Errorf("init store: %w", err)
+	}
+	e.Store = store
+	if !store.Migrated() {
+		if recents := cfg.GetRecentRepos(); len(recents) > 0 {
+			if err := store.ImportRecents(recents); err != nil {
+				log.Printf("warning: import recent repos: %v", err)
+			}
+		}
+		if favs := cfg.GetFavoriteRepos(); len(favs) > 0 {
+			if err := store.ImportFavorites(favs); err != nil {
+				log.Printf("warning: import favorite repos: %v", err)
+			}
+		}
+		if err := store.MarkMigrated(); err != nil {
+			log.Printf("warning: mark migrated: %v", err)
+		}
 	}
 
 	// Set up GitHub client if token exists

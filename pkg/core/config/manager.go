@@ -179,32 +179,10 @@ func (m *Manager) ClearRecentRepos() {
 	m.v.Set("recent_repos", []string{})
 }
 
-// GetFavoriteRepos returns pinned repository paths.
+// GetFavoriteRepos returns pinned repository paths (legacy mirror;
+// the SQLite store is the source of truth, see Engine migration).
 func (m *Manager) GetFavoriteRepos() []string {
 	return m.v.GetStringSlice("favorite_repos")
-}
-
-// IsFavoriteRepo reports whether path is pinned.
-func (m *Manager) IsFavoriteRepo(path string) bool {
-	for _, r := range m.GetFavoriteRepos() {
-		if r == path {
-			return true
-		}
-	}
-	return false
-}
-
-// ToggleFavoriteRepo pins or unpins a path. Returns true when now pinned.
-func (m *Manager) ToggleFavoriteRepo(path string) bool {
-	favs := m.GetFavoriteRepos()
-	for i, r := range favs {
-		if r == path {
-			m.v.Set("favorite_repos", append(favs[:i], favs[i+1:]...))
-			return false
-		}
-	}
-	m.v.Set("favorite_repos", append(favs, path))
-	return true
 }
 
 // ConfigPath returns the config directory path.

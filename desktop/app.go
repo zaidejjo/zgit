@@ -720,6 +720,12 @@ func (a *App) PruneDeadRepos() (int, error) {
 	return a.engine.PruneDeadRepos()
 }
 
+// RemoveRepo forgets a repo in the app (files on disk are untouched).
+// If it was the open repo, the caller should open another one after.
+func (a *App) RemoveRepo(path string) error {
+	return a.engine.RemoveRepo(path)
+}
+
 // ConfigGet gets a git config value.
 func (a *App) ConfigGet(key string) (string, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 5e9)
@@ -1935,11 +1941,8 @@ func (a *App) OpenRepo(path string) error {
 	if err := a.engine.OpenRepo(resolved); err != nil {
 		return fmt.Errorf("open repo: %w", err)
 	}
-	// Save to recent repos
-	a.engine.Config.AddRecentRepo(resolved)
-	if err := a.engine.Config.Save(); err != nil {
-		log.Printf("warning: save config after AddRecentRepo: %v", err)
-	}
+	// Track in the store (recency) and the legacy viper list.
+	a.engine.TrackRepo(resolved)
 	// Restart file watcher for the new repo
 	a.restartFileWatcher()
 	// Notify frontend

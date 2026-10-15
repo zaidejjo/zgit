@@ -71,6 +71,8 @@ export function DiscardAllFiles():Promise<void>;
 
 export function DiscardFile(arg1:string):Promise<void>;
 
+export function FetchAllRepos():Promise<number>;
+
 export function FetchProviderModels(arg1:string,arg2:string):Promise<Array<string>>;
 
 export function GenerateCommitMessage():Promise<string>;
@@ -118,6 +120,8 @@ export function GetPullRequests():Promise<Array<models.PullRequestSummary>>;
 export function GetReflog(arg1:number):Promise<Array<models.ReflogEntry>>;
 
 export function GetRemotes():Promise<Array<models.Remote>>;
+
+export function GetRepoDashboard():Promise<Array<models.RepoOverview>>;
 
 export function GetRepoFiles():Promise<Array<string>>;
 
@@ -170,6 +174,8 @@ export function PickDirectory():Promise<string>;
 export function PollDeviceFlow(arg1:string):Promise<string>;
 
 export function PollDeviceFlowWithRetry(arg1:string,arg2:number):Promise<string>;
+
+export function PruneDeadRepos():Promise<number>;
 
 export function PruneWorktrees():Promise<void>;
 
@@ -244,6 +250,8 @@ export function TagCreate(arg1:string,arg2:string,arg3:string):Promise<void>;
 export function TagDelete(arg1:string):Promise<void>;
 
 export function TagList():Promise<Array<string>>;
+
+export function ToggleFavoriteRepo(arg1:string):Promise<boolean>;
 
 export function UndoLastAction():Promise<string>;
 

@@ -1110,6 +1110,42 @@ export namespace models {
 		    return a;
 		}
 	}
+	export class RepoOverview {
+	    path: string;
+	    name: string;
+	    branch?: string;
+	    upstream?: string;
+	    ahead: number;
+	    behind: number;
+	    is_clean: boolean;
+	    dirty_count: number;
+	    last_hash?: string;
+	    last_message?: string;
+	    last_time?: number;
+	    favorite: boolean;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RepoOverview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.name = source["name"];
+	        this.branch = source["branch"];
+	        this.upstream = source["upstream"];
+	        this.ahead = source["ahead"];
+	        this.behind = source["behind"];
+	        this.is_clean = source["is_clean"];
+	        this.dirty_count = source["dirty_count"];
+	        this.last_hash = source["last_hash"];
+	        this.last_message = source["last_message"];
+	        this.last_time = source["last_time"];
+	        this.favorite = source["favorite"];
+	        this.error = source["error"];
+	    }
+	}
 	
 	export class Stash {
 	    index: number;
