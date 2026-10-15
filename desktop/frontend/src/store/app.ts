@@ -802,7 +802,7 @@ interface AppState {
   pruneWorktrees: () => Promise<void>;
 
   // Repository dashboard
-  fetchDashboard: () => Promise<void>;
+  fetchDashboard: (force?: boolean) => Promise<void>;
   toggleFavorite: (path: string) => Promise<void>;
   fetchAllRepos: () => Promise<void>;
   pruneDeadRepos: () => Promise<void>;
@@ -2143,15 +2143,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // Repository dashboard
-  fetchDashboard: async () => {
+  fetchDashboard: async (force = false) => {
     const backend = getBackend();
     if (!backend) return;
-    set((s) => ({ loading: { ...s.loading, dashboard: true } }));
+    const first = !get().dashboard.length;
+    set((s) => ({ loading: {
+      ...s.loading,
+      dashboard: first,
+      dashboardRefreshing: !first,
+    } }));
     try {
-      const dashboard = await backend.GetRepoDashboard();
-      set({ dashboard: dashboard || [], loading: { ...get().loading, dashboard: false } });
+      const dashboard = await backend.GetRepoDashboard(force);
+      set({ dashboard: dashboard || [], loading: { ...get().loading, dashboard: false, dashboardRefreshing: false } });
     } catch (e: any) {
-      set({ error: e.message || "Failed to fetch dashboard", loading: { ...get().loading, dashboard: false } });
+      set({ error: e.message || "Failed to fetch dashboard", loading: { ...get().loading, dashboard: false, dashboardRefreshing: false } });
     }
   },
 

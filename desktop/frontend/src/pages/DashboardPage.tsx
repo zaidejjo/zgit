@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard, Star, FolderOpen, RefreshCw, Trash2,
   ArrowUpWideNarrow, ArrowDownWideNarrow, GitBranch, AlertTriangle, X,
-  ChevronDown, EyeOff,
+  ChevronDown, EyeOff, History,
 } from "lucide-react";
 import { useAppStore, type RepoOverview } from "@/store/app";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,14 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import EmptyState from "@/components/EmptyState";
+
+/** 1234 -> "1.2k" */
+function fmtCount(n?: number): string {
+  if (!n) return "0";
+  if (n < 1000) return String(n);
+  const v = n / 1000;
+  return `${v >= 100 ? Math.round(v) : v.toFixed(1).replace(/\.0$/, "")}k`;
+}
 
 function timeAgo(unix?: number): string {
   if (!unix) return "";
@@ -35,6 +43,7 @@ export default function DashboardPage() {
   }, []);
 
   const busy = !!loading.dashboard;
+  const refreshing = !!loading.dashboardRefreshing;
   const fetching = !!loading.dashboardFetch;
 
   // Defensive dedupe by path (favorites win); backend already dedupes.
@@ -61,21 +70,21 @@ export default function DashboardPage() {
   });
 
   return (
-    <div className="h-full flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+    <div className="h-full flex flex-col gap-3 min-h-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 mr-auto">
           <h2 className="text-xl font-bold">Dashboard</h2>
           {live.length > 0 && (
-            <Badge variant="outline" className="text-xs">{live.length}</Badge>
+            <Badge variant="outline" className="text-xs tabular-nums">{live.length}</Badge>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => fetchDashboard()} disabled={busy}>
-            <RefreshCw className={cn("w-4 h-4 mr-1.5", busy && "animate-spin")} />
-            Refresh
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button size="sm" variant="outline" className="h-8" onClick={() => fetchDashboard(true)} disabled={busy || refreshing}>
+            <RefreshCw className={cn("w-3.5 h-3.5 mr-1.5", (busy || refreshing) && "animate-spin")} />
+            {refreshing ? "Refreshing..." : "Refresh"}
           </Button>
-          <Button size="sm" onClick={() => fetchAllRepos()} disabled={busy || fetching}>
-            <RefreshCw className={cn("w-4 h-4 mr-1.5", fetching && "animate-spin")} />
+          <Button size="sm" className="h-8" onClick={() => fetchAllRepos()} disabled={busy || refreshing || fetching}>
+            <RefreshCw className={cn("w-3.5 h-3.5 mr-1.5", fetching && "animate-spin")} />
             {fetching ? "Fetching..." : "Fetch all"}
           </Button>
         </div>
@@ -100,7 +109,7 @@ export default function DashboardPage() {
               <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
                 <Star className="w-3.5 h-3.5" /> Favorites
               </h3>
-              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {favorites.map((r) => (
                   <RepoCard key={r.path} {...cardProps(r)} />
                 ))}
@@ -112,7 +121,7 @@ export default function DashboardPage() {
               {favorites.length > 0 && (
                 <h3 className="text-sm font-medium text-muted-foreground mb-2">Recent</h3>
               )}
-              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {rest.map((r) => (
                   <RepoCard key={r.path} {...cardProps(r)} />
                 ))}
@@ -219,11 +228,16 @@ function RepoCard({ repo: r, current, onOpen, onFavorite, onRemove }: {
         )}
       </div>
 
-      <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground flex-wrap">
         <span className="font-mono flex items-center gap-1 truncate">
           <GitBranch className="w-3 h-3 shrink-0" />
           {r.branch || "HEAD"}
         </span>
+        {typeof r.commit_count === "number" && r.commit_count > 0 && (
+          <span className="flex items-center gap-1 shrink-0 tabular-nums" title={`${r.commit_count} commits`}>
+            <History className="w-3 h-3" />{fmtCount(r.commit_count)}
+          </span>
+        )}
         {!r.is_clean && (
           <span className="text-yellow-500 shrink-0">{r.dirty_count} dirty</span>
         )}

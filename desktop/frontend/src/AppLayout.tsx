@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from "@tanstack/react-router";
 import {
   GitCommitHorizontal, History, GitBranch, GitPullRequest,
   CircleDot, Play, Globe, Tag, Settings, FolderOpen, Folder,
-  X, Sparkles, Command, Search, ChevronDown, GitFork, Palette, Brain, LayoutDashboard, FolderKanban,
+  X, Sparkles, Command, Search, ChevronDown, GitFork, Palette, Brain, LayoutDashboard, FolderKanban, PanelLeft,
 } from "lucide-react";
 import { useAppStore, type Theme, THEMES } from "@/store/app";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,15 @@ export default function AppLayout() {
   const location = useLocation();
 
   const [repoMenuOpen, setRepoMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem("zgit-sidebar-collapsed") === "1",
+  );
+  const toggleSidebar = () => {
+    setSidebarCollapsed((c) => {
+      localStorage.setItem("zgit-sidebar-collapsed", c ? "0" : "1");
+      return !c;
+    });
+  };
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const repoMenuRef = useRef<HTMLDivElement>(null);
@@ -223,23 +232,36 @@ export default function AppLayout() {
   return (
     <div className="h-screen flex overflow-hidden bg-background">
       {/* ─── Sidebar ─── */}
-      <aside className="w-56 shrink-0 flex flex-col border-r border-border/50 bg-card/50">
+      <aside className={cn(
+        "shrink-0 flex flex-col border-r border-border/50 bg-card/50 transition-[width] duration-150",
+        sidebarCollapsed ? "w-14" : "w-56",
+      )}>
         {/* Logo + Search */}
-        <div className="px-4 py-3 flex items-center justify-between border-b border-border/30">
+        <div className={cn("py-3 flex items-center border-b border-border/30", sidebarCollapsed ? "flex-col gap-2 px-2" : "px-4 justify-between")}>
           <div className="flex items-center gap-2">
             <img src="/images/logo.svg" alt="zgit" className="w-5 h-5" />
-            <span className="text-sm font-semibold tracking-tight">zgit</span>
+            {!sidebarCollapsed && <span className="text-sm font-semibold tracking-tight">zgit</span>}
           </div>
-          <button
-            onClick={() => setCommandPaletteOpen(true)}
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-            title={`Command Palette (${paletteShortcut})`}
-          >
-            <Search className="w-3.5 h-3.5" />
-          </button>
+          <div className={cn("flex items-center", sidebarCollapsed ? "flex-col gap-1" : "gap-0.5")}>
+            <button
+              onClick={() => setCommandPaletteOpen(true)}
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+              title={`Command Palette (${paletteShortcut})`}
+            >
+              <Search className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={toggleSidebar}
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              <PanelLeft className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Repo switcher */}
+        {!sidebarCollapsed && (
         <div className="px-3 py-2" ref={repoMenuRef}>
           <button
             onClick={() => setRepoMenuOpen(!repoMenuOpen)}
@@ -300,9 +322,10 @@ export default function AppLayout() {
             </div>
           )}
         </div>
+        )}
 
         {/* Branch indicator */}
-        {status?.branch && (
+        {!sidebarCollapsed && status?.branch && (
           <div className="px-3 pb-2">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/5 border border-primary/10 text-xs">
               <GitFork className="w-3 h-3 text-primary" />
@@ -321,14 +344,16 @@ export default function AppLayout() {
               <button
                 key={item.id}
                 onClick={() => handleNav(item.id)}
+                title={item.label}
                 className={cn(
                   "sidebar-item group",
-                  isActive && "active"
+                  isActive && "active",
+                  sidebarCollapsed && "justify-center px-0",
                 )}
               >
                 <NavIcon className="w-4 h-4 shrink-0" />
-                <span className="flex-1 text-left">{item.label}</span>
-                {isStatusWithDirty && (
+                {!sidebarCollapsed && <span className="flex-1 text-left">{item.label}</span>}
+                {!sidebarCollapsed && isStatusWithDirty && (
                   <span className="w-5 h-5 flex items-center justify-center rounded-full bg-primary/15 text-[10px] font-medium text-primary">
                     {dirtyCount > 9 ? "9+" : dirtyCount}
                   </span>
@@ -347,17 +372,44 @@ export default function AppLayout() {
               <button
                 key={item.id}
                 onClick={() => handleNav(item.id)}
-                className={cn("sidebar-item", isActive && "active")}
+                title={item.label}
+                className={cn(
+                  "sidebar-item",
+                  isActive && "active",
+                  sidebarCollapsed && "justify-center px-0",
+                )}
               >
                 <NavIcon className="w-4 h-4 shrink-0" />
-                <span className="flex-1 text-left">{item.label}</span>
+                {!sidebarCollapsed && <span className="flex-1 text-left">{item.label}</span>}
               </button>
             );
           })}
         </div>
 
         {/* GitHub Auth status */}
-        <div className="px-3 py-2 border-t border-border/30">
+        <div className={cn("py-2 border-t border-border/30", sidebarCollapsed ? "px-2 flex justify-center" : "px-3")}>
+          {sidebarCollapsed ? (
+            ghAuthenticated && ghUser ? (
+              <img
+                src={ghUser.avatar_url}
+                alt={ghUser.login}
+                title={ghUser.login}
+                className="w-6 h-6 rounded-full ring-1 ring-border"
+              />
+            ) : (
+              <button
+                onClick={() => setLoginDialogOpen(true)}
+                className="p-1.5 rounded-lg hover:bg-accent/30 transition-colors"
+                title="Sign in with GitHub"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+              </button>
+            )
+          ) : (
+          <>
+          
           {ghAuthenticated && ghUser ? (
             <button
               onClick={() => navigate({ to: "/settings", state: { settingsTab: "profile" } as any })}
@@ -386,6 +438,8 @@ export default function AppLayout() {
               <span>Sign in with GitHub</span>
             </button>
           )}
+          </>
+          )}
         </div>
       </aside>
 
@@ -393,7 +447,7 @@ export default function AppLayout() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Glass header */}
         <header className="shrink-0 glass glass-hover rounded-none border-x-0 border-t-0 z-10">
-          <div className="flex items-center justify-between h-11 px-5">
+          <div className="flex items-center justify-between min-h-11 py-1 px-3 sm:px-5 gap-2">
             {/* Page title */}
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-foreground">
@@ -525,12 +579,14 @@ export default function AppLayout() {
         <UndoBanner />
 
         {/* Main content */}
-        <main className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <main className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
           {location.pathname === "/ai" ? (
             <Outlet />
           ) : (
-            <div className="flex-1 overflow-auto p-5">
-              <Outlet />
+            <div className="flex-1 overflow-auto p-3 sm:p-5">
+              <div className="max-w-[1400px] mx-auto w-full min-w-0">
+                <Outlet />
+              </div>
             </div>
           )}
         </main>

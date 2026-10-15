@@ -1210,6 +1210,7 @@ export namespace models {
 	    last_hash?: string;
 	    last_message?: string;
 	    last_time?: number;
+	    commit_count?: number;
 	    favorite: boolean;
 	    error?: string;
 	
@@ -1230,6 +1231,7 @@ export namespace models {
 	        this.last_hash = source["last_hash"];
 	        this.last_message = source["last_message"];
 	        this.last_time = source["last_time"];
+	        this.commit_count = source["commit_count"];
 	        this.favorite = source["favorite"];
 	        this.error = source["error"];
 	    }

@@ -262,8 +262,8 @@ export function GetRemotes() {
   return window['go']['main']['App']['GetRemotes']();
 }
 
-export function GetRepoDashboard() {
-  return window['go']['main']['App']['GetRepoDashboard']();
+export function GetRepoDashboard(arg1) {
+  return window['go']['main']['App']['GetRepoDashboard'](arg1);
 }
 
 export function GetRepoFiles() {
