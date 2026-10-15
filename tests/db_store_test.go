@@ -193,3 +193,23 @@ func TestStoreProjects(t *testing.T) {
 		t.Errorf("membership should cascade")
 	}
 }
+
+func TestStoreProjectColor(t *testing.T) {
+	s := openTestStore(t)
+	id, err := s.CreateProject("work", "#60a5fa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s.ListProjects(); len(got) != 1 || got[0].Color != "#60a5fa" {
+		t.Fatalf("color = %+v", got)
+	}
+	if err := s.SetProjectColor(id, "#f472b6"); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.ListProjects(); got[0].Color != "#f472b6" {
+		t.Errorf("after set: color = %q", got[0].Color)
+	}
+	if err := s.SetProjectColor("nope", "#fff"); err == nil {
+		t.Errorf("expected error for unknown project")
+	}
+}

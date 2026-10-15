@@ -134,6 +134,10 @@ export function DeleteProject(arg1) {
   return window['go']['main']['App']['DeleteProject'](arg1);
 }
 
+export function SetProjectColor(arg1, arg2) {
+  return window['go']['main']['App']['SetProjectColor'](arg1, arg2);
+}
+
 export function DeleteProviderAIConfig(arg1) {
   return window['go']['main']['App']['DeleteProviderAIConfig'](arg1);
 }

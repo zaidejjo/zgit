@@ -810,6 +810,7 @@ interface AppState {
   fetchProjects: () => Promise<void>;
   createProject: (name: string, color?: string) => Promise<void>;
   renameProject: (id: string, name: string) => Promise<void>;
+  setProjectColor: (id: string, color: string) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   addProjectRepo: (id: string, path: string) => Promise<void>;
   removeProjectRepo: (id: string, path: string) => Promise<void>;
@@ -2250,6 +2251,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       await get().fetchProjects();
     } catch (e: any) {
       set({ error: e.message || "Failed to rename project" });
+    }
+  },
+
+  setProjectColor: async (id, color) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.SetProjectColor(id, color);
+      await get().fetchProjects();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to update project color" });
     }
   },
 

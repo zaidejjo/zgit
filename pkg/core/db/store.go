@@ -312,6 +312,18 @@ func (s *Store) RenameProject(id, name string) error {
 	return nil
 }
 
+// SetProjectColor changes a project's accent color (empty clears it).
+func (s *Store) SetProjectColor(id, color string) error {
+	res, err := s.db.Exec(`UPDATE projects SET color = ? WHERE id = ?`, strings.TrimSpace(color), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("project not found: %s", id)
+	}
+	return nil
+}
+
 // DeleteProject removes a project and its memberships (repos stay).
 func (s *Store) DeleteProject(id string) error {
 	if _, err := s.db.Exec(`DELETE FROM project_repos WHERE project_id = ?`, id); err != nil {
