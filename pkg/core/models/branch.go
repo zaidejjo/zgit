@@ -40,3 +40,22 @@ type Remote struct {
 	PushURL string `json:"push_url,omitempty"`
 	Type    string `json:"type"` // "fetch" or "push"
 }
+
+// CleanupCandidate is a branch safe to delete: fully merged into the base,
+// not checked out, and not protected. Protected lists names withheld for
+// safety (main, master, dev, the base itself, the checked-out branch).
+type CleanupCandidate struct {
+	RepoPath    string `json:"repo_path"`
+	RepoName    string `json:"repo_name"`
+	Branch      string `json:"branch"`
+	LastMessage string `json:"last_message,omitempty"`
+	LastTime    int64  `json:"last_time,omitempty"`
+}
+
+// Protected lists branches withheld with a reason instead of offered.
+type Protected struct {
+	RepoPath string `json:"repo_path"`
+	RepoName string `json:"repo_name"`
+	Branch   string `json:"branch"`
+	Reason   string `json:"reason"`
+}

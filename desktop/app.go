@@ -772,6 +772,35 @@ func (a *App) FetchProject(id string) (int, error) {
 	return a.engine.FetchProject(id)
 }
 
+// ProjectCleanup bundles cleanup scan results for Wails binding
+// (bindings support a single value plus error).
+type ProjectCleanup struct {
+	Candidates []*models.CleanupCandidate `json:"candidates"`
+	Withheld   []*models.Protected        `json:"withheld"`
+}
+
+// GetProjectCleanup scans member repos for branches merged into base.
+// Empty base resolves per repo (current branch).
+func (a *App) GetProjectCleanup(id, base string) (*ProjectCleanup, error) {
+	candidates, withheld, err := a.engine.ProjectCleanupScan(id, base)
+	if err != nil {
+		return nil, err
+	}
+	out := &ProjectCleanup{Candidates: []*models.CleanupCandidate{}, Withheld: []*models.Protected{}}
+	for i := range candidates {
+		out.Candidates = append(out.Candidates, &candidates[i])
+	}
+	for i := range withheld {
+		out.Withheld = append(out.Withheld, &withheld[i])
+	}
+	return out, nil
+}
+
+// DeleteRepoBranch safe-deletes (-d) a branch in any repo path.
+func (a *App) DeleteRepoBranch(repoPath, branch string) error {
+	return a.engine.DeleteRepoBranch(repoPath, branch)
+}
+
 // ConfigGet gets a git config value.
 func (a *App) ConfigGet(key string) (string, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 5e9)

@@ -12,6 +12,8 @@ import (
 
 var (
 	projectColor string
+	cleanupBase  string
+	cleanupYes   bool
 )
 
 var projectCmd = &cobra.Command{
@@ -184,5 +186,66 @@ func init() {
 	projectCmd.AddCommand(projectAddCmd)
 	projectCmd.AddCommand(projectRemoveCmd)
 	projectCmd.AddCommand(projectFetchCmd)
+	projectCleanupCmd.Flags().StringVar(&cleanupBase, "base", "", "merge base (default: each repo's current branch)")
+	projectCleanupCmd.Flags().BoolVar(&cleanupYes, "yes", false, "skip confirmation")
+	projectCmd.AddCommand(projectCleanupCmd)
 	rootCmd.AddCommand(projectCmd)
+}
+
+var projectCleanupCmd = &cobra.Command{
+	Use:   "cleanup <name|id>",
+	Short: "Preview and delete branches merged into base across members",
+	Long: `Scan every member repo for branches fully merged into --base
+(default: each repo's current branch). Protected branches (main,
+master, dev, base, checked-out) are withheld, never deleted.
+Without --yes, prints the plan and asks once.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		engine, err := core.New(core.DefaultEngineOptions())
+		if err != nil {
+			return fmt.Errorf("init engine: %w", err)
+		}
+		p, err := resolveProject(engine, args[0])
+		if err != nil {
+			return err
+		}
+		candidates, withheld, err := engine.ProjectCleanupScan(p.ID, cleanupBase)
+		if err != nil {
+			return fmt.Errorf("scan project: %w", err)
+		}
+		if len(candidates) == 0 {
+			fmt.Fprintln(os.Stdout, "Nothing to clean — no merged branches found")
+			return nil
+		}
+		fmt.Fprintf(os.Stdout, "Will delete %d branches in %q:\n", len(candidates), p.Name)
+		for _, c := range candidates {
+			fmt.Fprintf(os.Stdout, "  %-20s %s\n", c.RepoName+"/"+c.Branch, c.LastMessage)
+		}
+		if len(withheld) > 0 {
+			fmt.Fprintf(os.Stdout, "(withheld %d protected/checked-out branches)\n", len(withheld))
+		}
+		if !cleanupYes {
+			fmt.Fprint(os.Stdout, "Delete them? [y/N] ")
+			var answer string
+			fmt.Scanln(&answer)
+			if answer != "y" && answer != "Y" {
+				fmt.Fprintln(os.Stdout, "Aborted")
+				return nil
+			}
+		}
+		failed := 0
+		for _, c := range candidates {
+			if err := engine.DeleteRepoBranch(c.RepoPath, c.Branch); err != nil {
+				fmt.Fprintf(os.Stdout, "  ✗ %s: %v\n", c.RepoName+"/"+c.Branch, err)
+				failed++
+			}
+		}
+		deleted := len(candidates) - failed
+		if failed == 0 {
+			fmt.Fprintf(os.Stdout, "Deleted %d branches\n", deleted)
+		} else {
+			fmt.Fprintf(os.Stdout, "Deleted %d branches (%d failed)\n", deleted, failed)
+		}
+		return nil
+	},
 }
