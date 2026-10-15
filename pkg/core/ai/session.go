@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/zaidejjo/zgit/pkg/core/db"
 )
 
 // Session represents a single AI chat session (Ask or Agent mode).
@@ -36,12 +38,127 @@ const (
 )
 
 // SessionManager manages in-memory AI chat sessions.
-// Thread-safe. Sessions are stored in memory only (no disk persistence).
+// Thread-safe. When a Store is attached (AttachStore), every mutation
+// is written through to SQLite, so chat history survives restarts
+// without rewriting a whole JSON file per message.
 type SessionManager struct {
 	mu       sync.RWMutex
 	sessions map[string]*Session
 	activeID string
 	nextID   atomic.Int64
+	store    *db.Store
+}
+
+// AttachStore enables SQLite persistence for all future mutations.
+func (sm *SessionManager) AttachStore(store *db.Store) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.store = store
+}
+
+// LoadFromStore replaces memory with every stored session (newest
+// activity first for nextID tracking only; List() sorts on read).
+func (sm *SessionManager) LoadFromStore() error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if sm.store == nil {
+		return fmt.Errorf("no store attached")
+	}
+	metas := sm.store.ListChatSessions()
+	fresh := make(map[string]*Session, len(metas))
+	for _, m := range metas {
+		rows := sm.store.GetChatMessages(m.ID)
+		msgs := make([]Message, 0, len(rows))
+		for _, r := range rows {
+			msg := Message{Role: r.Role, Content: r.Content, ToolCallID: r.ToolCallID}
+			if r.ToolCallsJSON != "" {
+				var calls []ToolCall
+				if err := json.Unmarshal([]byte(r.ToolCallsJSON), &calls); err != nil {
+					return fmt.Errorf("decode tool calls for %s: %w", m.ID, err)
+				}
+				msg.ToolCalls = calls
+			}
+			msgs = append(msgs, msg)
+		}
+		fresh[m.ID] = &Session{
+			ID:        m.ID,
+			Name:      m.Name,
+			Mode:      m.Mode,
+			Messages:  msgs,
+			CreatedAt: time.Unix(m.CreatedAt, 0),
+			UpdatedAt: time.Unix(m.UpdatedAt, 0),
+		}
+		sm.trackMaxID(m.ID)
+	}
+	sm.sessions = fresh
+	sm.activeID = ""
+	return nil
+}
+
+// MigrateFileToStore imports a legacy chats.json once: when the store
+// holds no sessions yet, the file is loaded into memory and persisted.
+// Returns true when a migration ran.
+func (sm *SessionManager) MigrateFileToStore(path string) (bool, error) {
+	if sm.store == nil {
+		return false, fmt.Errorf("no store attached")
+	}
+	if sm.store.CountChatSessions() > 0 {
+		return false, nil
+	}
+	if _, err := os.Stat(path); err != nil {
+		return false, nil // nothing to migrate
+	}
+	if err := sm.LoadFromFile(path); err != nil {
+		return false, err
+	}
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	for _, s := range sm.sessions {
+		if err := sm.persistSession(s); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+// trackMaxID keeps numeric session IDs collision-free. Callers hold sm.mu.
+func (sm *SessionManager) trackMaxID(id string) {
+	var n int64
+	if _, err := fmt.Sscanf(id, "session_%d", &n); err == nil && n > sm.nextID.Load() {
+		sm.nextID.Store(n)
+	}
+}
+
+// persistSession upserts one in-memory session with all its messages.
+// Callers hold sm.mu.
+func (sm *SessionManager) persistSession(s *Session) error {
+	if sm.store == nil {
+		return nil
+	}
+	if err := sm.store.UpsertChatSession(s.ID, s.Name, s.Mode,
+		s.CreatedAt.Unix(), s.UpdatedAt.Unix()); err != nil {
+		return err
+	}
+	rows := make([]db.ChatMessageRow, 0, len(s.Messages))
+	for _, m := range s.Messages {
+		var tcJSON string
+		if len(m.ToolCalls) > 0 {
+			data, err := json.Marshal(m.ToolCalls)
+			if err != nil {
+				return fmt.Errorf("encode tool calls: %w", err)
+			}
+			tcJSON = string(data)
+		}
+		rows = append(rows, db.ChatMessageRow{
+			Role:          m.Role,
+			Content:       m.Content,
+			ToolCallID:    m.ToolCallID,
+			ToolCallsJSON: tcJSON,
+			CreatedAt:     s.CreatedAt.Unix(),
+		})
+	}
+	return sm.store.ReplaceChatMessages(s.ID, rows)
 }
 
 // NewSessionManager creates a new in-memory session manager.
@@ -78,6 +195,10 @@ func (sm *SessionManager) Create(name, mode string) (*Session, error) {
 
 	sm.sessions[id] = session
 	sm.activeID = id
+	if err := sm.persistSession(session); err != nil {
+		delete(sm.sessions, id)
+		return nil, err
+	}
 	return session, nil
 }
 
@@ -156,8 +277,14 @@ func (sm *SessionManager) Rename(id, name string) error {
 	if !ok {
 		return fmt.Errorf("session %q not found", id)
 	}
+	now := time.Now()
 	s.Name = name
-	s.UpdatedAt = time.Now()
+	s.UpdatedAt = now
+	if sm.store != nil {
+		if err := sm.store.RenameChatSession(id, name, now.Unix()); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -168,6 +295,11 @@ func (sm *SessionManager) Delete(id string) error {
 
 	if _, ok := sm.sessions[id]; !ok {
 		return fmt.Errorf("session %q not found", id)
+	}
+	if sm.store != nil {
+		if err := sm.store.DeleteChatSession(id); err != nil {
+			return err
+		}
 	}
 	delete(sm.sessions, id)
 	if sm.activeID == id {
@@ -185,8 +317,25 @@ func (sm *SessionManager) AddMessage(id string, msg Message) error {
 	if !ok {
 		return fmt.Errorf("session %q not found", id)
 	}
+	now := time.Now()
 	s.Messages = append(s.Messages, msg)
-	s.UpdatedAt = time.Now()
+	s.UpdatedAt = now
+	if sm.store != nil {
+		var tcJSON string
+		if len(msg.ToolCalls) > 0 {
+			data, err := json.Marshal(msg.ToolCalls)
+			if err != nil {
+				return fmt.Errorf("encode tool calls: %w", err)
+			}
+			tcJSON = string(data)
+		}
+		if err := sm.store.AppendChatMessage(id, msg.Role, msg.Content,
+			msg.ToolCallID, tcJSON, now.Unix()); err != nil {
+			// Roll back the in-memory append so both stay in sync.
+			s.Messages = s.Messages[:len(s.Messages)-1]
+			return err
+		}
+	}
 	return nil
 }
 
@@ -225,6 +374,15 @@ func (sm *SessionManager) ClearMessages(id string) error {
 	}
 	s.Messages = systemMsgs
 	s.UpdatedAt = time.Now()
+	if sm.store != nil {
+		rows := make([]db.ChatMessageRow, 0, len(systemMsgs))
+		for _, m := range systemMsgs {
+			rows = append(rows, db.ChatMessageRow{Role: m.Role, Content: m.Content})
+		}
+		if err := sm.store.ReplaceChatMessages(id, rows); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -269,19 +427,11 @@ func (sm *SessionManager) LoadFromFile(path string) error {
 	defer sm.mu.Unlock()
 
 	// Track highest ID so we don't collide
-	maxID := sm.nextID.Load()
 	for id := range fileSessions {
 		if _, exists := sm.sessions[id]; !exists {
 			sm.sessions[id] = fileSessions[id]
 		}
-		// Parse numeric suffix for nextID tracking
-		var n int64
-		if _, err := fmt.Sscanf(id, "session_%d", &n); err == nil && n > maxID {
-			maxID = n
-		}
-	}
-	if maxID > sm.nextID.Load() {
-		sm.nextID.Store(maxID)
+		sm.trackMaxID(id)
 	}
 
 	// Set active to most recent session if none active
