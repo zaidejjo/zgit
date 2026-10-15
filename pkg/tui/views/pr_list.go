@@ -11,11 +11,13 @@ import (
 
 // PRListModel holds state for the pull request list view.
 type PRListModel struct {
-	PRs    []*models.PullRequestSummary
-	Cursor int
-	Offset int
-	Error  string
-	Height int
+	PRs       []*models.PullRequestSummary
+	Cursor    int
+	Offset    int
+	Error     string
+	Height    int
+	Filter    string // substring filter over number/title/author/branch
+	Filtering bool   // true while the filter input has focus
 }
 
 // NewPRListModel creates a default PR list view model.
@@ -27,17 +29,45 @@ func NewPRListModel() PRListModel {
 func (m *PRListModel) UpdatePRs(prs []*models.PullRequestSummary) {
 	m.PRs = prs
 	m.Error = ""
-	if m.Cursor >= len(prs) {
+	m.ClampCursor()
+}
+
+// Filtered returns PRs matching the current filter (case-insensitive
+// substring over number, title, author and head branch).
+func (m *PRListModel) Filtered() []*models.PullRequestSummary {
+	q := strings.ToLower(strings.TrimSpace(m.Filter))
+	if q == "" {
+		return m.PRs
+	}
+	out := make([]*models.PullRequestSummary, 0, len(m.PRs))
+	for _, pr := range m.PRs {
+		hay := strings.ToLower(strings.Join([]string{
+			fmt.Sprintf("%d", pr.Number), pr.Title, pr.Author, pr.HeadRef,
+		}, " "))
+		if strings.Contains(hay, q) {
+			out = append(out, pr)
+		}
+	}
+	return out
+}
+
+// ClampCursor keeps the cursor inside the filtered list.
+func (m *PRListModel) ClampCursor() {
+	if m.Cursor >= len(m.Filtered()) {
+		m.Cursor = 0
+	}
+	if m.Cursor < 0 {
 		m.Cursor = 0
 	}
 }
 
-// SelectedPR returns the currently selected PR summary.
+// SelectedPR returns the currently selected PR summary (filter-aware).
 func (m *PRListModel) SelectedPR() *models.PullRequestSummary {
-	if len(m.PRs) == 0 || m.Cursor < 0 || m.Cursor >= len(m.PRs) {
+	visible := m.Filtered()
+	if len(visible) == 0 || m.Cursor < 0 || m.Cursor >= len(visible) {
 		return nil
 	}
-	return m.PRs[m.Cursor]
+	return visible[m.Cursor]
 }
 
 // View renders the PR list with state badges and branch info.
@@ -58,10 +88,21 @@ func (m *PRListModel) View(width int) string {
 
 	var b strings.Builder
 
-	b.WriteString(styles.SectionTitleStyle.Render(fmt.Sprintf(" Pull Requests (%d)", len(m.PRs))))
+	title := fmt.Sprintf(" Pull Requests (%d)", len(m.PRs))
+	if strings.TrimSpace(m.Filter) != "" {
+		title = fmt.Sprintf(" Pull Requests (%d/%d) filter: %s", len(m.Filtered()), len(m.PRs), m.Filter)
+	}
+	b.WriteString(styles.SectionTitleStyle.Render(title))
 	b.WriteString("\n")
+	if m.Filtering {
+		b.WriteString(styles.FilterBarStyle.Render(" /" + m.Filter + "█"))
+		b.WriteString("\n")
+	}
 
-	visible := m.PRs
+	visible := m.Filtered()
+	if len(visible) == 0 && strings.TrimSpace(m.Filter) != "" {
+		return b.String() + styles.SubtitleStyle.Render("No pull requests match filter")
+	}
 	if len(visible) > m.Height {
 		end := m.Offset + m.Height
 		if end > len(visible) {
@@ -141,6 +182,7 @@ func (m *PRListModel) View(width int) string {
 }
 
 func (m *PRListModel) ensureCursorVisible() {
+	m.ClampCursor()
 	if m.Cursor < m.Offset {
 		m.Offset = m.Cursor
 	}

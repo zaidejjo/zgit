@@ -24,6 +24,20 @@ var (
 				Background(Overlay).
 				Foreground(Subtext)
 
+	// Header bar (top tab strip)
+	HeaderLogoStyle = lipgloss.NewStyle().
+			Padding(0, 1).
+			Background(Mauve).
+			Foreground(Base).
+			Bold(true)
+	HeaderMetaStyle = lipgloss.NewStyle().
+			Padding(0, 1).
+			Foreground(Subtext)
+	HeaderBranchStyle = lipgloss.NewStyle().
+				Padding(0, 1).
+				Foreground(Teal).
+				Bold(true)
+
 	// Content areas
 	ContentStyle = lipgloss.NewStyle().
 			Padding(0, 1).
@@ -41,15 +55,19 @@ var (
 				Bold(true)
 	StatusBarInfoStyle = lipgloss.NewStyle().
 				Foreground(Subtext)
+	HintStyle = lipgloss.NewStyle().
+			Foreground(Overlay0)
 
 	// Lists
 	ListItemStyle = lipgloss.NewStyle().
 			Foreground(Text)
 	ListItemSelectedStyle = lipgloss.NewStyle().
-				PaddingLeft(1).
-				Background(Selection).
+				PaddingLeft(1).Background(Selection).
 				Foreground(Text).
 				Bold(true)
+	FilterBarStyle = lipgloss.NewStyle().
+			Foreground(Yellow)
+
 	ListItemActiveStyle = lipgloss.NewStyle().
 				Foreground(Blue).
 				Bold(true)

@@ -20,6 +20,10 @@ import (
 	"github.com/zaidejjo/zgit/pkg/tui/views"
 )
 
+// AppVersion is the release version shown in the TUI header.
+// Set from cmd/zgit/main.go's ldflag-injected Version at startup.
+var AppVersion = "dev"
+
 // Panel identifiers for focus cycling.
 const (
 	PanelStatus = iota // 0
@@ -280,7 +284,8 @@ func (m *Model) Init() tea.Cmd {
 
 func (m *Model) calcLayout() {
 	statusBarH := 1
-	m.contentHeight = m.height - statusBarH
+	headerH := 1
+	m.contentHeight = m.height - statusBarH - headerH
 	if m.contentHeight < 4 {
 		m.contentHeight = 4
 	}
@@ -417,8 +422,8 @@ func (m *Model) View() string {
 		return ""
 	}
 
-	// Base layout: content + status bar
-	content := m.renderContent()
+	// Base layout: header + content + status bar
+	content := m.renderHeader() + "\n" + m.renderContent()
 	statusBar := m.renderStatusBar()
 	fullLayout := content
 	if statusBar != "" {
@@ -467,6 +472,46 @@ func (m *Model) View() string {
 	}
 
 	return fullLayout
+}
+
+// renderHeader builds the Dale-style top tab bar:
+// [zgit] Status Log Branches │ 3 PRs  4 Issues │  @user  main  vX.Y.Z
+// The active view (focused panel or fullscreen) is highlighted.
+func (m *Model) renderHeader() string {
+	tab := func(label string, active bool) string {
+		if active {
+			return styles.ActiveTabStyle.Render(label)
+		}
+		return styles.InactiveTabStyle.Render(label)
+	}
+
+	var tabs []string
+	tabs = append(tabs, styles.HeaderLogoStyle.Render(" zgit "))
+	panelActive := m.fullScreenView == fsNone
+	tabs = append(tabs, tab("Status", panelActive && m.focusedPanel == PanelStatus))
+	tabs = append(tabs, tab("Log", panelActive && m.focusedPanel == PanelLog))
+	tabs = append(tabs, tab("Branches", panelActive && m.focusedPanel == PanelBranch))
+	tabs = append(tabs, tab("3 PRs", m.fullScreenView == fsPR))
+	tabs = append(tabs, tab("4 Issues", m.fullScreenView == fsIssue))
+	left := lipgloss.JoinHorizontal(lipgloss.Center, tabs...)
+
+	var meta []string
+	if m.ghUser != "" {
+		meta = append(meta, styles.HeaderMetaStyle.Render("@"+m.ghUser))
+	}
+	branch := m.currentBranch()
+	if branch != "" {
+		meta = append(meta, styles.HeaderBranchStyle.Render(branch))
+	}
+	meta = append(meta, styles.HeaderMetaStyle.Render("v"+AppVersion))
+	right := lipgloss.JoinHorizontal(lipgloss.Center, meta...)
+
+	// Pad the middle so meta hugs the right edge; truncate tabs on narrow terms.
+	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 1 {
+		gap = 1
+	}
+	return left + strings.Repeat(" ", gap) + right
 }
 
 // renderContent returns either the panel layout or a full-screen view.
@@ -681,7 +726,15 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	// Full-screen view switches
+	// Direct panel focus + full-screen view switches
+	case "1":
+		m.fullScreenView = fsNone
+		m.focusedPanel = PanelStatus
+		return m, nil
+	case "2":
+		m.fullScreenView = fsNone
+		m.focusedPanel = PanelLog
+		return m, nil
 	case "3":
 		m.fullScreenView = fsPR
 		m.ensureGHDataLoaded()
@@ -1073,9 +1126,36 @@ func (m *Model) handleBranchKeys(key string) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handlePRKeys(key string) (tea.Model, tea.Cmd) {
+	// Filter input mode captures all typing.
+	if m.prs.Filtering {
+		switch key {
+		case "esc", "enter":
+			m.prs.Filtering = false
+			if key == "esc" {
+				m.prs.Filter = ""
+			}
+			m.prs.ClampCursor()
+			return m, nil
+		case "backspace":
+			if len(m.prs.Filter) > 0 {
+				m.prs.Filter = m.prs.Filter[:len(m.prs.Filter)-1]
+				m.prs.ClampCursor()
+			}
+			return m, nil
+		default:
+			if len(key) == 1 || key == " " {
+				m.prs.Filter += key
+				m.prs.ClampCursor()
+			}
+			return m, nil
+		}
+	}
 	switch key {
+	case "/":
+		m.prs.Filtering = true
+		return m, nil
 	case "j", "down":
-		if len(m.prs.PRs) > 0 && m.prs.Cursor < len(m.prs.PRs)-1 {
+		if len(m.prs.Filtered()) > 0 && m.prs.Cursor < len(m.prs.Filtered())-1 {
 			m.prs.Cursor++
 		}
 	case "k", "up":
@@ -1085,14 +1165,14 @@ func (m *Model) handlePRKeys(key string) (tea.Model, tea.Cmd) {
 	case "g", "home":
 		m.prs.Cursor = 0
 	case "G", "end":
-		m.prs.Cursor = len(m.prs.PRs) - 1
+		m.prs.Cursor = len(m.prs.Filtered()) - 1
 		if m.prs.Cursor < 0 {
 			m.prs.Cursor = 0
 		}
 	case "pgdown", "ctrl+f":
 		m.prs.Cursor += m.prs.Height
-		if m.prs.Cursor >= len(m.prs.PRs) {
-			m.prs.Cursor = len(m.prs.PRs) - 1
+		if m.prs.Cursor >= len(m.prs.Filtered()) {
+			m.prs.Cursor = len(m.prs.Filtered()) - 1
 		}
 	case "pgup", "ctrl+b":
 		m.prs.Cursor -= m.prs.Height
@@ -1142,9 +1222,36 @@ func (m *Model) currentBranch() string {
 }
 
 func (m *Model) handleIssueKeys(key string) (tea.Model, tea.Cmd) {
+	// Filter input mode captures all typing.
+	if m.issues.Filtering {
+		switch key {
+		case "esc", "enter":
+			m.issues.Filtering = false
+			if key == "esc" {
+				m.issues.Filter = ""
+			}
+			m.issues.ClampCursor()
+			return m, nil
+		case "backspace":
+			if len(m.issues.Filter) > 0 {
+				m.issues.Filter = m.issues.Filter[:len(m.issues.Filter)-1]
+				m.issues.ClampCursor()
+			}
+			return m, nil
+		default:
+			if len(key) == 1 || key == " " {
+				m.issues.Filter += key
+				m.issues.ClampCursor()
+			}
+			return m, nil
+		}
+	}
 	switch key {
+	case "/":
+		m.issues.Filtering = true
+		return m, nil
 	case "j", "down":
-		if len(m.issues.Issues) > 0 && m.issues.Cursor < len(m.issues.Issues)-1 {
+		if len(m.issues.Filtered()) > 0 && m.issues.Cursor < len(m.issues.Filtered())-1 {
 			m.issues.Cursor++
 		}
 	case "k", "up":
@@ -1154,14 +1261,14 @@ func (m *Model) handleIssueKeys(key string) (tea.Model, tea.Cmd) {
 	case "g", "home":
 		m.issues.Cursor = 0
 	case "G", "end":
-		m.issues.Cursor = len(m.issues.Issues) - 1
+		m.issues.Cursor = len(m.issues.Filtered()) - 1
 		if m.issues.Cursor < 0 {
 			m.issues.Cursor = 0
 		}
 	case "pgdown", "ctrl+f":
 		m.issues.Cursor += m.issues.Height
-		if m.issues.Cursor >= len(m.issues.Issues) {
-			m.issues.Cursor = len(m.issues.Issues) - 1
+		if m.issues.Cursor >= len(m.issues.Filtered()) {
+			m.issues.Cursor = len(m.issues.Filtered()) - 1
 		}
 	case "pgup", "ctrl+b":
 		m.issues.Cursor -= m.issues.Height

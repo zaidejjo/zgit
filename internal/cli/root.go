@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zaidejjo/zgit/pkg/core/config"
 	"github.com/zaidejjo/zgit/pkg/core/git"
+	"github.com/zaidejjo/zgit/pkg/tui"
 )
 
 var (
@@ -65,8 +66,8 @@ Supports both CLI commands and an interactive TUI.`,
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Default: show help if no subcommand
-		return cmd.Help()
+		// Default: launch the interactive TUI (same as `zgit tui`).
+		return tui.Run(gitExec)
 	},
 }
 

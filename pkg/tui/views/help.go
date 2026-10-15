@@ -46,6 +46,7 @@ func allSections() []helpSection {
 			keys: []helpEntry{
 				{"Tab", "Next panel (Status→Log→Branches)"},
 				{"S-Tab", "Previous panel"},
+				{"1 / 2", "Focus Status / Log panel"},
 			},
 		},
 		{
@@ -66,6 +67,7 @@ func allSections() []helpSection {
 			title: "Pull Requests (PR view)",
 			keys: []helpEntry{
 				{"3", "Open Pull Requests view"},
+				{"/", "Filter PR list (enter keeps, esc clears)"},
 				{"c / o", "Create new PR"},
 				{"m", "Merge selected PR"},
 				{"r", "Refresh PR list"},
@@ -76,6 +78,7 @@ func allSections() []helpSection {
 			title: "Issues (full-screen)",
 			keys: []helpEntry{
 				{"4", "Open Issues view"},
+				{"/", "Filter issue list (enter keeps, esc clears)"},
 				{"Tab / Esc", "Back to panels"},
 			},
 		},
