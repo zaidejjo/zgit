@@ -217,3 +217,27 @@ func TestListFiles(t *testing.T) {
 		t.Errorf("files = %v, want [notes.txt]", files)
 	}
 }
+
+func TestListFilesEmptyRepo(t *testing.T) {
+	gitTestPath(t)
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q", "-b", "main")
+
+	n, ctx := openTestRepo(t, dir)
+	files, err := n.ListFiles(ctx)
+	if err != nil {
+		t.Fatalf("ListFiles: %v", err)
+	}
+	if len(files) != 0 {
+		t.Errorf("files = %v, want empty", files)
+	}
+}

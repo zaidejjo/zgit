@@ -103,7 +103,7 @@ export function GetGraphLog(arg1:number):Promise<Array<models.Commit>>;
 
 export function GetIssueDetail(arg1:number):Promise<models.Issue>;
 
-export function GetIssues():Promise<Array<models.Issue>>;
+export function GetIssues(arg1:string):Promise<Array<models.Issue>>;
 
 export function GetLog(arg1:number):Promise<Array<models.Commit>>;
 
@@ -118,6 +118,8 @@ export function GetPullRequests():Promise<Array<models.PullRequestSummary>>;
 export function GetReflog(arg1:number):Promise<Array<models.ReflogEntry>>;
 
 export function GetRemotes():Promise<Array<models.Remote>>;
+
+export function GetRepoFiles():Promise<Array<string>>;
 
 export function GetRepoName():Promise<string>;
 

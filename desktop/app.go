@@ -677,6 +677,49 @@ func (a *App) PruneWorktrees() error {
 	return a.engine.Git.WorktreePrune(ctx)
 }
 
+// --- Repository dashboard ---
+
+// GetRepoDashboard returns status overviews for favorite + recent repos.
+// Snapshots run in parallel; unreadable paths come back with Error set.
+func (a *App) GetRepoDashboard() ([]*models.RepoOverview, error) {
+	paths := a.engine.DashboardRepos()
+	out := make([]*models.RepoOverview, len(paths))
+	var wg sync.WaitGroup
+	for i, p := range paths {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out[i] = a.engine.RepoOverview(p)
+		}()
+	}
+	wg.Wait()
+	return out, nil
+}
+
+// ToggleFavoriteRepo pins or unpins a repo. Returns true when now pinned.
+func (a *App) ToggleFavoriteRepo(path string) (bool, error) {
+	return a.engine.ToggleFavoriteRepo(path)
+}
+
+// FetchAllRepos fetches the default remote of every dashboard repo.
+// Returns the number of repos fetched; the first failure aborts.
+func (a *App) FetchAllRepos() (int, error) {
+	count := 0
+	for _, p := range a.engine.DashboardRepos() {
+		if err := a.engine.FetchRepo(p); err != nil {
+			return count, fmt.Errorf("fetch %s: %w", p, err)
+		}
+		count++
+	}
+	return count, nil
+}
+
+// PruneDeadRepos drops recent entries whose paths no longer exist.
+// Returns the number removed.
+func (a *App) PruneDeadRepos() (int, error) {
+	return a.engine.PruneDeadRepos()
+}
+
 // ConfigGet gets a git config value.
 func (a *App) ConfigGet(key string) (string, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 5e9)

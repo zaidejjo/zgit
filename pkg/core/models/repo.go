@@ -50,6 +50,24 @@ type Dashboard struct {
 	Repos      []Repo               `json:"repos"`
 }
 
+// RepoOverview is a one-glance status card for a local repository.
+// Error is set (and the rest left zero) when the path is not a readable repo.
+type RepoOverview struct {
+	Path        string `json:"path"`
+	Name        string `json:"name"`
+	Branch      string `json:"branch,omitempty"`
+	Upstream    string `json:"upstream,omitempty"`
+	Ahead       int    `json:"ahead"`
+	Behind      int    `json:"behind"`
+	IsClean     bool   `json:"is_clean"`
+	DirtyCount  int    `json:"dirty_count"`
+	LastHash    string `json:"last_hash,omitempty"`
+	LastMessage string `json:"last_message,omitempty"`
+	LastTime    int64  `json:"last_time,omitempty"`
+	Favorite    bool   `json:"favorite"`
+	Error       string `json:"error,omitempty"`
+}
+
 // Notification represents a GitHub notification.
 type Notification struct {
 	ID        string    `json:"id"`
