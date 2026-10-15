@@ -12,6 +12,7 @@ import (
 
 var reposFetch bool
 var reposPrune bool
+var reposRemove string
 
 var reposCmd = &cobra.Command{
 	Use:   "repos",
@@ -29,6 +30,13 @@ desktop dashboard.`,
 		if len(paths) == 0 {
 			fmt.Fprintln(os.Stdout, "No recent repositories — open one with 'zgit -C <path>' first")
 			return nil
+		}
+		if reposRemove != "" {
+			if err := engine.RemoveRepo(reposRemove); err != nil {
+				return fmt.Errorf("remove repo: %w", err)
+			}
+			fmt.Fprintf(os.Stdout, "Forgot %s (files on disk untouched)\n", reposRemove)
+			paths = engine.DashboardRepos()
 		}
 		if reposPrune {
 			n, err := engine.PruneDeadRepos()
@@ -104,5 +112,6 @@ func shortErr(err string) string {
 func init() {
 	reposCmd.Flags().BoolVar(&reposFetch, "fetch", false, "fetch all remotes before showing status")
 	reposCmd.Flags().BoolVar(&reposPrune, "prune", false, "drop recent entries whose paths no longer exist")
+	reposCmd.Flags().StringVar(&reposRemove, "remove", "", "forget a repo in the app (files on disk untouched)")
 	rootCmd.AddCommand(reposCmd)
 }

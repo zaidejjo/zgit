@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard, Star, FolderOpen, RefreshCw, Trash2,
-  ArrowUpWideNarrow, ArrowDownWideNarrow, GitBranch, AlertTriangle,
+  ArrowUpWideNarrow, ArrowDownWideNarrow, GitBranch, AlertTriangle, X,
 } from "lucide-react";
 import { useAppStore, type RepoOverview } from "@/store/app";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +24,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const {
     dashboard, loading, repoPath, openRepo,
-    fetchDashboard, toggleFavorite, fetchAllRepos, pruneDeadRepos,
+    fetchDashboard, toggleFavorite, fetchAllRepos, pruneDeadRepos, removeRepo,
   } = useAppStore();
 
   useEffect(() => {
@@ -84,7 +84,8 @@ export default function DashboardPage() {
               <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                 {favorites.map((r) => (
                   <RepoCard key={r.path} repo={r} current={r.path === repoPath}
-                    onOpen={() => openRepo(r.path)} onFavorite={() => toggleFavorite(r.path)} />
+                    onOpen={() => openRepo(r.path)} onFavorite={() => toggleFavorite(r.path)}
+                    onRemove={() => removeRepo(r.path)} />
                 ))}
               </div>
             </div>
@@ -96,7 +97,8 @@ export default function DashboardPage() {
             <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
               {rest.map((r) => (
                 <RepoCard key={r.path} repo={r} current={r.path === repoPath}
-                  onOpen={() => openRepo(r.path)} onFavorite={() => toggleFavorite(r.path)} />
+                  onOpen={() => openRepo(r.path)} onFavorite={() => toggleFavorite(r.path)}
+                  onRemove={() => removeRepo(r.path)} />
               ))}
             </div>
           </div>
@@ -106,11 +108,12 @@ export default function DashboardPage() {
   );
 }
 
-function RepoCard({ repo: r, current, onOpen, onFavorite }: {
+function RepoCard({ repo: r, current, onOpen, onFavorite, onRemove }: {
   repo: RepoOverview;
   current: boolean;
   onOpen: () => void;
   onFavorite: () => void;
+  onRemove: () => void;
 }) {
   return (
     <div className={cn(
@@ -136,6 +139,15 @@ function RepoCard({ repo: r, current, onOpen, onFavorite }: {
         >
           <Star className={cn("w-3.5 h-3.5", r.favorite && "fill-current")} />
         </button>
+        {!current && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onRemove(); }}
+            className="p-1 rounded transition-colors shrink-0 text-muted-foreground/40 hover:text-destructive"
+            title="Remove from app (files on disk untouched)"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {r.error ? (

@@ -196,6 +196,19 @@ export default function AppLayout() {
       || "status";
   };
 
+  const paletteShortcut = userPreferences?.keybindings?.command_palette || "Ctrl+K";
+  const formatShortcut = (shortcut: string): string => {
+    const parts = shortcut.split("+").map((p) => p.trim());
+    const key = parts[parts.length - 1] || "";
+    const mods = parts.slice(0, -1).map((m) =>
+      m === "Ctrl" ? "\u2318" : m === "Alt" ? "\u2325" : m === "Shift" ? "\u21E7" : m,
+    );
+    return mods.join("") + key.toUpperCase();
+  };
+
+  const paletteKey = formatShortcut(paletteShortcut);
+  const aiShortcut = userPreferences?.keybindings?.toggle_ai_panel || "Ctrl+Shift+A";
+
   const currentNavId = getNavId();
   const isBottomNav = bottomNavItems.some((n) => n.id === currentNavId);
 
@@ -219,7 +232,7 @@ export default function AppLayout() {
           <button
             onClick={() => setCommandPaletteOpen(true)}
             className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-            title="Command Palette (Ctrl+K)"
+            title={`Command Palette (${paletteShortcut})`}
           >
             <Search className="w-3.5 h-3.5" />
           </button>
@@ -426,7 +439,7 @@ export default function AppLayout() {
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
                 )}
-                title="AI Assistant (Ctrl+Shift+A)"
+                title={`AI Assistant (${aiShortcut})`}
               >
                 <Sparkles className="w-4 h-4" />
               </button>
@@ -464,9 +477,12 @@ export default function AppLayout() {
               </div>
 
               {/* Command palette hint */}
-              <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-muted/30 text-[10px] text-muted-foreground font-mono">
+              <div
+                className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-muted/30 text-[10px] text-muted-foreground font-mono"
+                title={`Command Palette (${paletteShortcut})`}
+              >
                 <Command className="w-2.5 h-2.5" />
-                <span>K</span>
+                <span>{paletteKey}</span>
               </div>
             </div>
           </div>

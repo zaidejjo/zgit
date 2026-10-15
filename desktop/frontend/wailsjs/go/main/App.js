@@ -134,6 +134,10 @@ export function DiscardFile(arg1) {
   return window['go']['main']['App']['DiscardFile'](arg1);
 }
 
+export function FetchAllRepos() {
+  return window['go']['main']['App']['FetchAllRepos']();
+}
+
 export function FetchProviderModels(arg1, arg2) {
   return window['go']['main']['App']['FetchProviderModels'](arg1, arg2);
 }
@@ -228,6 +232,10 @@ export function GetReflog(arg1) {
 
 export function GetRemotes() {
   return window['go']['main']['App']['GetRemotes']();
+}
+
+export function GetRepoDashboard() {
+  return window['go']['main']['App']['GetRepoDashboard']();
 }
 
 export function GetRepoFiles() {
@@ -332,6 +340,10 @@ export function PollDeviceFlow(arg1) {
 
 export function PollDeviceFlowWithRetry(arg1, arg2) {
   return window['go']['main']['App']['PollDeviceFlowWithRetry'](arg1, arg2);
+}
+
+export function PruneDeadRepos() {
+  return window['go']['main']['App']['PruneDeadRepos']();
 }
 
 export function PruneWorktrees() {
@@ -480,6 +492,10 @@ export function TagDelete(arg1) {
 
 export function TagList() {
   return window['go']['main']['App']['TagList']();
+}
+
+export function ToggleFavoriteRepo(arg1) {
+  return window['go']['main']['App']['ToggleFavoriteRepo'](arg1);
 }
 
 export function UndoLastAction() {
