@@ -23,6 +23,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import EmptyState from "@/components/EmptyState";
 
+const PROJECT_COLORS = [
+  "#60a5fa", "#a78bfa", "#f472b6", "#f87171",
+  "#fb923c", "#facc15", "#4ade80", "#2dd4bf",
+];
+
 const asMemberId = (path: string) => `member::${path}`;
 const asPoolId = (path: string) => `pool::${path}`;
 const stripPrefix = (id: string) => id.replace(/^(member|pool)::/, "");
@@ -53,6 +58,7 @@ export default function ProjectsPage() {
   } = useAppStore();
 
   const [newName, setNewName] = useState("");
+  const [newColor, setNewColor] = useState(PROJECT_COLORS[0]);
   const [showDelete, setShowDelete] = useState(false);
   const [showCleanup, setShowCleanup] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -118,7 +124,7 @@ export default function ProjectsPage() {
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
-    await createProject(newName.trim());
+    await createProject(newName.trim(), newColor);
     setNewName("");
   };
 
@@ -145,31 +151,87 @@ export default function ProjectsPage() {
       {projects.length === 0 ? (
         <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4">
           <div className="w-full md:w-80 shrink-0 flex flex-col gap-3">
-            <div className="rounded-xl border border-border/50 bg-gradient-to-b from-accent/50 to-transparent p-5">
-              <div className="flex items-center gap-2.5 mb-1">
-                <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 text-primary">
-                  <FolderKanban className="w-4 h-4" />
+            <div
+              className="relative overflow-hidden rounded-2xl border border-border/50 bg-card/60 p-5 shadow-xl transition-shadow"
+              style={{ boxShadow: `0 8px 40px -18px ${newColor}` }}
+            >
+              {/* live color glow */}
+              <div
+                className="absolute inset-x-0 top-0 h-1 transition-colors"
+                style={{ background: `linear-gradient(90deg, transparent, ${newColor}, transparent)` }}
+              />
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <span
+                  className="flex items-center justify-center w-9 h-9 rounded-xl transition-colors"
+                  style={{ backgroundColor: `${newColor}1f`, color: newColor }}
+                >
+                  <FolderKanban className="w-5 h-5" />
                 </span>
-                <p className="text-sm font-semibold">Start your first project</p>
+                <div>
+                  <p className="text-sm font-semibold leading-tight">Start your first project</p>
+                  <p className="text-[11px] text-muted-foreground">One for each context you work in</p>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+              <p className="text-xs text-muted-foreground my-3 leading-relaxed">
                 Group related repositories — work, OSS, demos — then
                 bulk-fetch and clean them up together.
               </p>
-              <div className="flex gap-1.5">
-                <input
-                  className="flex h-9 flex-1 min-w-0 rounded-md border border-input bg-background px-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="e.g. Work, OSS, Demos"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-                  autoFocus
-                />
-                <Button size="sm" className="h-9 px-3" onClick={handleCreate} disabled={!newName.trim()}>
-                  <Plus className="w-4 h-4 mr-1" />
-                  Create
-                </Button>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                Name
+              </label>
+              <input
+                className="mt-1.5 flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="e.g. Work, OSS, Demos"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                autoFocus
+              />
+              <div className="mt-3.5 mb-1 flex items-center justify-between">
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Color
+                </label>
+                <span
+                  className="text-[11px] font-mono px-1.5 py-0.5 rounded"
+                  style={{ backgroundColor: `${newColor}1a`, color: newColor }}
+                >
+                  {newColor}
+                </span>
               </div>
+              <div className="flex items-center gap-2">
+                {PROJECT_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setNewColor(c)}
+                    title={c}
+                    className={cn(
+                      "w-7 h-7 rounded-full transition-all press-scale",
+                      newColor === c
+                        ? "ring-2 ring-offset-2 ring-offset-background scale-110"
+                        : "hover:scale-110 opacity-70 hover:opacity-100",
+                    )}
+                    style={{
+                      backgroundColor: c,
+                      ...(newColor === c ? { ["--tw-ring-color" as string]: c } : {}),
+                    }}
+                  >
+                    {newColor === c && (
+                      <Check className="w-3.5 h-3.5 mx-auto text-black/70" />
+                    )}
+                  </button>
+                ))}
+              </div>
+              <Button
+                className="w-full h-10 mt-4 font-medium"
+                onClick={handleCreate}
+                disabled={!newName.trim()}
+              >
+                <Plus className="w-4 h-4 mr-1.5" />
+                Create project
+              </Button>
+              <p className="text-center text-[11px] text-muted-foreground mt-2">
+                press <kbd className="px-1 py-0.5 rounded bg-muted font-mono text-[10px]">Enter</kbd> to create
+              </p>
             </div>
             <ol className="rounded-xl border border-border/50 p-4 space-y-3 text-xs text-muted-foreground">
               {[

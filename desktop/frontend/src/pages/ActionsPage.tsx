@@ -339,7 +339,7 @@ function RunCard({ run, selected, onSelect, onReRun, onCancel }: {
       </div>
       <div className="flex items-center gap-1.5 mt-1.5 ml-6 flex-wrap">
         <span className="font-mono text-[11px] text-muted-foreground">#{run.run_number}</span>
-        <Badge variant="secondary" className="text-[10px] h-4.5 px-1.5 font-normal">{eventLabel}</Badge>
+        <Badge variant="secondary" className="text-[10px] px-1.5 font-normal">{eventLabel}</Badge>
         <span className="text-[11px] text-muted-foreground flex items-center gap-1 max-w-[140px] truncate">
           <GitBranch className="w-3 h-3 shrink-0" />{run.branch}
         </span>
