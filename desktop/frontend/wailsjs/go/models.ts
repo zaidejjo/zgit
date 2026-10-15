@@ -799,6 +799,56 @@ export namespace models {
 		}
 	}
 	
+	export class Notification {
+	    id: string;
+	    reason: string;
+	    unread: boolean;
+	    title: string;
+	    type: string;
+	    // Go type: time
+	    updated_at: any;
+	    url: string;
+	    repo_name: string;
+	    repo_url?: string;
+	    html_url?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Notification(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.reason = source["reason"];
+	        this.unread = source["unread"];
+	        this.title = source["title"];
+	        this.type = source["type"];
+	        this.updated_at = this.convertValues(source["updated_at"], null);
+	        this.url = source["url"];
+	        this.repo_name = source["repo_name"];
+	        this.repo_url = source["repo_url"];
+	        this.html_url = source["html_url"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class MergeConflictDetail {
 	    path: string;
 	    ours: string;

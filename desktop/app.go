@@ -2114,6 +2114,42 @@ func (a *App) CancelWorkflowRun(runID int64) error {
 	return gh.CancelWorkflowRun(ctx, owner, repo, runID)
 }
 
+// --- Notifications (global inbox, no repo scope) ---
+
+// GetNotifications returns inbox entries, newest first.
+// all=false returns unread only.
+func (a *App) GetNotifications(all bool) ([]*models.Notification, error) {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return []*models.Notification{}, nil
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return gh.ListNotifications(ctx, all, 50)
+}
+
+// MarkNotificationRead marks one thread read.
+func (a *App) MarkNotificationRead(threadID string) error {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return gh.MarkNotificationRead(ctx, threadID)
+}
+
+// MarkAllNotificationsRead marks the whole inbox read.
+func (a *App) MarkAllNotificationsRead() error {
+	gh, err := a.getGitHubClient()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
+	defer cancel()
+	return gh.MarkAllNotificationsRead(ctx)
+}
+
 // ListWorkflowJobs returns jobs for a workflow run.
 func (a *App) ListWorkflowJobs(runID int64) ([]*models.Job, error) {
 	gh, err := a.getGitHubClient()

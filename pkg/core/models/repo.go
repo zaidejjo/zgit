@@ -79,6 +79,8 @@ type Notification struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	URL       string    `json:"url"`
 	RepoName  string    `json:"repo_name"`
+	RepoURL   string    `json:"repo_url,omitempty"`
+	HTMLURL   string    `json:"html_url,omitempty"`
 }
 
 // Project groups repositories into a named workspace.

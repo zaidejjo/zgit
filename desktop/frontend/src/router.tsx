@@ -6,6 +6,7 @@ import BranchesPage from "./pages/BranchesPage";
 import PullRequestsPage from "./pages/PullRequestsPage";
 import IssuesPage from "./pages/IssuesPage";
 import ActionsPage from "./pages/ActionsPage";
+import NotificationsPage from "./pages/NotificationsPage";
 import RemotesPage from "./pages/RemotesPage";
 import TagsPage from "./pages/TagsPage";
 import WorktreesPage from "./pages/WorktreesPage";
@@ -53,6 +54,12 @@ const actionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/actions",
   component: ActionsPage,
+});
+
+const notificationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/notifications",
+  component: NotificationsPage,
 });
 
 const remotesRoute = createRoute({
@@ -110,6 +117,7 @@ const routeTree = rootRoute.addChildren([
   pullRequestsRoute,
   issuesRoute,
   actionsRoute,
+  notificationsRoute,
   remotesRoute,
   tagsRoute,
   worktreesRoute,

@@ -227,6 +227,19 @@ export interface IssueComment {
   is_minimized: boolean;
 }
 
+export interface NotificationItem {
+  id: string;
+  reason: string;
+  unread: boolean;
+  title: string;
+  type: string;
+  updated_at: string;
+  url: string;
+  repo_name: string;
+  repo_url?: string;
+  html_url?: string;
+}
+
 export interface Repo {
   path: string;
   is_bare: boolean;
@@ -601,6 +614,7 @@ interface AppState {
   selectedRunJobs: Job[];
   selectedJobLogs: string;
   jobLogsError: string;
+  notifications: NotificationItem[];
   stashes: StashEntry[];
 
   // Repo management
@@ -742,6 +756,9 @@ interface AppState {
   fetchWorkflowJobs: (runID: number) => Promise<void>;
   fetchJobLogs: (jobID: number) => Promise<void>;
   clearJobLogs: () => void;
+  fetchNotifications: (showAll?: boolean) => Promise<void>;
+  markNotificationRead: (threadID: string) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
   startDeviceFlow: () => Promise<DeviceFlowCode | null>;
   pollDeviceFlow: (deviceCode: string) => Promise<string>;
   pollDeviceFlowWithRetry: (deviceCode: string, interval: number) => Promise<string>;
@@ -1001,6 +1018,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedRunJobs: [],
   selectedJobLogs: "",
   jobLogsError: "",
+  notifications: [],
   stashes: [],
   repoPath: "",
   recentRepos: [],
@@ -1738,6 +1756,43 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().fetchWorkflowRuns();
     } catch (e: any) {
       set({ error: e.message || "Failed to cancel workflow" });
+    }
+  },
+
+  fetchNotifications: async (showAll = false) => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, notifications: true } }));
+    try {
+      const notifications = (await backend.GetNotifications(showAll)) || [];
+      set({ notifications, loading: { ...get().loading, notifications: false } });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch notifications", loading: { ...get().loading, notifications: false } });
+    }
+  },
+
+  markNotificationRead: async (threadID) => {
+    const backend = getBackend();
+    if (!backend) return;
+    // Optimistic: flip immediately, reconcile on failure.
+    const prev = get().notifications;
+    set({ notifications: prev.map((n) => (n.id === threadID ? { ...n, unread: false } : n)) });
+    try {
+      await backend.MarkNotificationRead(threadID);
+    } catch (e: any) {
+      set({ notifications: prev, error: e.message || "Failed to mark notification read" });
+    }
+  },
+
+  markAllNotificationsRead: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    const prev = get().notifications;
+    set({ notifications: prev.map((n) => ({ ...n, unread: false })) });
+    try {
+      await backend.MarkAllNotificationsRead();
+    } catch (e: any) {
+      set({ notifications: prev, error: e.message || "Failed to mark all read" });
     }
   },
 

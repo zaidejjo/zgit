@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from "@tanstack/react-router";
 import {
   GitCommitHorizontal, History, GitBranch, GitPullRequest,
   CircleDot, Play, Globe, Tag, Settings, FolderOpen, Folder,
-  X, Sparkles, Command, Search, ChevronDown, GitFork, Palette, Brain, LayoutDashboard, FolderKanban, PanelLeft,
+  X, Sparkles, Command, Search, ChevronDown, GitFork, Palette, Brain, LayoutDashboard, FolderKanban, PanelLeft, Bell,
 } from "lucide-react";
 import { useAppStore, type Theme, THEMES } from "@/store/app";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ const navItems = [
   { id: "pull-requests", label: "PRs", Icon: GitPullRequest },
   { id: "issues",   label: "Issues",   Icon: CircleDot },
   { id: "actions",  label: "Actions",  Icon: Play },
+  { id: "notifications", label: "Notifications", Icon: Bell },
   { id: "ai",       label: "AI",       Icon: Brain },
 ] as const;
 
@@ -44,6 +45,7 @@ export default function AppLayout() {
     toggleAIPanel, aiPanelOpen, currentBranch, status,
     theme, setTheme,
     loadUserPreferences, userPreferences,
+    notifications, fetchNotifications,
   } = useAppStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -71,6 +73,16 @@ export default function AppLayout() {
     loadUserPreferences();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep the notification badge live while signed in.
+  useEffect(() => {
+    if (ghAuthenticated) {
+      fetchNotifications(false).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ghAuthenticated]);
+
+  const unreadCount = notifications.filter((n) => n.unread).length;
 
   // File system watcher
   useEffect(() => {
@@ -181,7 +193,7 @@ export default function AppLayout() {
   // Page title lookup
   const pageTitleMap: Record<string, string> = {
     status: "Status", log: "Log", branches: "Branches", worktrees: "Worktrees", history: "History", dashboard: "Dashboard", projects: "Projects",
-    "pull-requests": "PRs", issues: "Issues", actions: "Actions",
+    "pull-requests": "PRs", issues: "Issues", actions: "Actions", notifications: "Notifications",
     ai: "AI Chat", remotes: "Remotes", tags: "Tags", settings: "Settings",
   };
 
@@ -340,6 +352,8 @@ export default function AppLayout() {
             const NavIcon = item.Icon;
             const isActive = currentNavId === item.id && !isBottomNav;
             const isStatusWithDirty = item.id === "status" && dirtyCount > 0;
+            const isNotificationsWithUnread = item.id === "notifications" && unreadCount > 0;
+            const badgeCount = isStatusWithDirty ? dirtyCount : isNotificationsWithUnread ? unreadCount : 0;
             return (
               <button
                 key={item.id}
@@ -353,9 +367,9 @@ export default function AppLayout() {
               >
                 <NavIcon className="w-4 h-4 shrink-0" />
                 {!sidebarCollapsed && <span className="flex-1 text-left">{item.label}</span>}
-                {!sidebarCollapsed && isStatusWithDirty && (
+                {!sidebarCollapsed && badgeCount > 0 && (
                   <span className="w-5 h-5 flex items-center justify-center rounded-full bg-primary/15 text-[10px] font-medium text-primary">
-                    {dirtyCount > 9 ? "9+" : dirtyCount}
+                    {badgeCount > 9 ? "9+" : badgeCount}
                   </span>
                 )}
               </button>

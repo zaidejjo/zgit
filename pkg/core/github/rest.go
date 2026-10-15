@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/go-github/v61/github"
 	"github.com/zaidejjo/zgit/pkg/core/models"
@@ -431,6 +432,103 @@ func friendlyBlobError(data []byte) string {
 		return "empty response"
 	}
 	return s
+}
+
+// --- Notifications ---
+
+// ListNotifications returns inbox entries for the authenticated user,
+// newest first. all=false returns only unread. limit caps the total
+// (<=0 means 50).
+func (c *RESTClient) ListNotifications(ctx context.Context, all bool, limit int) ([]*models.Notification, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	opt := &github.NotificationListOptions{
+		All:         all,
+		ListOptions: github.ListOptions{PerPage: 50},
+	}
+	out := make([]*models.Notification, 0, limit)
+	for {
+		items, resp, err := c.client.Activity.ListNotifications(ctx, opt)
+		if err != nil {
+			return nil, fmt.Errorf("list notifications: %w", err)
+		}
+		for _, n := range items {
+			out = append(out, convertNotification(n))
+			if len(out) >= limit {
+				return out, nil
+			}
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opt.Page = resp.NextPage
+	}
+	return out, nil
+}
+
+// MarkNotificationRead marks one thread read.
+func (c *RESTClient) MarkNotificationRead(ctx context.Context, threadID string) error {
+	if threadID == "" {
+		return fmt.Errorf("thread id is required")
+	}
+	if _, err := c.client.Activity.MarkThreadRead(ctx, threadID); err != nil {
+		return fmt.Errorf("mark thread %s read: %w", threadID, err)
+	}
+	return nil
+}
+
+// MarkAllNotificationsRead marks the whole inbox read up to now.
+func (c *RESTClient) MarkAllNotificationsRead(ctx context.Context) error {
+	if _, err := c.client.Activity.MarkNotificationsRead(ctx, github.Timestamp{Time: time.Now()}); err != nil {
+		return fmt.Errorf("mark all notifications read: %w", err)
+	}
+	return nil
+}
+
+func convertNotification(n *github.Notification) *models.Notification {
+	if n == nil {
+		return &models.Notification{}
+	}
+	repoName := n.GetRepository().GetFullName()
+	repoHTML := n.GetRepository().GetHTMLURL()
+	return &models.Notification{
+		ID:        n.GetID(),
+		Reason:    n.GetReason(),
+		Unread:    n.GetUnread(),
+		Title:     n.GetSubject().GetTitle(),
+		Type:      n.GetSubject().GetType(),
+		UpdatedAt: n.GetUpdatedAt().Time,
+		URL:       n.GetSubject().GetURL(),
+		RepoName:  repoName,
+		RepoURL:   repoHTML,
+		HTMLURL:   notificationHTMLURL(repoHTML, n.GetSubject().GetURL()),
+	}
+}
+
+// notificationHTMLURL turns a subject API URL
+// (…/repos/o/r/pulls/42) into a browser URL (…/o/r/pull/42).
+// Unknown shapes fall back to the repo page.
+func notificationHTMLURL(repoHTML, apiURL string) string {
+	if repoHTML == "" {
+		return ""
+	}
+	parts := strings.Split(strings.TrimSuffix(apiURL, "/"), "/")
+	if len(parts) < 2 {
+		return repoHTML
+	}
+	kind, id := parts[len(parts)-2], parts[len(parts)-1]
+	switch kind {
+	case "pulls":
+		return repoHTML + "/pull/" + id
+	case "issues":
+		return repoHTML + "/issues/" + id
+	case "commits":
+		return repoHTML + "/commit/" + id
+	case "releases":
+		return repoHTML + "/releases"
+	}
+	return repoHTML
 }
 
 func (c *RESTClient) ListWorkflowJobs(ctx context.Context, owner, repo string, runID int64) ([]*models.Job, error) {
