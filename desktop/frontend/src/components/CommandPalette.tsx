@@ -4,7 +4,7 @@ import {
   CircleDot, Play, Globe, Tag, Settings,
   Upload, Download, RotateCcw, Archive, Undo2,
   Sparkles, Search, ArrowRight, GitFork,
-  FileText, Star, Plus, Trash2, Merge, Palette, LayoutDashboard,
+  FileText, Star, Plus, Trash2, Merge, Palette, LayoutDashboard, FolderKanban,
 } from "lucide-react";
 import { useAppStore, type Theme, THEMES } from "@/store/app";
 import { cn } from "@/lib/utils";
@@ -69,6 +69,7 @@ export default function CommandPalette({ open, onClose, onNavigate }: CommandPal
     { id: "nav-branches", label: "Go to Branches",   icon: <GitBranch className="w-4 h-4" />, action: () => { onNavigate("branches"); onClose(); }, category: "Navigation" },
     { id: "nav-worktrees", label: "Go to Worktrees", icon: <GitFork className="w-4 h-4" />, action: () => { onNavigate("worktrees"); onClose(); }, category: "Navigation" },
     { id: "nav-dashboard", label: "Go to Dashboard", icon: <LayoutDashboard className="w-4 h-4" />, action: () => { onNavigate("dashboard"); onClose(); }, category: "Navigation" },
+    { id: "nav-projects", label: "Go to Projects", icon: <FolderKanban className="w-4 h-4" />, action: () => { onNavigate("projects"); onClose(); }, category: "Navigation" },
     { id: "nav-history", label: "Go to File History", icon: <History className="w-4 h-4" />, action: () => { onNavigate("history"); onClose(); }, category: "Navigation" },
     { id: "nav-prs",      label: "Go to Pull Requests", icon: <GitPullRequest className="w-4 h-4" />, action: () => { onNavigate("pull-requests"); onClose(); }, category: "Navigation" },
     { id: "nav-issues",   label: "Go to Issues",     icon: <CircleDot className="w-4 h-4" />, action: () => { onNavigate("issues"); onClose(); }, category: "Navigation" },

@@ -726,6 +726,52 @@ func (a *App) RemoveRepo(path string) error {
 	return a.engine.RemoveRepo(path)
 }
 
+// --- Projects ---
+
+// GetProjects returns all projects with member paths.
+func (a *App) GetProjects() ([]models.Project, error) {
+	projects := a.engine.GetProjects()
+	if projects == nil {
+		return []models.Project{}, nil
+	}
+	return projects, nil
+}
+
+// CreateProject creates a project and returns its id.
+func (a *App) CreateProject(name, color string) (string, error) {
+	return a.engine.CreateProject(name, color)
+}
+
+// RenameProject renames a project.
+func (a *App) RenameProject(id, name string) error {
+	return a.engine.RenameProject(id, name)
+}
+
+// DeleteProject removes a project (member repos stay in the app).
+func (a *App) DeleteProject(id string) error {
+	return a.engine.DeleteProject(id)
+}
+
+// AddProjectRepo adds a repo to a project.
+func (a *App) AddProjectRepo(id, path string) error {
+	return a.engine.AddProjectRepo(id, path)
+}
+
+// RemoveProjectRepo drops a repo from a project.
+func (a *App) RemoveProjectRepo(id, path string) error {
+	return a.engine.RemoveProjectRepo(id, path)
+}
+
+// SetProjectRepos replaces a project's membership order (drag-and-drop).
+func (a *App) SetProjectRepos(id string, paths []string) error {
+	return a.engine.SetProjectRepos(id, paths)
+}
+
+// FetchProject fetches every member repo. Returns repos fetched.
+func (a *App) FetchProject(id string) (int, error) {
+	return a.engine.FetchProject(id)
+}
+
 // ConfigGet gets a git config value.
 func (a *App) ConfigGet(key string) (string, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 5e9)

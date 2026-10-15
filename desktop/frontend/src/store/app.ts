@@ -123,6 +123,13 @@ export interface RepoOverview {
   error?: string;
 }
 
+export interface Project {
+  id: string;
+  name: string;
+  color?: string;
+  repos: string[];
+}
+
 export interface BlameLine {
   line_no: number;
   orig_line_no: number;
@@ -598,6 +605,8 @@ interface AppState {
 
   // Repository dashboard
   dashboard: RepoOverview[];
+  projects: Project[];
+  activeProjectId: string | null;
 
   // File history & blame
   blame: BlameLine[];
@@ -775,6 +784,14 @@ interface AppState {
   toggleFavorite: (path: string) => Promise<void>;
   fetchAllRepos: () => Promise<void>;
   pruneDeadRepos: () => Promise<void>;
+  fetchProjects: () => Promise<void>;
+  createProject: (name: string, color?: string) => Promise<void>;
+  renameProject: (id: string, name: string) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
+  addProjectRepo: (id: string, path: string) => Promise<void>;
+  removeProjectRepo: (id: string, path: string) => Promise<void>;
+  setProjectRepos: (id: string, paths: string[]) => Promise<void>;
+  fetchProject: (id: string) => Promise<void>;
   removeRepo: (path: string) => Promise<void>;
 
   // File history & blame
@@ -919,6 +936,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   fileHistory: [],
   historyPath: "",
   repoFiles: [],
+  projects: [],
+  activeProjectId: null,
   gitConfig: {},
   conflictResolutions: {},
   conflictFiles: [],
@@ -1781,6 +1800,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         fileHistory: [],
         historyPath: "",
         repoFiles: [],
+        projects: [],
+        activeProjectId: null,
         error: null,
         loading: { ...get().loading, repo: false },
       });
@@ -2144,6 +2165,105 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().setSuccessMessage("Removed from app (files untouched)");
     } catch (e: any) {
       set({ error: e.message || "Failed to remove repo" });
+    }
+  },
+
+  fetchProjects: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const projects = await backend.GetProjects();
+      set((s) => {
+        const ids = new Set((projects || []).map((p: Project) => p.id));
+        return {
+          projects: projects || [],
+          activeProjectId: s.activeProjectId && ids.has(s.activeProjectId) ? s.activeProjectId : (projects || [])[0]?.id || null,
+        };
+      });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch projects" });
+    }
+  },
+
+  createProject: async (name, color = "") => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const id = await backend.CreateProject(name, color);
+      await get().fetchProjects();
+      set({ activeProjectId: id });
+      get().setSuccessMessage(`Project "${name}" created`);
+    } catch (e: any) {
+      set({ error: e.message || "Failed to create project" });
+    }
+  },
+
+  renameProject: async (id, name) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.RenameProject(id, name);
+      await get().fetchProjects();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to rename project" });
+    }
+  },
+
+  deleteProject: async (id) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.DeleteProject(id);
+      set({ activeProjectId: null });
+      await get().fetchProjects();
+      get().setSuccessMessage("Project deleted (repos untouched)");
+    } catch (e: any) {
+      set({ error: e.message || "Failed to delete project" });
+    }
+  },
+
+  addProjectRepo: async (id, path) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.AddProjectRepo(id, path);
+      await get().fetchProjects();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to add repo to project" });
+    }
+  },
+
+  removeProjectRepo: async (id, path) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.RemoveProjectRepo(id, path);
+      await get().fetchProjects();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to remove repo from project" });
+    }
+  },
+
+  setProjectRepos: async (id, paths) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.SetProjectRepos(id, paths);
+      await get().fetchProjects();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to reorder project" });
+    }
+  },
+
+  fetchProject: async (id) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const count = await backend.FetchProject(id);
+      await get().fetchDashboard();
+      get().setSuccessMessage(`Fetched ${count} ${count === 1 ? "repo" : "repos"}`);
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch project repos" });
     }
   },
 

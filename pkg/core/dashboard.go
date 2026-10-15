@@ -151,3 +151,77 @@ func (e *Engine) FetchRepo(repoPath string) error {
 	defer cancel()
 	return git.Fetch(ctx, "", true)
 }
+
+// --- Projects ---
+
+// GetProjects returns all projects with members.
+func (e *Engine) GetProjects() []models.Project {
+	if e.Store == nil {
+		return []models.Project{}
+	}
+	return e.Store.ListProjects()
+}
+
+// CreateProject creates a project and returns its id.
+func (e *Engine) CreateProject(name, color string) (string, error) {
+	if e.Store == nil {
+		return "", fmt.Errorf("store not initialized")
+	}
+	return e.Store.CreateProject(name, color)
+}
+
+// RenameProject renames a project.
+func (e *Engine) RenameProject(id, name string) error {
+	if e.Store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+	return e.Store.RenameProject(id, name)
+}
+
+// DeleteProject removes a project (member repos stay in the app).
+func (e *Engine) DeleteProject(id string) error {
+	if e.Store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+	return e.Store.DeleteProject(id)
+}
+
+// AddProjectRepo adds a repo to a project.
+func (e *Engine) AddProjectRepo(id, path string) error {
+	if e.Store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+	return e.Store.AddProjectRepo(id, path)
+}
+
+// RemoveProjectRepo drops a repo from a project.
+func (e *Engine) RemoveProjectRepo(id, path string) error {
+	if e.Store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+	return e.Store.RemoveProjectRepo(id, path)
+}
+
+// SetProjectRepos replaces a project's membership order.
+func (e *Engine) SetProjectRepos(id string, paths []string) error {
+	if e.Store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+	return e.Store.SetProjectRepos(id, paths)
+}
+
+// FetchProject fetches every member repo. Returns repos fetched;
+// the first failure aborts.
+func (e *Engine) FetchProject(id string) (int, error) {
+	if e.Store == nil {
+		return 0, fmt.Errorf("store not initialized")
+	}
+	count := 0
+	for _, p := range e.Store.ProjectRepos(id) {
+		if err := e.FetchRepo(p); err != nil {
+			return count, fmt.Errorf("fetch %s: %w", p, err)
+		}
+		count++
+	}
+	return count, nil
+}

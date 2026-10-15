@@ -4,12 +4,16 @@
 package db
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/zaidejjo/zgit/pkg/core/models"
 	_ "modernc.org/sqlite"
 )
 
@@ -210,4 +214,156 @@ func (s *Store) PruneDead(exists func(path string) bool) (int, error) {
 		}
 	}
 	return len(dead), nil
+}
+
+// --- Projects ---
+
+// CreateProject creates a project and returns its id.
+func (s *Store) CreateProject(name, color string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("project name is required")
+	}
+	var b [12]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("generate project id: %w", err)
+	}
+	id := hex.EncodeToString(b[:])
+	var sort int
+	_ = s.db.QueryRow(`SELECT COALESCE(MAX(sort), -1) + 1 FROM projects`).Scan(&sort)
+	if _, err := s.db.Exec(`INSERT INTO projects(id, name, color, sort) VALUES(?, ?, ?, ?)`,
+		id, name, strings.TrimSpace(color), sort); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// RenameProject changes a project's name.
+func (s *Store) RenameProject(id, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("project name is required")
+	}
+	res, err := s.db.Exec(`UPDATE projects SET name = ? WHERE id = ?`, name, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("project not found: %s", id)
+	}
+	return nil
+}
+
+// DeleteProject removes a project and its memberships (repos stay).
+func (s *Store) DeleteProject(id string) error {
+	if _, err := s.db.Exec(`DELETE FROM project_repos WHERE project_id = ?`, id); err != nil {
+		return err
+	}
+	res, err := s.db.Exec(`DELETE FROM projects WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("project not found: %s", id)
+	}
+	return nil
+}
+
+// ProjectRepos returns member paths in sort order.
+func (s *Store) ProjectRepos(id string) []string {
+	rows, err := s.db.Query(`SELECT path FROM project_repos WHERE project_id = ? ORDER BY sort ASC`, id)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// ListProjects returns all projects with members, in sort order.
+func (s *Store) ListProjects() []models.Project {
+	rows, err := s.db.Query(`SELECT id, name, color FROM projects ORDER BY sort ASC`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []models.Project
+	for rows.Next() {
+		var pr models.Project
+		if err := rows.Scan(&pr.ID, &pr.Name, &pr.Color); err != nil {
+			continue
+		}
+		pr.Repos = s.ProjectRepos(pr.ID)
+		if pr.Repos == nil {
+			pr.Repos = []string{}
+		}
+		out = append(out, pr)
+	}
+	if out == nil {
+		out = []models.Project{}
+	}
+	return out
+}
+
+// AddProjectRepo appends a repo to a project (idempotent).
+func (s *Store) AddProjectRepo(id, path string) error {
+	var exists int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM projects WHERE id = ?`, id).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
+		return fmt.Errorf("project not found: %s", id)
+	}
+	var sort int
+	_ = s.db.QueryRow(`SELECT COALESCE(MAX(sort), -1) + 1 FROM project_repos WHERE project_id = ?`, id).Scan(&sort)
+	_, err := s.db.Exec(`INSERT INTO project_repos(project_id, path, sort) VALUES(?, ?, ?)
+		ON CONFLICT(project_id, path) DO NOTHING`, id, path, sort)
+	return err
+}
+
+// RemoveProjectRepo drops a repo from a project (repo row stays).
+func (s *Store) RemoveProjectRepo(id, path string) error {
+	_, err := s.db.Exec(`DELETE FROM project_repos WHERE project_id = ? AND path = ?`, id, path)
+	return err
+}
+
+// SetProjectRepos replaces a project's membership order wholesale
+// (used by drag-and-drop reorder). Unknown paths are ignored.
+func (s *Store) SetProjectRepos(id string, paths []string) error {
+	var exists int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM projects WHERE id = ?`, id).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
+		return fmt.Errorf("project not found: %s", id)
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM project_repos WHERE project_id = ?`, id); err != nil {
+		return err
+	}
+	seen := make(map[string]bool)
+	sort := 0
+	for _, p := range paths {
+		p = strings.TrimSpace(p)
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		if _, err := tx.Exec(`INSERT INTO project_repos(project_id, path, sort) VALUES(?, ?, ?)`, id, p, sort); err != nil {
+			return err
+		}
+		sort++
+	}
+	return tx.Commit()
 }

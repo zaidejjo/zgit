@@ -10,6 +10,7 @@ import RemotesPage from "./pages/RemotesPage";
 import TagsPage from "./pages/TagsPage";
 import WorktreesPage from "./pages/WorktreesPage";
 import HistoryPage from "./pages/HistoryPage";
+import ProjectsPage from "./pages/ProjectsPage";
 import DashboardPage from "./pages/DashboardPage";
 import SettingsPage from "./pages/SettingsPage";
 import AIFocusPage from "./pages/AIFocusPage";
@@ -72,6 +73,12 @@ const worktreesRoute = createRoute({
   component: WorktreesPage,
 });
 
+const projectsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/projects",
+  component: ProjectsPage,
+});
+
 const historyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/history",
@@ -108,6 +115,7 @@ const routeTree = rootRoute.addChildren([
   worktreesRoute,
   historyRoute,
   dashboardRoute,
+  projectsRoute,
   settingsRoute,
   aiRoute,
 ]);
