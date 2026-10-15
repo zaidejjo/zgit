@@ -119,6 +119,7 @@ export interface RepoOverview {
   last_hash?: string;
   last_message?: string;
   last_time?: number;
+  commit_count?: number;
   favorite: boolean;
   error?: string;
 }

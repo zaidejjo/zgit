@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1599,6 +1600,23 @@ func (n *NativeExec) ListFiles(ctx context.Context) ([]string, error) {
 }
 
 // RevList returns commit hashes reachable from ref, up to count.
+// CommitCount returns the number of commits reachable from ref.
+func (n *NativeExec) CommitCount(ctx context.Context, ref string) (int, error) {
+	data, err := n.run(ctx, "rev-list", "--count", ref)
+	if err != nil {
+		var gitErr *GitError
+		if asGitErr(err, &gitErr) && gitErr.ExitCode == 128 {
+			return 0, nil // empty repo / unborn HEAD
+		}
+		return 0, err
+	}
+	n64, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return 0, fmt.Errorf("parse commit count: %w", err)
+	}
+	return n64, nil
+}
+
 func (n *NativeExec) RevList(ctx context.Context, ref string, count int) ([]string, error) {
 	args := []string{"rev-list"}
 	if count > 0 {

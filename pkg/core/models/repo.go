@@ -64,6 +64,7 @@ type RepoOverview struct {
 	LastHash    string `json:"last_hash,omitempty"`
 	LastMessage string `json:"last_message,omitempty"`
 	LastTime    int64  `json:"last_time,omitempty"`
+	CommitCount int    `json:"commit_count,omitempty"`
 	Favorite    bool   `json:"favorite"`
 	Error       string `json:"error,omitempty"`
 }

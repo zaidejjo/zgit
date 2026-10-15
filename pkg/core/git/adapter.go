@@ -106,6 +106,7 @@ type GitAdapter interface {
 	// Commit history
 	Log(ctx context.Context, opts LogOptions) ([]*models.Commit, error)
 	RevList(ctx context.Context, ref string, count int) ([]string, error)
+	CommitCount(ctx context.Context, ref string) (int, error)
 
 	// File history & blame
 	Blame(ctx context.Context, path string, opts models.BlameOptions) ([]*models.BlameLine, error)
