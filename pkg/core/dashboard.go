@@ -104,6 +104,9 @@ func (e *Engine) RepoOverview(repoPath string) *models.RepoOverview {
 	ov.IsClean = status.IsClean
 	ov.DirtyCount = len(status.Files)
 
+	if n, err := git.CommitCount(ctx, "HEAD"); err == nil {
+		ov.CommitCount = n
+	}
 	// Latest commit is best effort: empty repos have no HEAD yet.
 	if commits, err := git.Log(ctx, gitpkg.LogOptions{Count: 1}); err == nil && len(commits) > 0 {
 		ov.LastHash = commits[0].Hash

@@ -8,22 +8,41 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  FolderKanban, Plus, Trash2, FolderOpen, RefreshCw, X, Pencil, Check, GripVertical, Brush,
+  FolderKanban, Plus, Trash2, FolderOpen, RefreshCw, X, Pencil, Check, GripVertical,
+  Brush, GitBranch, GitCommitHorizontal, AlertTriangle,
 } from "lucide-react";
 import { useAppStore, type Project, type RepoOverview } from "@/store/app";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogClose,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 import EmptyState from "@/components/EmptyState";
 
 const asMemberId = (path: string) => `member::${path}`;
 const asPoolId = (path: string) => `pool::${path}`;
 const stripPrefix = (id: string) => id.replace(/^(member|pool)::/, "");
+
+/** 1234 -> "1.2k", 999 -> "999" */
+function fmtCount(n?: number): string {
+  if (!n) return "0";
+  if (n < 1000) return String(n);
+  const v = n / 1000;
+  return `${v >= 100 ? Math.round(v) : v.toFixed(1).replace(/\.0$/, "")}k`;
+}
+
+function timeAgo(unix?: number): string {
+  if (!unix) return "";
+  const s = Math.floor(Date.now() / 1000 - unix);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
 
 export default function ProjectsPage() {
   const {
@@ -60,6 +79,18 @@ export default function ProjectsPage() {
     [dashboard, memberSet],
   );
 
+  const memberStats = useMemo(() => {
+    let dirty = 0;
+    let commits = 0;
+    for (const p of active?.repos || []) {
+      const s = statusByPath.get(p);
+      if (!s || s.error) continue;
+      if (!s.is_clean) dirty++;
+      commits += s.commit_count || 0;
+    }
+    return { dirty, commits };
+  }, [active, statusByPath]);
+
   const handleDragStart = (e: DragStartEvent) => setActiveDrag(String(e.active.id));
 
   const handleDragEnd = async (e: DragEndEvent) => {
@@ -69,7 +100,6 @@ export default function ProjectsPage() {
     if (!over) return;
     const fromPath = stripPrefix(String(a.id));
 
-    // Reorder within members.
     if (String(a.id).startsWith("member::") && String(over.id).startsWith("member::")) {
       const order = active.repos.slice();
       const from = order.indexOf(fromPath);
@@ -79,7 +109,6 @@ export default function ProjectsPage() {
       }
       return;
     }
-    // Drop pool repo (or member) onto the project zone.
     if (String(over.id) === "project-zone" || String(over.id).startsWith("member::")) {
       if (!memberSet.has(fromPath)) {
         await addProjectRepo(active.id, fromPath);
@@ -102,11 +131,6 @@ export default function ProjectsPage() {
     setRenaming(false);
   };
 
-  const dirtyCount = (active?.repos || []).filter((p) => {
-    const s = statusByPath.get(p);
-    return s && !s.error && !s.is_clean;
-  }).length;
-
   return (
     <div className="h-full flex flex-col gap-3">
       <div className="flex items-center justify-between">
@@ -120,22 +144,26 @@ export default function ProjectsPage() {
 
       {projects.length === 0 ? (
         <div className="flex-1 min-h-0 flex gap-4">
-          <div className="w-64 shrink-0 flex flex-col gap-2">
-            <p className="text-xs text-muted-foreground px-1">
-              No projects yet. Name one below — then drag repositories into it.
-            </p>
-            <div className="flex gap-1.5">
-              <input
-                className="flex h-8 flex-1 min-w-0 rounded-md border border-input bg-background px-2.5 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                placeholder="New project... (Enter to create)"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-                autoFocus
-              />
-              <Button size="sm" className="h-8 px-2.5" onClick={handleCreate} disabled={!newName.trim()}>
-                <Plus className="w-4 h-4" />
-              </Button>
+          <div className="w-72 shrink-0 flex flex-col gap-2">
+            <div className="rounded-xl border border-dashed border-border/70 p-4 bg-card/30">
+              <p className="text-sm font-medium mb-1">Start your first project</p>
+              <p className="text-xs text-muted-foreground mb-3">
+                Name it below — then drag repositories into it.
+              </p>
+              <div className="flex gap-1.5">
+                <input
+                  className="flex h-9 flex-1 min-w-0 rounded-md border border-input bg-background px-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="e.g. Work, OSS, Demos"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                  autoFocus
+                />
+                <Button size="sm" className="h-9 px-3" onClick={handleCreate} disabled={!newName.trim()}>
+                  <Plus className="w-4 h-4 mr-1" />
+                  Create
+                </Button>
+              </div>
             </div>
           </div>
           <div className="flex-1 min-w-0">
@@ -155,15 +183,16 @@ export default function ProjectsPage() {
           onDragEnd={handleDragEnd}
         >
           <div className="flex gap-4 flex-1 min-h-0">
-            {/* Project list */}
-            <div className="w-64 shrink-0 flex flex-col gap-2 min-h-0">
+            {/* Project rail */}
+            <div className="w-72 shrink-0 flex flex-col gap-2 min-h-0">
               <ScrollArea className="flex-1 min-h-0">
-                <div className="space-y-1 pr-1">
+                <div className="space-y-1.5 pr-1">
                   {projects.map((p) => (
                     <ProjectRow
                       key={p.id}
                       project={p}
                       active={p.id === active?.id}
+                      statusByPath={statusByPath}
                       onSelect={() => useAppStore.setState({ activeProjectId: p.id })}
                     />
                   ))}
@@ -172,7 +201,7 @@ export default function ProjectsPage() {
               <div className="flex gap-1.5">
                 <input
                   className="flex h-8 flex-1 min-w-0 rounded-md border border-input bg-background px-2.5 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="New project... (Enter to create)"
+                  placeholder="New project... (Enter)"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleCreate()}
@@ -189,7 +218,8 @@ export default function ProjectsPage() {
                 <ProjectZone
                   project={active}
                   statusByPath={statusByPath}
-                  dirtyCount={dirtyCount}
+                  commits={memberStats.commits}
+                  dirtyCount={memberStats.dirty}
                   repoPath={repoPath}
                   renaming={renaming}
                   renameName={renameName}
@@ -198,11 +228,10 @@ export default function ProjectsPage() {
                   onCancelRename={() => setRenaming(false)}
                   onRename={handleRename}
                   onDelete={() => setShowDelete(true)}
-                  onFetch={() => fetchProject(active.id)}
                   onCleanup={() => setShowCleanup(true)}
+                  onFetch={() => fetchProject(active.id)}
                   onOpen={openRepo}
                   onRemove={(path) => removeProjectRepo(active.id, path)}
-                  onReorder={(order) => setProjectRepos(active.id, order)}
                 />
                 {/* Pool */}
                 <div className="w-64 shrink-0 hidden lg:flex flex-col min-h-0">
@@ -212,7 +241,7 @@ export default function ProjectsPage() {
                   <ScrollArea className="flex-1 min-h-0">
                     <div className="space-y-1 pr-1">
                       {pool.map((r) => (
-                        <PoolCard key={r.path} path={r.path} name={r.name} />
+                        <PoolCard key={r.path} path={r.path} name={r.name} commits={r.commit_count} />
                       ))}
                       {pool.length === 0 && (
                         <p className="text-xs text-muted-foreground">All repos are in this project.</p>
@@ -274,31 +303,60 @@ export default function ProjectsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Cleanup dialog */}
+      {active && (
+        <CleanupDialog
+          open={showCleanup}
+          onOpenChange={setShowCleanup}
+          projectId={active.id}
+          projectName={active.name}
+        />
+      )}
     </div>
   );
 }
 
-function ProjectRow({ project, active: isActive, onSelect }: {
-  project: Project; active: boolean; onSelect: () => void;
+function ProjectRow({ project, active: isActive, statusByPath, onSelect }: {
+  project: Project; active: boolean;
+  statusByPath: Map<string, RepoOverview>;
+  onSelect: () => void;
 }) {
+  let dirty = 0;
+  let commits = 0;
+  for (const p of project.repos) {
+    const s = statusByPath.get(p);
+    if (!s || s.error) continue;
+    if (!s.is_clean) dirty++;
+    commits += s.commit_count || 0;
+  }
   return (
     <button
       onClick={onSelect}
       className={cn(
-        "flex items-center gap-2 w-full px-3 py-2 rounded-lg text-left transition-colors",
-        isActive ? "bg-accent border border-border" : "hover:bg-accent/50",
+        "relative flex items-center gap-2.5 w-full pl-3 pr-2.5 py-2.5 rounded-xl text-left transition-all overflow-hidden",
+        isActive
+          ? "bg-accent border border-border shadow-sm"
+          : "hover:bg-accent/40 border border-transparent",
       )}
     >
       <span
-        className="w-2.5 h-2.5 rounded-full shrink-0"
-        style={{ backgroundColor: project.color || "var(--primary)" }}
+        className="absolute left-0 top-2 bottom-2 w-1 rounded-full"
+        style={{ backgroundColor: project.color || "var(--primary)", opacity: isActive ? 1 : 0.45 }}
       />
       <span className="flex-1 min-w-0">
-        <span className="block text-sm font-medium truncate">{project.name}</span>
-        <span className="block text-[11px] text-muted-foreground">
-          {project.repos.length} {project.repos.length === 1 ? "repo" : "repos"}
+        <span className="block text-sm font-semibold truncate leading-tight">{project.name}</span>
+        <span className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+          <span>{project.repos.length} {project.repos.length === 1 ? "repo" : "repos"}</span>
+          {dirty > 0 && <span className="text-yellow-500">· {dirty} dirty</span>}
+          {commits > 0 && (
+            <span className="flex items-center gap-0.5">
+              · <GitCommitHorizontal className="w-3 h-3" />{fmtCount(commits)}
+            </span>
+          )}
         </span>
       </span>
+      {isActive && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
     </button>
   );
 }
@@ -306,6 +364,7 @@ function ProjectRow({ project, active: isActive, onSelect }: {
 function ProjectZone(props: {
   project: Project;
   statusByPath: Map<string, RepoOverview>;
+  commits: number;
   dirtyCount: number;
   repoPath: string;
   renaming: boolean;
@@ -315,11 +374,10 @@ function ProjectZone(props: {
   onCancelRename: () => void;
   onRename: () => void;
   onDelete: () => void;
-  onFetch: () => void;
   onCleanup: () => void;
+  onFetch: () => void;
   onOpen: (path: string) => void;
   onRemove: (path: string) => void;
-  onReorder: (order: string[]) => void;
 }) {
   const { project, statusByPath } = props;
   const { setNodeRef, isOver } = useDroppable({ id: "project-zone" });
@@ -328,63 +386,92 @@ function ProjectZone(props: {
     <div
       ref={setNodeRef}
       className={cn(
-        "flex-1 min-w-0 border rounded-lg flex flex-col min-h-0 transition-colors",
-        isOver && "border-primary/60 bg-primary/5",
+        "flex-1 min-w-0 rounded-xl border flex flex-col min-h-0 transition-colors overflow-hidden",
+        isOver ? "border-primary/60 bg-primary/5" : "border-border/50 bg-card/30",
       )}
     >
-      <div className="flex items-center gap-2 px-4 py-3 border-b">
-        {props.renaming ? (
-          <input
-            className="h-7 rounded-md border border-input bg-background px-2 text-sm flex-1 min-w-0"
-            value={props.renameName}
-            onChange={(e) => props.setRenameName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") props.onRename();
-              if (e.key === "Escape") props.onCancelRename();
-            }}
-            autoFocus
-            onBlur={props.onRename}
+      {/* Hero */}
+      <div className="px-4 pt-4 pb-3 border-b border-border/40 bg-gradient-to-b from-accent/40 to-transparent">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span
+            className="w-4 h-4 rounded-md shrink-0 shadow-sm"
+            style={{ backgroundColor: project.color || "var(--primary)" }}
           />
-        ) : (
-          <h3 className="font-semibold text-sm truncate flex-1" title={project.name}>
-            {project.name}
-          </h3>
-        )}
-        {props.dirtyCount > 0 && (
-          <Badge variant="outline" className="text-[10px] text-yellow-500 shrink-0">
-            {props.dirtyCount} dirty
+          {props.renaming ? (
+            <input
+              className="h-8 rounded-md border border-input bg-background px-2.5 text-base font-bold flex-1 min-w-0"
+              value={props.renameName}
+              onChange={(e) => props.setRenameName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") props.onRename();
+                if (e.key === "Escape") props.onCancelRename();
+              }}
+              autoFocus
+              onBlur={props.onRename}
+            />
+          ) : (
+            <h3 className="font-bold text-base truncate flex-1" title={project.name}>
+              {project.name}
+            </h3>
+          )}
+          <div className="flex gap-1 shrink-0">
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={props.onCleanup} title="Preview and delete merged branches">
+              <Brush className="w-3.5 h-3.5 mr-1" />
+              Cleanup
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={props.onFetch} title="Fetch all member repos">
+              <RefreshCw className="w-3.5 h-3.5 mr-1" />
+              Fetch
+            </Button>
+            {!props.renaming && (
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={props.onStartRename} title="Rename project">
+                <Pencil className="w-3.5 h-3.5" />
+              </Button>
+            )}
+            {props.renaming && (
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={props.onRename} title="Save name">
+                <Check className="w-3.5 h-3.5" />
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={props.onDelete} title="Delete project">
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
+        {/* Stat chips */}
+        <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
+          <Badge variant="secondary" className="text-[11px]">
+            {project.repos.length} {project.repos.length === 1 ? "repo" : "repos"}
           </Badge>
-        )}
-        <div className="flex gap-1 shrink-0">
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={props.onFetch} title="Fetch all member repos">
-            <RefreshCw className="w-3.5 h-3.5 mr-1" />
-            Fetch
-          </Button>
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={props.onCleanup} title="Preview and delete merged branches">
-            <Brush className="w-3.5 h-3.5 mr-1" />
-            Cleanup
-          </Button>
-          {!props.renaming && (
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={props.onStartRename} title="Rename project">
-              <Pencil className="w-3.5 h-3.5" />
-            </Button>
+          {props.commits > 0 && (
+            <Badge variant="outline" className="text-[11px] font-mono" title="Total commits across members">
+              <GitCommitHorizontal className="w-3 h-3 mr-1" />
+              {fmtCount(props.commits)}
+            </Badge>
           )}
-          {props.renaming && (
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={props.onRename} title="Save name">
-              <Check className="w-3.5 h-3.5" />
-            </Button>
+          {props.dirtyCount > 0 ? (
+            <Badge variant="outline" className="text-[11px] text-yellow-500 border-yellow-500/30">
+              {props.dirtyCount} dirty
+            </Badge>
+          ) : (
+            project.repos.length > 0 && (
+              <Badge variant="outline" className="text-[11px] text-green-500 border-green-500/30">
+                all clean
+              </Badge>
+            )
           )}
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={props.onDelete} title="Delete project">
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
         </div>
       </div>
       <ScrollArea className="flex-1 min-h-0">
         <div className="p-2 space-y-1">
           {project.repos.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-8">
-              Drag repositories here to add them.
-            </p>
+            <div className="rounded-lg border border-dashed border-border/60 px-4 py-10 text-center">
+              <FolderOpen className="w-8 h-8 mx-auto mb-2 text-muted-foreground/50" />
+              <p className="text-sm font-medium">Empty project</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Drag repositories here from the list on the right.
+              </p>
+            </div>
           ) : (
             <SortableContext items={project.repos.map(asMemberId)} strategy={verticalListSortingStrategy}>
               {project.repos.map((path) => (
@@ -414,37 +501,63 @@ function MemberRow({ path, status, current, onOpen, onRemove }: {
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: asMemberId(path) });
   const name = path.split("/").pop() || path;
+  const dead = !status || !!status.error;
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
+      onClick={() => { if (!current && !dead) onOpen(); }}
       className={cn(
-        "flex items-center gap-2 px-2.5 py-2 rounded-lg border border-transparent transition-colors",
-        isDragging ? "bg-accent border-border opacity-70" : "hover:bg-accent/40",
-        current && "border-primary/40 bg-primary/5",
+        "group flex items-center gap-2.5 px-2.5 py-2 rounded-lg border transition-all",
+        isDragging
+          ? "bg-accent border-border opacity-70 shadow-lg"
+          : current
+            ? "border-primary/40 bg-primary/5"
+            : "border-transparent hover:border-border/60 hover:bg-accent/40 cursor-pointer",
       )}
+      title={dead ? `${path} (unreachable)` : path}
     >
-      <span {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground shrink-0 p-0.5" title="Drag to reorder">
+      <span {...attributes} {...listeners}
+        className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground shrink-0 p-0.5"
+        title="Drag to reorder"
+        onClick={(e) => e.stopPropagation()}
+      >
         <GripVertical className="w-3.5 h-3.5" />
       </span>
       <span className={cn(
         "w-2 h-2 rounded-full shrink-0",
-        !status || status.error ? "bg-gray-500" : status.is_clean ? "bg-green-500" : "bg-yellow-500",
+        dead ? "bg-gray-500" : status.is_clean ? "bg-green-500" : "bg-yellow-500",
       )} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate" title={path}>{name}</p>
-        <p className="text-[11px] text-muted-foreground truncate font-mono">
-          {status && !status.error ? status.branch || "HEAD" : path}
+        <p className="text-sm font-medium truncate leading-tight">
+          {name}
+          {current && <span className="ml-1.5 text-[10px] text-primary font-semibold">OPEN</span>}
+        </p>
+        <p className="text-[11px] text-muted-foreground truncate font-mono mt-0.5">
+          {dead ? "unreachable" : (
+            <>
+              {status.branch || "HEAD"}
+              {typeof status.commit_count === "number" && status.commit_count > 0 && (
+                <span> · {fmtCount(status.commit_count)} commits</span>
+              )}
+              {status.last_message && <span> · {status.last_message}</span>}
+            </>
+          )}
         </p>
       </div>
-      {!current && (
-        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs shrink-0" onClick={onOpen}>
-          <FolderOpen className="w-3 h-3 mr-1" />
-          Open
-        </Button>
+      {!dead && (status.ahead > 0 || status.behind > 0) && (
+        <span className="text-[11px] font-mono shrink-0 text-muted-foreground">
+          {status.ahead > 0 && <span className="text-green-500">↑{status.ahead}</span>}
+          {status.behind > 0 && <span className="text-red-500">↓{status.behind}</span>}
+        </span>
+      )}
+      {!current && !dead && (
+        <span className="text-[11px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 hidden sm:inline">
+          open →
+        </span>
       )}
       <button
-        onClick={onRemove}
+        onClick={(e) => { e.stopPropagation(); onRemove(); }}
         className="p-1 rounded text-muted-foreground/40 hover:text-destructive shrink-0"
         title="Remove from project"
       >
@@ -454,7 +567,7 @@ function MemberRow({ path, status, current, onOpen, onRemove }: {
   );
 }
 
-function PoolCard({ path, name }: { path: string; name: string }) {
+function PoolCard({ path, name, commits }: { path: string; name: string; commits?: number }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: asPoolId(path) });
   return (
     <div
@@ -463,13 +576,16 @@ function PoolCard({ path, name }: { path: string; name: string }) {
       {...listeners}
       style={transform ? { transform: CSS.Translate.toString(transform) } : undefined}
       className={cn(
-        "px-3 py-2 rounded-lg border border-border/40 cursor-grab active:cursor-grabbing transition-colors hover:bg-accent/40",
+        "px-3 py-2 rounded-lg border border-border/40 cursor-grab active:cursor-grabbing transition-colors hover:border-primary/40 hover:bg-accent/30",
         isDragging && "opacity-50",
       )}
       title={path}
     >
       <p className="text-xs font-medium truncate">{name}</p>
-      <p className="text-[10px] text-muted-foreground truncate font-mono">{path}</p>
+      <p className="text-[10px] text-muted-foreground truncate font-mono mt-0.5">
+        {path}
+        {typeof commits === "number" && commits > 0 && ` · ${fmtCount(commits)} commits`}
+      </p>
     </div>
   );
 }
