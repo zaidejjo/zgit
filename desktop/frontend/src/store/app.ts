@@ -566,6 +566,8 @@ interface AppState {
   selectedPRDetail: PullRequestDetail | null;
   // Issue detail
   selectedIssueDetail: Issue | null;
+  // Detail cache: number -> {issue, fetchedAt}; 60s TTL, stale-while-revalidate.
+  issueDetailCache: Record<number, { issue: Issue; at: number }>;
   // CI checks per PR number
   prChecks: Record<number, PRChecks>;
 
@@ -676,7 +678,7 @@ interface AppState {
   fetchPRChecks: (number: number) => Promise<void>;
   createIssue: (title: string, body: string) => Promise<Issue | null>;
   closeIssue: (number: number) => Promise<boolean>;
-  fetchIssues: () => Promise<void>;
+  fetchIssues: (state?: string) => Promise<void>;
   fetchRepository: () => Promise<void>;
   checkGitHubAuth: () => Promise<void>;
   authenticateGitHub: (token: string) => Promise<boolean>;
@@ -881,6 +883,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentBranch: "",
   selectedPRDetail: null,
   selectedIssueDetail: null,
+  issueDetailCache: {},
   prChecks: {},
   remotes: [],
   tags: [],
@@ -1418,13 +1421,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  fetchIssues: async () => {
+  fetchIssues: async (state = "open") => {
     const backend = getBackend();
     if (!backend) return;
     set((s) => ({ loading: { ...s.loading, issues: true } }));
     try {
-      const issues = await backend.GetIssues();
-      set({ issues, loading: { ...get().loading, issues: false } });
+      const issues = await backend.GetIssues(state);
+      set({ issues: issues || [], loading: { ...get().loading, issues: false } });
     } catch (e: any) {
       set({ error: e.message || "Failed to fetch issues", loading: { ...get().loading, issues: false } });
     }
@@ -1433,12 +1436,32 @@ export const useAppStore = create<AppState>((set, get) => ({
   fetchIssueDetail: async (number) => {
     const backend = getBackend();
     if (!backend) return;
-    set((s) => ({ loading: { ...s.loading, issueDetail: true }, error: null }));
+    // Stale-while-revalidate: show cached instantly, refresh in background.
+    const cached = get().issueDetailCache[number];
+    const fresh = cached && Date.now() - cached.at < 60000;
+    if (fresh) {
+      set({ selectedIssueDetail: cached.issue });
+      return;
+    }
+    if (cached) {
+      set({ selectedIssueDetail: cached.issue });
+    } else {
+      set((s) => ({ loading: { ...s.loading, issueDetail: true }, error: null }));
+    }
     try {
       const detail = await backend.GetIssueDetail(number);
-      set({ selectedIssueDetail: detail, loading: { ...get().loading, issueDetail: false } });
+      set((s) => ({
+        selectedIssueDetail: detail,
+        issueDetailCache: { ...s.issueDetailCache, [number]: { issue: detail, at: Date.now() } },
+        loading: { ...get().loading, issueDetail: false },
+      }));
     } catch (e: any) {
-      set({ error: e.message || "Failed to fetch issue detail", loading: { ...get().loading, issueDetail: false } });
+      // Keep stale content visible on refresh failure; only toast when empty.
+      if (!cached) {
+        set({ error: e.message || "Failed to fetch issue detail", loading: { ...get().loading, issueDetail: false } });
+      } else {
+        set((s) => ({ loading: { ...s.loading, issueDetail: false } }));
+      }
     }
   },
 
@@ -1450,6 +1473,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const issue = await backend.CreateIssue(title, body);
       await get().fetchIssues();
+      if (issue) {
+        get().setSuccessMessage(`Issue #${issue.number} created`);
+      }
       return issue;
     } catch (e: any) {
       set({ error: e.message || "Failed to create issue" });
@@ -1463,7 +1489,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       await backend.CloseIssue(number);
       await get().fetchIssues();
-      set({ selectedIssueDetail: null });
+      set((s) => {
+        const cache = { ...s.issueDetailCache };
+        delete cache[number];
+        return { selectedIssueDetail: null, issueDetailCache: cache };
+      });
+      get().setSuccessMessage(`Issue #${number} closed`);
       return true;
     } catch (e: any) {
       set({ error: e.message || "Failed to close issue" });
