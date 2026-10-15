@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor,
   closestCenter, useDroppable, useDraggable, useSensor, useSensors,
@@ -461,6 +461,20 @@ function ProjectZone(props: {
 }) {
   const { project, statusByPath } = props;
   const { setNodeRef, isOver } = useDroppable({ id: "project-zone" });
+  const [colorOpen, setColorOpen] = useState(false);
+  const colorRef = useRef<HTMLDivElement>(null);
+  const { setProjectColor } = useAppStore();
+
+  useEffect(() => {
+    if (!colorOpen) return;
+    const close = (e: MouseEvent) => {
+      if (colorRef.current && !colorRef.current.contains(e.target as Node)) {
+        setColorOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [colorOpen]);
 
   return (
     <div
@@ -473,10 +487,33 @@ function ProjectZone(props: {
       {/* Hero */}
       <div className="px-4 pt-4 pb-3 border-b border-border/40 bg-gradient-to-b from-accent/40 to-transparent">
         <div className="flex items-center gap-2.5 min-w-0">
-          <span
-            className="w-4 h-4 rounded-md shrink-0 shadow-sm"
-            style={{ backgroundColor: project.color || "var(--primary)" }}
-          />
+          <div className="relative shrink-0" ref={colorRef}>
+            <button
+              onClick={() => setColorOpen((o) => !o)}
+              title="Change project color"
+              className="block w-4 h-4 rounded-md shadow-sm transition-transform hover:scale-125"
+              style={{ backgroundColor: project.color || "var(--primary)" }}
+            />
+            {colorOpen && (
+              <div className="absolute left-0 top-6 z-30 flex items-center gap-1.5 rounded-xl border border-border bg-popover p-2 shadow-xl">
+                {PROJECT_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => { setProjectColor(project.id, c); setColorOpen(false); }}
+                    title={c}
+                    className={cn(
+                      "w-6 h-6 rounded-full transition-all hover:scale-110",
+                      (project.color || PROJECT_COLORS[0]) === c && "ring-2 ring-offset-2 ring-offset-popover",
+                    )}
+                    style={{
+                      backgroundColor: c,
+                      ...((project.color || PROJECT_COLORS[0]) === c ? { ["--tw-ring-color" as string]: c } : {}),
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
           {props.renaming ? (
             <input
               className="h-8 rounded-md border border-input bg-background px-2.5 text-base font-bold flex-1 min-w-0"

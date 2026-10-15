@@ -71,6 +71,8 @@ export function DeleteBranch(arg1:string,arg2:boolean):Promise<void>;
 
 export function DeleteProject(arg1:string):Promise<void>;
 
+export function SetProjectColor(arg1:string,arg2:string):Promise<void>;
+
 export function DeleteProviderAIConfig(arg1:string):Promise<void>;
 
 export function DeleteRepoBranch(arg1:string,arg2:string):Promise<void>;

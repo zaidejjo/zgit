@@ -204,6 +204,14 @@ func (e *Engine) RenameProject(id, name string) error {
 	return e.Store.RenameProject(id, name)
 }
 
+// SetProjectColor changes a project's accent color.
+func (e *Engine) SetProjectColor(id, color string) error {
+	if e.Store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+	return e.Store.SetProjectColor(id, color)
+}
+
 // DeleteProject removes a project (member repos stay in the app).
 func (e *Engine) DeleteProject(id string) error {
 	if e.Store == nil {

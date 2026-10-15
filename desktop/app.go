@@ -747,6 +747,11 @@ func (a *App) RenameProject(id, name string) error {
 	return a.engine.RenameProject(id, name)
 }
 
+// SetProjectColor changes a project's accent color.
+func (a *App) SetProjectColor(id, color string) error {
+	return a.engine.SetProjectColor(id, color)
+}
+
 // DeleteProject removes a project (member repos stay in the app).
 func (a *App) DeleteProject(id string) error {
 	return a.engine.DeleteProject(id)
