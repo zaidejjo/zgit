@@ -119,12 +119,34 @@ export default function ProjectsPage() {
       </div>
 
       {projects.length === 0 ? (
-        <EmptyState
-          icon={<FolderKanban className="w-16 h-16" />}
-          title="No projects yet"
-          description="Group repositories into projects and work with them together."
-          className="flex-1"
-        />
+        <div className="flex-1 min-h-0 flex gap-4">
+          <div className="w-64 shrink-0 flex flex-col gap-2">
+            <p className="text-xs text-muted-foreground px-1">
+              No projects yet. Name one below — then drag repositories into it.
+            </p>
+            <div className="flex gap-1.5">
+              <input
+                className="flex h-8 flex-1 min-w-0 rounded-md border border-input bg-background px-2.5 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="New project... (Enter to create)"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                autoFocus
+              />
+              <Button size="sm" className="h-8 px-2.5" onClick={handleCreate} disabled={!newName.trim()}>
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <EmptyState
+              icon={<FolderKanban className="w-16 h-16" />}
+              title="Group repos into projects"
+              description="Bulk-fetch, cleanup branches, and open members without switching context."
+              className="h-full"
+            />
+          </div>
+        </div>
       ) : (
         <DndContext
           sensors={sensors}
@@ -150,7 +172,7 @@ export default function ProjectsPage() {
               <div className="flex gap-1.5">
                 <input
                   className="flex h-8 flex-1 min-w-0 rounded-md border border-input bg-background px-2.5 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="New project..."
+                  placeholder="New project... (Enter to create)"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleCreate()}
