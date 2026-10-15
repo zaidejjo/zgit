@@ -5,6 +5,8 @@ import {models} from '../models';
 import {main} from '../models';
 import {embed} from '../models';
 
+export function AddProjectRepo(arg1:string,arg2:string):Promise<void>;
+
 export function AddRemote(arg1:string,arg2:string):Promise<void>;
 
 export function AddWorktree(arg1:string,arg2:string,arg3:boolean,arg4:boolean,arg5:boolean):Promise<void>;
@@ -59,19 +61,27 @@ export function CreateBranch(arg1:string):Promise<void>;
 
 export function CreateIssue(arg1:string,arg2:string):Promise<models.Issue>;
 
+export function CreateProject(arg1:string,arg2:string):Promise<string>;
+
 export function CreatePullRequest(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<models.PullRequestSummary>;
 
 export function CurrentBranch():Promise<string>;
 
 export function DeleteBranch(arg1:string,arg2:boolean):Promise<void>;
 
+export function DeleteProject(arg1:string):Promise<void>;
+
 export function DeleteProviderAIConfig(arg1:string):Promise<void>;
+
+export function DeleteRepoBranch(arg1:string,arg2:string):Promise<void>;
 
 export function DiscardAllFiles():Promise<void>;
 
 export function DiscardFile(arg1:string):Promise<void>;
 
 export function FetchAllRepos():Promise<number>;
+
+export function FetchProject(arg1:string):Promise<number>;
 
 export function FetchProviderModels(arg1:string,arg2:string):Promise<Array<string>>;
 
@@ -112,6 +122,10 @@ export function GetLog(arg1:number):Promise<Array<models.Commit>>;
 export function GetMergeConflictDetail(arg1:string):Promise<models.MergeConflictDetail>;
 
 export function GetPRChecks(arg1:number):Promise<main.PRChecks>;
+
+export function GetProjectCleanup(arg1:string,arg2:string):Promise<main.ProjectCleanup>;
+
+export function GetProjects():Promise<Array<models.Project>>;
 
 export function GetPullRequestDetail(arg1:number):Promise<models.PullRequestDetail>;
 
@@ -183,9 +197,15 @@ export function ReRunWorkflow(arg1:number):Promise<void>;
 
 export function RebaseSequence(arg1:string,arg2:string):Promise<models.RebaseResult>;
 
+export function RemoveProjectRepo(arg1:string,arg2:string):Promise<void>;
+
 export function RemoveRemote(arg1:string):Promise<void>;
 
+export function RemoveRepo(arg1:string):Promise<void>;
+
 export function RemoveWorktree(arg1:string,arg2:boolean):Promise<void>;
+
+export function RenameProject(arg1:string,arg2:string):Promise<void>;
 
 export function RenameRemote(arg1:string,arg2:string):Promise<void>;
 
@@ -218,6 +238,8 @@ export function SessionSetMode(arg1:string,arg2:string):Promise<void>;
 export function SessionSwitch(arg1:string):Promise<ai.SessionSummary>;
 
 export function SetAIConfig(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function SetProjectRepos(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function SetProviderAIConfig(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 

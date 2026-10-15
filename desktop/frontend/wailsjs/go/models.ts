@@ -253,6 +253,38 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class ProjectCleanup {
+	    candidates: models.CleanupCandidate[];
+	    withheld: models.Protected[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ProjectCleanup(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.candidates = this.convertValues(source["candidates"], models.CleanupCandidate);
+	        this.withheld = this.convertValues(source["withheld"], models.Protected);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
 }
 
@@ -423,6 +455,26 @@ export namespace models {
 	        this.state = source["state"];
 	        this.conclusion = source["conclusion"];
 	        this.details_url = source["details_url"];
+	    }
+	}
+	export class CleanupCandidate {
+	    repo_path: string;
+	    repo_name: string;
+	    branch: string;
+	    last_message?: string;
+	    last_time?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CleanupCandidate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repo_path = source["repo_path"];
+	        this.repo_name = source["repo_name"];
+	        this.branch = source["branch"];
+	        this.last_message = source["last_message"];
+	        this.last_time = source["last_time"];
 	    }
 	}
 	export class Commit {
@@ -788,6 +840,42 @@ export namespace models {
 		    }
 		    return a;
 		}
+	}
+	export class Project {
+	    id: string;
+	    name: string;
+	    color?: string;
+	    repos: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Project(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.color = source["color"];
+	        this.repos = source["repos"];
+	    }
+	}
+	export class Protected {
+	    repo_path: string;
+	    repo_name: string;
+	    branch: string;
+	    reason: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Protected(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repo_path = source["repo_path"];
+	        this.repo_name = source["repo_name"];
+	        this.branch = source["branch"];
+	        this.reason = source["reason"];
+	    }
 	}
 	
 	export class Review {
