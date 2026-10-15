@@ -107,6 +107,22 @@ export interface Worktree {
   prunable: boolean;
 }
 
+export interface RepoOverview {
+  path: string;
+  name: string;
+  branch?: string;
+  upstream?: string;
+  ahead: number;
+  behind: number;
+  is_clean: boolean;
+  dirty_count: number;
+  last_hash?: string;
+  last_message?: string;
+  last_time?: number;
+  favorite: boolean;
+  error?: string;
+}
+
 export interface BlameLine {
   line_no: number;
   orig_line_no: number;
@@ -580,6 +596,9 @@ interface AppState {
   // Worktrees
   worktrees: Worktree[];
 
+  // Repository dashboard
+  dashboard: RepoOverview[];
+
   // File history & blame
   blame: BlameLine[];
   fileHistory: Commit[];
@@ -751,6 +770,12 @@ interface AppState {
   unlockWorktree: (path: string) => Promise<void>;
   pruneWorktrees: () => Promise<void>;
 
+  // Repository dashboard
+  fetchDashboard: () => Promise<void>;
+  toggleFavorite: (path: string) => Promise<void>;
+  fetchAllRepos: () => Promise<void>;
+  pruneDeadRepos: () => Promise<void>;
+
   // File history & blame
   fetchBlame: (path: string, ref?: string, lines?: string) => Promise<void>;
   fetchFileHistory: (path: string, opts?: { branch?: string; follow?: boolean; pickaxe?: string; pickaxeRe?: string; count?: number }) => Promise<void>;
@@ -888,6 +913,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   remotes: [],
   tags: [],
   worktrees: [],
+  dashboard: [],
   blame: [],
   fileHistory: [],
   historyPath: "",
@@ -1749,6 +1775,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         stashes: [],
         remotes: [],
         worktrees: [],
+        dashboard: [],
         blame: [],
         fileHistory: [],
         historyPath: "",
@@ -2064,6 +2091,60 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().setSuccessMessage("Pruned worktrees");
     } catch (e: any) {
       set({ error: e.message || "Failed to prune worktrees" });
+    }
+  },
+
+  // Repository dashboard
+  fetchDashboard: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, dashboard: true } }));
+    try {
+      const dashboard = await backend.GetRepoDashboard();
+      set({ dashboard: dashboard || [], loading: { ...get().loading, dashboard: false } });
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch dashboard", loading: { ...get().loading, dashboard: false } });
+    }
+  },
+
+  toggleFavorite: async (path) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.ToggleFavoriteRepo(path);
+      await get().fetchDashboard();
+    } catch (e: any) {
+      set({ error: e.message || "Failed to toggle favorite" });
+    }
+  },
+
+  fetchAllRepos: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    set((s) => ({ loading: { ...s.loading, dashboardFetch: true }, error: null }));
+    try {
+      const count = await backend.FetchAllRepos();
+      await get().fetchDashboard();
+      get().setSuccessMessage(`Fetched ${count} ${count === 1 ? "repo" : "repos"}`);
+    } catch (e: any) {
+      set({ error: e.message || "Failed to fetch all repos" });
+      await get().fetchDashboard();
+    } finally {
+      set((s) => ({ loading: { ...s.loading, dashboardFetch: false } }));
+    }
+  },
+
+  pruneDeadRepos: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const removed = await backend.PruneDeadRepos();
+      await get().fetchDashboard();
+      if (removed > 0) {
+        get().setSuccessMessage(`Pruned ${removed} dead ${removed === 1 ? "entry" : "entries"}`);
+      }
+    } catch (e: any) {
+      set({ error: e.message || "Failed to prune dead repos" });
     }
   },
 

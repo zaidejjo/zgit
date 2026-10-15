@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from "@tanstack/react-router";
 import {
   GitCommitHorizontal, History, GitBranch, GitPullRequest,
   CircleDot, Play, Globe, Tag, Settings, FolderOpen, Folder,
-  X, Sparkles, Command, Search, ChevronDown, GitFork, Palette, Brain,
+  X, Sparkles, Command, Search, ChevronDown, GitFork, Palette, Brain, LayoutDashboard,
 } from "lucide-react";
 import { useAppStore, type Theme, THEMES } from "@/store/app";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { EventsOn } from "../wailsjs/runtime";
 import CommandPalette from "@/components/CommandPalette";
 
 const navItems = [
+  { id: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { id: "status",   label: "Status",   Icon: GitCommitHorizontal },
   { id: "log",      label: "Log",      Icon: History },
   { id: "branches", label: "Branches", Icon: GitBranch },
@@ -169,7 +170,7 @@ export default function AppLayout() {
 
   // Page title lookup
   const pageTitleMap: Record<string, string> = {
-    status: "Status", log: "Log", branches: "Branches", worktrees: "Worktrees", history: "History",
+    status: "Status", log: "Log", branches: "Branches", worktrees: "Worktrees", history: "History", dashboard: "Dashboard",
     "pull-requests": "PRs", issues: "Issues", actions: "Actions",
     ai: "AI Chat", remotes: "Remotes", tags: "Tags", settings: "Settings",
   };

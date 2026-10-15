@@ -198,8 +198,8 @@ export function GetIssueDetail(arg1) {
   return window['go']['main']['App']['GetIssueDetail'](arg1);
 }
 
-export function GetIssues() {
-  return window['go']['main']['App']['GetIssues']();
+export function GetIssues(arg1) {
+  return window['go']['main']['App']['GetIssues'](arg1);
 }
 
 export function GetLog(arg1) {
@@ -228,6 +228,10 @@ export function GetReflog(arg1) {
 
 export function GetRemotes() {
   return window['go']['main']['App']['GetRemotes']();
+}
+
+export function GetRepoFiles() {
+  return window['go']['main']['App']['GetRepoFiles']();
 }
 
 export function GetRepoName() {
