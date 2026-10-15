@@ -600,6 +600,7 @@ interface AppState {
   workflowRuns: WorkflowRun[];
   selectedRunJobs: Job[];
   selectedJobLogs: string;
+  jobLogsError: string;
   stashes: StashEntry[];
 
   // Repo management
@@ -998,6 +999,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   workflowRuns: [],
   selectedRunJobs: [],
   selectedJobLogs: "",
+  jobLogsError: "",
   stashes: [],
   repoPath: "",
   recentRepos: [],
@@ -1743,7 +1745,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!backend) return;
     try {
       const jobs = (await backend.ListWorkflowJobs(runID)) || [];
-      set({ selectedRunJobs: jobs, selectedJobLogs: "" });
+      set({ selectedRunJobs: jobs, selectedJobLogs: "", jobLogsError: "" });
     } catch (e: any) {
       set({ error: e.message || "Failed to fetch jobs" });
     }
@@ -1752,15 +1754,26 @@ export const useAppStore = create<AppState>((set, get) => ({
   fetchJobLogs: async (jobID) => {
     const backend = getBackend();
     if (!backend) return;
+    set({ jobLogsError: "" });
     try {
       const logs = (await backend.GetWorkflowJobLogs(jobID)) || "";
+      // Belt-and-braces: never render blob-storage XML as a "log".
+      if (logs.trimStart().startsWith("<?xml") || logs.includes("<Code>BlobNotFound</Code>")) {
+        set({ selectedJobLogs: "", jobLogsError: "Logs are not available for this job yet — it may still be running, or the archive expired." });
+        return;
+      }
       set({ selectedJobLogs: logs });
     } catch (e: any) {
-      set({ error: e.message || "Failed to fetch job logs" });
+      const msg: string = e.message || "Failed to fetch job logs";
+      if (/not available/i.test(msg)) {
+        set({ selectedJobLogs: "", jobLogsError: msg });
+      } else {
+        set({ error: msg });
+      }
     }
   },
 
-  clearJobLogs: () => set({ selectedRunJobs: [], selectedJobLogs: "" }),
+  clearJobLogs: () => set({ selectedRunJobs: [], selectedJobLogs: "", jobLogsError: "" }),
 
   setLoginDialogOpen: (open) => set({ loginDialogOpen: open }),
 

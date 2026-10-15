@@ -144,11 +144,17 @@ export default function ProjectsPage() {
 
       {projects.length === 0 ? (
         <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4">
-          <div className="w-full md:w-72 shrink-0 flex flex-col gap-2">
-            <div className="rounded-xl border border-dashed border-border/70 p-4 bg-card/30">
-              <p className="text-sm font-medium mb-1">Start your first project</p>
-              <p className="text-xs text-muted-foreground mb-3">
-                Name it below — then drag repositories into it.
+          <div className="w-full md:w-80 shrink-0 flex flex-col gap-3">
+            <div className="rounded-xl border border-border/50 bg-gradient-to-b from-accent/50 to-transparent p-5">
+              <div className="flex items-center gap-2.5 mb-1">
+                <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 text-primary">
+                  <FolderKanban className="w-4 h-4" />
+                </span>
+                <p className="text-sm font-semibold">Start your first project</p>
+              </div>
+              <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+                Group related repositories — work, OSS, demos — then
+                bulk-fetch and clean them up together.
               </p>
               <div className="flex gap-1.5">
                 <input
@@ -165,8 +171,20 @@ export default function ProjectsPage() {
                 </Button>
               </div>
             </div>
+            <ol className="rounded-xl border border-border/50 p-4 space-y-3 text-xs text-muted-foreground">
+              {[
+                ["1", "Create a project", "One for each context you work in."],
+                ["2", "Drag repos into it", "Or add them from the pool list."],
+                ["3", "Fetch & clean together", "One click across all members."],
+              ].map(([n, title, sub]) => (
+                <li key={n} className="flex gap-2.5">
+                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-accent text-[10px] font-semibold text-foreground shrink-0">{n}</span>
+                  <span><span className="font-medium text-foreground">{title}</span><br />{sub}</span>
+                </li>
+              ))}
+            </ol>
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 rounded-xl border border-dashed border-border/60 bg-card/20">
             <EmptyState
               icon={<FolderKanban className="w-16 h-16" />}
               title="Group repos into projects"

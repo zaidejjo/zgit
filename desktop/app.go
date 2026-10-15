@@ -687,10 +687,10 @@ func (a *App) GetRepoDashboard(force bool) ([]*models.RepoOverview, error) {
 	var wg sync.WaitGroup
 	for i, p := range paths {
 		wg.Add(1)
-		go func() {
+		go func(i int, p string) {
 			defer wg.Done()
 			out[i] = a.engine.RepoOverview(p, force)
-		}()
+		}(i, p)
 	}
 	wg.Wait()
 	return out, nil

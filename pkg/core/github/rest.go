@@ -404,7 +404,33 @@ func (c *RESTClient) GetWorkflowJobLogs(ctx context.Context, owner, repo string,
 	if err != nil {
 		return "", fmt.Errorf("read logs: %w", err)
 	}
+	// GitHub serves logs from expiring blob storage. For still-running
+	// jobs or expired archives the redirect URL answers 404 with an
+	// Azure-style XML error body — never show that raw XML in the UI.
+	if logResp.StatusCode < 200 || logResp.StatusCode >= 300 {
+		return "", fmt.Errorf("job logs are not available (HTTP %d): %s",
+			logResp.StatusCode, friendlyBlobError(data))
+	}
+	if strings.Contains(string(data), "<Code>BlobNotFound</Code>") {
+		return "", fmt.Errorf("job logs are not available yet: %s", friendlyBlobError(data))
+	}
 	return string(data), nil
+}
+
+// friendlyBlobError condenses an Azure blob XML error into one line.
+func friendlyBlobError(data []byte) string {
+	s := string(data)
+	if strings.Contains(s, "BlobNotFound") {
+		return "the log archive does not exist (job still running or logs expired)"
+	}
+	s = strings.TrimSpace(s)
+	if len(s) > 160 {
+		s = s[:160] + "…"
+	}
+	if s == "" {
+		return "empty response"
+	}
+	return s
 }
 
 func (c *RESTClient) ListWorkflowJobs(ctx context.Context, owner, repo string, runID int64) ([]*models.Job, error) {

@@ -37,11 +37,18 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite %s: %w", path, err)
 	}
-	// Single-writer workload; WAL avoids reader/writer lock contention
-	// between the UI thread and background refreshes.
+	// Embedded single-writer workload: one connection serializes all
+	// access at the driver level, so parallel dashboard overviews can
+	// never hit SQLITE_BUSY. busy_timeout covers external writers
+	// (a second zgit process on the same DB).
+	database.SetMaxOpenConns(1)
 	if _, err := database.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
 		database.Close()
 		return nil, fmt.Errorf("pragma wal: %w", err)
+	}
+	if _, err := database.Exec(`PRAGMA busy_timeout=5000;`); err != nil {
+		database.Close()
+		return nil, fmt.Errorf("pragma busy_timeout: %w", err)
 	}
 	s := &Store{db: database}
 	if err := s.migrate(); err != nil {
@@ -344,18 +351,23 @@ func (s *Store) ListProjects() []models.Project {
 	if err != nil {
 		return nil
 	}
-	defer rows.Close()
 	var out []models.Project
 	for rows.Next() {
 		var pr models.Project
 		if err := rows.Scan(&pr.ID, &pr.Name, &pr.Color); err != nil {
 			continue
 		}
-		pr.Repos = s.ProjectRepos(pr.ID)
-		if pr.Repos == nil {
-			pr.Repos = []string{}
-		}
 		out = append(out, pr)
+	}
+	rows.Close()
+	// Members are filled after the outer rows are closed: nesting a
+	// second query inside the iteration deadlocks a single-connection
+	// pool (and needlessly holds a read cursor).
+	for i := range out {
+		out[i].Repos = s.ProjectRepos(out[i].ID)
+		if out[i].Repos == nil {
+			out[i].Repos = []string{}
+		}
 	}
 	if out == nil {
 		out = []models.Project{}
