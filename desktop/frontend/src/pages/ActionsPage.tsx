@@ -67,7 +67,7 @@ function runTone(run: WorkflowRun): string {
 
 export default function ActionsPage() {
   const {
-    workflowRuns, selectedRunJobs, selectedJobLogs,
+    workflowRuns, selectedRunJobs, selectedJobLogs, jobLogsError,
     loading, ghAuthenticated, setLoginDialogOpen,
     fetchWorkflowRuns, reRunWorkflow, cancelWorkflowRun,
     fetchWorkflowJobs, fetchJobLogs, clearJobLogs,
@@ -232,7 +232,7 @@ export default function ActionsPage() {
               />
               <ScrollArea className="flex-1 min-h-0">
                 <div className="p-2.5 space-y-1">
-                  {(selectedRunJobs || []).length === 0 && !selectedJobLogs ? (
+                  {(selectedRunJobs || []).length === 0 && !selectedJobLogs && !jobLogsError ? (
                     <p className="text-xs text-muted-foreground text-center py-8">No jobs reported for this run yet.</p>
                   ) : (
                     (selectedRunJobs || []).map((job) => (
@@ -257,6 +257,16 @@ export default function ActionsPage() {
                       <pre className="text-[11px] leading-relaxed font-mono bg-black/80 text-zinc-200 dark:bg-black/60 p-3 overflow-x-auto whitespace-pre-wrap max-h-80 overflow-y-auto">
                         {selectedJobLogs}
                       </pre>
+                    </div>
+                  </div>
+                ) : jobLogsError ? (
+                  <div className="px-2.5 pb-3">
+                    <div className="flex items-start gap-2.5 rounded-lg border border-dashed border-border/60 px-3.5 py-3.5">
+                      <Clock className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium">Logs unavailable</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{jobLogsError}</p>
+                      </div>
                     </div>
                   </div>
                 ) : null}

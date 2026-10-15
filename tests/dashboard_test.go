@@ -3,6 +3,7 @@ package integration
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/zaidejjo/zgit/pkg/core"
@@ -89,6 +90,32 @@ func TestRepoOverview(t *testing.T) {
 	ov = e.RepoOverview(filepath.Join(t.TempDir(), "nope"), true)
 	if ov.Error == "" {
 		t.Errorf("want Error set for missing path")
+	}
+}
+
+func TestRepoOverviewParallel(t *testing.T) {
+	e := testEngine(t)
+	repos := []string{initBlameRepo(t), initBlameRepo(t), initBlameRepo(t)}
+
+	// Parallel snapshots must never SQLITE_BUSY: the store serializes
+	// on a single connection. Regression test for the "database is
+	// locked" warnings on the dashboard.
+	errs := make([]string, len(repos))
+	var wg sync.WaitGroup
+	for i, r := range repos {
+		wg.Add(1)
+		go func(i int, r string) {
+			defer wg.Done()
+			if ov := e.RepoOverview(r, true); ov.Error != "" {
+				errs[i] = ov.Error
+			}
+		}(i, r)
+	}
+	wg.Wait()
+	for i, msg := range errs {
+		if msg != "" {
+			t.Errorf("repo %d overview error = %q", i, msg)
+		}
 	}
 }
 
