@@ -79,3 +79,11 @@ type Notification struct {
 	URL       string    `json:"url"`
 	RepoName  string    `json:"repo_name"`
 }
+
+// Project groups repositories into a named workspace.
+type Project struct {
+	ID    string   `json:"id"`
+	Name  string   `json:"name"`
+	Color string   `json:"color,omitempty"`
+	Repos []string `json:"repos"`
+}

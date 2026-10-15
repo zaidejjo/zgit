@@ -113,3 +113,83 @@ func TestStorePruneDead(t *testing.T) {
 		t.Errorf("favorite dead path should be kept")
 	}
 }
+
+func TestStoreProjects(t *testing.T) {
+	s := openTestStore(t)
+
+	if _, err := s.CreateProject("  ", ""); err == nil {
+		t.Errorf("empty name should fail")
+	}
+	id, err := s.CreateProject("work", "#89b4fa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddProjectRepo(id, "/r/a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddProjectRepo(id, "/r/b"); err != nil {
+		t.Fatal(err)
+	}
+	// Idempotent re-add keeps order.
+	if err := s.AddProjectRepo(id, "/r/a"); err != nil {
+		t.Fatal(err)
+	}
+	projects := s.ListProjects()
+	if len(projects) != 1 || projects[0].Name != "work" {
+		t.Fatalf("projects = %+v", projects)
+	}
+	if len(projects[0].Repos) != 2 || projects[0].Repos[0] != "/r/a" {
+		t.Errorf("members = %v", projects[0].Repos)
+	}
+
+	// Reorder wholesale.
+	if err := s.SetProjectRepos(id, []string{"/r/b", "/r/a", "/r/b"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.ProjectRepos(id); len(got) != 2 || got[0] != "/r/b" {
+		t.Errorf("reordered = %v", got)
+	}
+
+	if err := s.RenameProject(id, ""); err == nil {
+		t.Errorf("empty rename should fail")
+	}
+	if err := s.RenameProject(id, "play"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RemoveProjectRepo(id, "/r/b"); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.ProjectRepos(id); len(got) != 1 || got[0] != "/r/a" {
+		t.Errorf("after remove = %v", got)
+	}
+
+	// Unknown project errors.
+	for _, err := range []error{
+		func() error { _, e := s.CreateProject("", ""); return e }(),
+		s.RenameProject("nope", "x"),
+		s.DeleteProject("nope"),
+		s.AddProjectRepo("nope", "/r/a"),
+		s.SetProjectRepos("nope", nil),
+	} {
+		if err == nil {
+			t.Errorf("expected error for unknown project")
+		}
+	}
+
+	if err := s.DeleteProject(id); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.ListProjects()) != 0 {
+		t.Errorf("project should be gone")
+	}
+
+	// Removing a repo drops its memberships too.
+	id2, _ := s.CreateProject("p2", "")
+	_ = s.AddProjectRepo(id2, "/r/gone")
+	if err := s.RemoveRepo("/r/gone"); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.ProjectRepos(id2)) != 0 {
+		t.Errorf("membership should cascade")
+	}
+}
