@@ -1735,8 +1735,9 @@ func (a *App) GetPullRequests() ([]*models.PullRequestSummary, error) {
 	return prs, nil
 }
 
-// GetIssues lists open issues.
-func (a *App) GetIssues() ([]*models.Issue, error) {
+// GetIssues lists issues with the given state ("open", "closed", "all").
+// Empty state defaults to "open".
+func (a *App) GetIssues(state string) ([]*models.Issue, error) {
 	gh, err := a.getGitHubClient()
 	if err != nil {
 		return []*models.Issue{}, nil
@@ -1745,10 +1746,13 @@ func (a *App) GetIssues() ([]*models.Issue, error) {
 	if err != nil {
 		return []*models.Issue{}, nil
 	}
+	if state != "open" && state != "closed" && state != "all" {
+		state = "open"
+	}
 	ctx, cancel := context.WithTimeout(a.getContext(), 15e9)
 	defer cancel()
 	issues, err := gh.ListIssues(ctx, owner, repo, github.IssuesFilter{
-		State: "open",
+		State: state,
 		Sort:  "updated",
 		Limit: 50,
 	})

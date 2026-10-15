@@ -25,6 +25,10 @@ export default function IssuesPage() {
   // Selection
   const [selectedNum, setSelectedNum] = useState<number | null>(null);
 
+  // List filter
+  const [query, setQuery] = useState("");
+  const [stateFilter, setStateFilter] = useState<"open" | "closed">("open");
+
   // Create dialog
   const [showCreate, setShowCreate] = useState(false);
   const [issueTitle, setIssueTitle] = useState("");
@@ -36,9 +40,9 @@ export default function IssuesPage() {
   const [closing, setClosing] = useState(false);
 
   useEffect(() => {
-    fetchIssues();
+    fetchIssues(stateFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [stateFilter]);
 
   // Fetch detail when issue selected
   useEffect(() => {
@@ -50,14 +54,16 @@ export default function IssuesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNum]);
 
-  const handleCreate = async () => {
-    if (!issueTitle.trim()) return;
+  // Optimistic create: close the dialog immediately, let the request
+  // finish in the background (list + toast update on completion).
+  const handleCreate = () => {
+    const title = issueTitle.trim();
+    if (!title || creating) return;
     setCreating(true);
-    await createIssue(issueTitle.trim(), issueBody);
-    setCreating(false);
     setShowCreate(false);
     setIssueTitle("");
     setIssueBody("");
+    createIssue(title, issueBody).finally(() => setCreating(false));
   };
 
   const handleClose = async () => {
@@ -68,6 +74,16 @@ export default function IssuesPage() {
     setShowClose(false);
     setSelectedNum(null);
   };
+
+  const visibleIssues = issues.filter((issue) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      issue.title.toLowerCase().includes(q) ||
+      String(issue.number).includes(q) ||
+      issue.author.toLowerCase().includes(q)
+    );
+  });
 
   // ───── Render ─────
 
@@ -99,7 +115,7 @@ export default function IssuesPage() {
           <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-destructive" />
           <p>Failed to load issues</p>
           <p className="text-xs mt-1">{error}</p>
-          <Button variant="ghost" size="sm" className="mt-2" onClick={fetchIssues}>Retry</Button>
+          <Button variant="ghost" size="sm" className="mt-2" onClick={() => fetchIssues(stateFilter)}>Retry</Button>
         </div>
       </div>
     );
@@ -108,15 +124,38 @@ export default function IssuesPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xl font-bold">Issues</h2>
+      <div className="flex items-center justify-between mb-4 gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <h2 className="text-xl font-bold shrink-0">Issues</h2>
           {issues.length > 0 && (
-            <Badge variant="outline" className="text-xs">{issues.length}</Badge>
+            <Badge variant="outline" className="text-xs shrink-0">{issues.length}</Badge>
           )}
+          {/* State filter */}
+          <div className="flex rounded-lg border border-border/60 p-0.5 shrink-0">
+            {(["open", "closed"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => { setStateFilter(s); setSelectedNum(null); }}
+                className={cn(
+                  "px-2.5 py-1 text-xs rounded-md capitalize transition-colors",
+                  stateFilter === s
+                    ? "bg-accent text-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <input
+            className="h-8 w-44 rounded-md border border-input bg-background px-2.5 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            placeholder="Search issues..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
         </div>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={fetchIssues} disabled={loading.issues}>
+        <div className="flex gap-2 shrink-0">
+          <Button variant="ghost" size="sm" onClick={() => fetchIssues(stateFilter)} disabled={loading.issues}>
             <LoaderCircle className={cn("w-4 h-4 mr-1", loading.issues && "animate-spin")} />
             Refresh
           </Button>
@@ -187,9 +226,19 @@ export default function IssuesPage() {
       {issues.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
           <CircleDot className="w-10 h-10 mb-2 opacity-30" />
-          <p className="text-sm">No open issues</p>
-          <Button variant="link" size="sm" className="mt-1" onClick={() => setShowCreate(true)}>
-            Create one
+          <p className="text-sm">No {stateFilter} issues</p>
+          {stateFilter === "open" && (
+            <Button variant="link" size="sm" className="mt-1" onClick={() => setShowCreate(true)}>
+              Create one
+            </Button>
+          )}
+        </div>
+      ) : visibleIssues.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+          <CircleDot className="w-10 h-10 mb-2 opacity-30" />
+          <p className="text-sm">No issues match &ldquo;{query.trim()}&rdquo;</p>
+          <Button variant="link" size="sm" className="mt-1" onClick={() => setQuery("")}>
+            Clear search
           </Button>
         </div>
       ) : (
@@ -198,7 +247,7 @@ export default function IssuesPage() {
           <div className={cn("min-w-0", selectedNum ? "w-80" : "flex-1")}>
             <ScrollArea className="h-full">
               <div className="space-y-1 pr-2">
-                {issues.map((issue) => (
+                {visibleIssues.map((issue) => (
                   <IssueListItem
                     key={issue.number}
                     issue={issue}
@@ -283,7 +332,7 @@ function IssueListItem({ issue, selected, onClick }: { issue: Issue; selected: b
         issue.state === "OPEN" ? "text-green-500" : "text-red-500"
       )} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">
+        <p className="text-sm font-medium truncate" title={`#${issue.number} ${issue.title}`}>
           <span className="text-muted-foreground font-mono text-xs mr-1">#{issue.number}</span>
           {issue.title}
         </p>
@@ -333,14 +382,17 @@ function IssueDetailPanel({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b">
-        <div className="flex items-center gap-2 min-w-0">
-          <h3 className="text-sm font-semibold truncate">
+      <div className="flex items-start justify-between gap-2 px-4 py-3 border-b">
+        <div className="flex items-start gap-2 min-w-0 flex-1">
+          <h3
+            className="text-sm font-semibold leading-snug line-clamp-2"
+            title={`#${issue.number} ${issue.title}`}
+          >
             <span className="text-muted-foreground font-mono mr-1">#{issue.number}</span>
             {issue.title}
           </h3>
           <Badge variant="outline" className={cn(
-            "text-xs",
+            "text-xs shrink-0 mt-0.5",
             isOpen ? "text-green-500 border-green-500/30" : "text-red-500 border-red-500/30"
           )}>
             {issue.state}
@@ -348,15 +400,34 @@ function IssueDetailPanel({
         </div>
         <div className="flex gap-1 shrink-0">
           {isOpen && (
-            <Button size="sm" className="h-7 text-xs" variant="destructive" onClick={onCloseIssue}>
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              variant="destructive"
+              onClick={onCloseIssue}
+              title="Close this issue"
+            >
               <X className="w-3.5 h-3.5 mr-1" />
               Close
             </Button>
           )}
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onRefresh} disabled={loading}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0"
+            onClick={onRefresh}
+            disabled={loading}
+            title="Refresh issue"
+          >
             <LoaderCircle className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
           </Button>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onClose}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0"
+            onClick={onClose}
+            title="Close panel"
+          >
             <X className="w-3.5 h-3.5" />
           </Button>
         </div>
