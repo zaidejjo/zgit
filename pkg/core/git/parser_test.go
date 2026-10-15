@@ -721,3 +721,20 @@ func TestParseWorktreePorcelain(t *testing.T) {
 		})
 	}
 }
+
+func TestParsePathList(t *testing.T) {
+	data := "src/main.go\nREADME.md\n\"weird\\\"name.txt\"\n\n"
+	got := ParsePathList([]byte(data))
+	want := []string{"src/main.go", "README.md", `weird"name.txt`}
+	if len(got) != len(want) {
+		t.Fatalf("len = %d, want %d (%v)", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+	if len(ParsePathList(nil)) != 0 {
+		t.Errorf("nil input should give empty result")
+	}
+}

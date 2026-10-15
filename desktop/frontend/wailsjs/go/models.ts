@@ -213,6 +213,49 @@ export namespace embed {
 
 }
 
+export namespace main {
+	
+	export class PRChecks {
+	    number: number;
+	    head_sha: string;
+	    head_ref: string;
+	    checks: models.CheckRun[];
+	    runs: models.WorkflowRun[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PRChecks(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.number = source["number"];
+	        this.head_sha = source["head_sha"];
+	        this.head_ref = source["head_ref"];
+	        this.checks = this.convertValues(source["checks"], models.CheckRun);
+	        this.runs = this.convertValues(source["runs"], models.WorkflowRun);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace models {
 	
 	export class ProviderStatus {
@@ -288,6 +331,53 @@ export namespace models {
 	        this.accent_color = source["accent_color"];
 	        this.brightness = source["brightness"];
 	    }
+	}
+	export class BlameLine {
+	    line_no: number;
+	    orig_line_no: number;
+	    hash: string;
+	    author: string;
+	    email: string;
+	    // Go type: time
+	    timestamp: any;
+	    summary: string;
+	    content: string;
+	    is_uncommitted: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new BlameLine(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.line_no = source["line_no"];
+	        this.orig_line_no = source["orig_line_no"];
+	        this.hash = source["hash"];
+	        this.author = source["author"];
+	        this.email = source["email"];
+	        this.timestamp = this.convertValues(source["timestamp"], null);
+	        this.summary = source["summary"];
+	        this.content = source["content"];
+	        this.is_uncommitted = source["is_uncommitted"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class Branch {
 	    name: string;
@@ -752,6 +842,7 @@ export namespace models {
 	    mergeable: string;
 	    head_ref: string;
 	    base_ref: string;
+	    head_sha?: string;
 	    status_emoji: string;
 	    review_state: string;
 	    labels?: string[];
@@ -786,6 +877,7 @@ export namespace models {
 	        this.mergeable = source["mergeable"];
 	        this.head_ref = source["head_ref"];
 	        this.base_ref = source["base_ref"];
+	        this.head_sha = source["head_sha"];
 	        this.status_emoji = source["status_emoji"];
 	        this.review_state = source["review_state"];
 	        this.labels = source["labels"];
@@ -834,6 +926,7 @@ export namespace models {
 	    mergeable: string;
 	    head_ref: string;
 	    base_ref: string;
+	    head_sha?: string;
 	    status_emoji: string;
 	    review_state: string;
 	    labels?: string[];
@@ -854,6 +947,7 @@ export namespace models {
 	        this.mergeable = source["mergeable"];
 	        this.head_ref = source["head_ref"];
 	        this.base_ref = source["base_ref"];
+	        this.head_sha = source["head_sha"];
 	        this.status_emoji = source["status_emoji"];
 	        this.review_state = source["review_state"];
 	        this.labels = source["labels"];
@@ -1226,6 +1320,34 @@ export namespace models {
 		    }
 		    return a;
 		}
+	}
+	export class Worktree {
+	    path: string;
+	    head?: string;
+	    branch?: string;
+	    is_main: boolean;
+	    is_bare: boolean;
+	    is_detached: boolean;
+	    locked: boolean;
+	    lock_reason?: string;
+	    prunable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Worktree(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.head = source["head"];
+	        this.branch = source["branch"];
+	        this.is_main = source["is_main"];
+	        this.is_bare = source["is_bare"];
+	        this.is_detached = source["is_detached"];
+	        this.locked = source["locked"];
+	        this.lock_reason = source["lock_reason"];
+	        this.prunable = source["prunable"];
+	    }
 	}
 
 }

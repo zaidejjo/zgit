@@ -109,6 +109,7 @@ type GitAdapter interface {
 
 	// File history & blame
 	Blame(ctx context.Context, path string, opts models.BlameOptions) ([]*models.BlameLine, error)
+	ListFiles(ctx context.Context) ([]string, error)
 
 	// Branch management
 	Branches(ctx context.Context) ([]*models.Branch, error)

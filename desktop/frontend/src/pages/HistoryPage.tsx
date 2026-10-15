@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { History, Search, GitCommitHorizontal, AlignLeft } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { History, Search, GitCommitHorizontal, AlignLeft, FileText } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,8 +11,8 @@ import EmptyState from "@/components/EmptyState";
 
 export default function HistoryPage() {
   const {
-    blame, fileHistory, historyPath, loading, repoPath,
-    fetchBlame, fetchFileHistory,
+    blame, fileHistory, historyPath, loading, repoPath, repoFiles,
+    fetchBlame, fetchFileHistory, fetchRepoFiles,
   } = useAppStore();
 
   const [path, setPath] = useState(historyPath);
@@ -21,22 +21,60 @@ export default function HistoryPage() {
   const [pickaxeRe, setPickaxeRe] = useState("");
   const [blameRef, setBlameRef] = useState("");
   const [tab, setTab] = useState("history");
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestIdx, setSuggestIdx] = useState(0);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    fetchRepoFiles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repoPath]);
+
+  useEffect(() => () => {
+    if (blurTimer.current) clearTimeout(blurTimer.current);
+  }, []);
+
+  // Substring match (case-insensitive), basename hits first, capped at 8.
+  const suggestions = useMemo(() => {
+    const q = path.trim().toLowerCase();
+    if (!q || repoFiles.length === 0) return [];
+    const scored = repoFiles
+      .map((f) => {
+        const lower = f.toLowerCase();
+        const idx = lower.indexOf(q);
+        if (idx < 0) return null;
+        const base = lower.split("/").pop() || "";
+        const baseHit = base.includes(q) ? 0 : 1;
+        return { f, score: baseHit * 10000 + idx };
+      })
+      .filter((s): s is { f: string; score: number } => s !== null)
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 8)
+      .map((s) => s.f);
+    return scored;
+  }, [path, repoFiles]);
+
+  const chooseSuggestion = (f: string) => {
+    setPath(f);
+    setSuggestOpen(false);
+    setSuggestIdx(0);
+  };
 
   const busy = !!loading.fileHistory || !!loading.blame;
 
-  const runHistory = async () => {
-    if (!path.trim() || busy) return;
-    await fetchFileHistory(path.trim(), { follow, pickaxe: pickaxe.trim(), pickaxeRe: pickaxeRe.trim() });
+  const runHistory = async (p = path) => {
+    if (!p.trim() || busy) return;
+    await fetchFileHistory(p.trim(), { follow, pickaxe: pickaxe.trim(), pickaxeRe: pickaxeRe.trim() });
   };
 
-  const runBlame = async () => {
-    if (!path.trim() || busy) return;
-    await fetchBlame(path.trim(), blameRef.trim());
+  const runBlame = async (p = path) => {
+    if (!p.trim() || busy) return;
+    await fetchBlame(p.trim(), blameRef.trim());
   };
 
-  const search = () => {
-    if (tab === "blame") void runBlame();
-    else void runHistory();
+  const search = (p = path) => {
+    if (tab === "blame") void runBlame(p);
+    else void runHistory(p);
   };
 
   return (
@@ -52,14 +90,73 @@ export default function HistoryPage() {
 
       {/* Query bar */}
       <div className="flex flex-wrap items-center gap-2">
-        <input
-          className="flex h-9 flex-1 min-w-[200px] rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground placeholder:font-sans focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder="File path, e.g. src/main.go"
-          value={path}
-          onChange={(e) => setPath(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && search()}
-        />
-        <Button size="sm" onClick={search} disabled={!path.trim() || busy}>
+        <div className="relative flex-1 min-w-[200px]">
+          <input
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground placeholder:font-sans focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            placeholder="File path, e.g. src/main.go"
+            value={path}
+            onChange={(e) => { setPath(e.target.value); setSuggestOpen(true); setSuggestIdx(0); }}
+            onFocus={() => { if (path.trim()) setSuggestOpen(true); }}
+            onBlur={() => {
+              blurTimer.current = setTimeout(() => setSuggestOpen(false), 120);
+            }}
+            onKeyDown={(e) => {
+              if (suggestOpen && suggestions.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setSuggestIdx((i) => (i + 1) % suggestions.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setSuggestIdx((i) => (i - 1 + suggestions.length) % suggestions.length);
+                  return;
+                }
+                if (e.key === "Tab") {
+                  e.preventDefault();
+                  chooseSuggestion(suggestions[suggestIdx]);
+                  return;
+                }
+                if (e.key === "Escape") {
+                  setSuggestOpen(false);
+                  return;
+                }
+              }
+              if (e.key === "Enter") {
+                if (suggestOpen && suggestions.length > 0) {
+                  const f = suggestions[suggestIdx];
+                  chooseSuggestion(f);
+                  search(f);
+                } else {
+                  search();
+                }
+              }
+            }}
+          />
+          {suggestOpen && suggestions.length > 0 && (
+            <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg border border-border/60 bg-popover shadow-xl py-1 max-h-64 overflow-y-auto">
+              {suggestions.map((f, i) => (
+                <button
+                  key={f}
+                  className={cn(
+                    "flex items-center gap-2 w-full px-3 py-1.5 text-left font-mono text-xs transition-colors",
+                    i === suggestIdx ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+                  )}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    chooseSuggestion(f);
+                    setTimeout(() => search(f), 0);
+                  }}
+                  onMouseEnter={() => setSuggestIdx(i)}
+                >
+                  <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="truncate">{f}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <Button size="sm" onClick={() => search()} disabled={!path.trim() || busy}>
           <Search className="w-4 h-4 mr-1.5" />
           {busy ? "Loading..." : "Search"}
         </Button>

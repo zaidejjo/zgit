@@ -6,6 +6,10 @@ export function AddRemote(arg1, arg2) {
   return window['go']['main']['App']['AddRemote'](arg1, arg2);
 }
 
+export function AddWorktree(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['AddWorktree'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function AgentApproveProposal(arg1) {
   return window['go']['main']['App']['AgentApproveProposal'](arg1);
 }
@@ -68,6 +72,10 @@ export function CheckoutBranch(arg1) {
 
 export function CheckoutOurs(arg1) {
   return window['go']['main']['App']['CheckoutOurs'](arg1);
+}
+
+export function CheckoutPR(arg1) {
+  return window['go']['main']['App']['CheckoutPR'](arg1);
 }
 
 export function CheckoutTheirs(arg1) {
@@ -150,6 +158,10 @@ export function GetAheadCommits() {
   return window['go']['main']['App']['GetAheadCommits']();
 }
 
+export function GetBlame(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetBlame'](arg1, arg2, arg3);
+}
+
 export function GetBranches() {
   return window['go']['main']['App']['GetBranches']();
 }
@@ -168,6 +180,10 @@ export function GetDiff(arg1) {
 
 export function GetFileDiff(arg1) {
   return window['go']['main']['App']['GetFileDiff'](arg1);
+}
+
+export function GetFileHistory(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['GetFileHistory'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function GetGitHubUser() {
@@ -192,6 +208,10 @@ export function GetLog(arg1) {
 
 export function GetMergeConflictDetail(arg1) {
   return window['go']['main']['App']['GetMergeConflictDetail'](arg1);
+}
+
+export function GetPRChecks(arg1) {
+  return window['go']['main']['App']['GetPRChecks'](arg1);
 }
 
 export function GetPullRequestDetail(arg1) {
@@ -234,6 +254,10 @@ export function GetWorkflowJobLogs(arg1) {
   return window['go']['main']['App']['GetWorkflowJobLogs'](arg1);
 }
 
+export function GetWorktrees() {
+  return window['go']['main']['App']['GetWorktrees']();
+}
+
 export function GitFetch() {
   return window['go']['main']['App']['GitFetch']();
 }
@@ -274,6 +298,10 @@ export function ListWorkflowRuns() {
   return window['go']['main']['App']['ListWorkflowRuns']();
 }
 
+export function LockWorktree(arg1, arg2) {
+  return window['go']['main']['App']['LockWorktree'](arg1, arg2);
+}
+
 export function LogoutGitHub() {
   return window['go']['main']['App']['LogoutGitHub']();
 }
@@ -302,6 +330,10 @@ export function PollDeviceFlowWithRetry(arg1, arg2) {
   return window['go']['main']['App']['PollDeviceFlowWithRetry'](arg1, arg2);
 }
 
+export function PruneWorktrees() {
+  return window['go']['main']['App']['PruneWorktrees']();
+}
+
 export function ReRunWorkflow(arg1) {
   return window['go']['main']['App']['ReRunWorkflow'](arg1);
 }
@@ -312,6 +344,10 @@ export function RebaseSequence(arg1, arg2) {
 
 export function RemoveRemote(arg1) {
   return window['go']['main']['App']['RemoveRemote'](arg1);
+}
+
+export function RemoveWorktree(arg1, arg2) {
+  return window['go']['main']['App']['RemoveWorktree'](arg1, arg2);
 }
 
 export function RenameRemote(arg1, arg2) {
@@ -444,6 +480,10 @@ export function TagList() {
 
 export function UndoLastAction() {
   return window['go']['main']['App']['UndoLastAction']();
+}
+
+export function UnlockWorktree(arg1) {
+  return window['go']['main']['App']['UnlockWorktree'](arg1);
 }
 
 export function UnstageAll() {
