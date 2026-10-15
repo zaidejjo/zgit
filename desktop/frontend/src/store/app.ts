@@ -582,6 +582,7 @@ interface AppState {
   blame: BlameLine[];
   fileHistory: Commit[];
   historyPath: string;
+  repoFiles: string[];
 
   // Git config
   gitConfig: Record<string, string>;
@@ -752,6 +753,7 @@ interface AppState {
   fetchBlame: (path: string, ref?: string, lines?: string) => Promise<void>;
   fetchFileHistory: (path: string, opts?: { branch?: string; follow?: boolean; pickaxe?: string; pickaxeRe?: string; count?: number }) => Promise<void>;
   clearHistory: () => void;
+  fetchRepoFiles: () => Promise<void>;
 
   // Config
   fetchGitConfig: () => Promise<void>;
@@ -886,6 +888,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   blame: [],
   fileHistory: [],
   historyPath: "",
+  repoFiles: [],
   gitConfig: {},
   conflictResolutions: {},
   conflictFiles: [],
@@ -1718,6 +1721,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         blame: [],
         fileHistory: [],
         historyPath: "",
+        repoFiles: [],
         error: null,
         loading: { ...get().loading, repo: false },
       });
@@ -1761,6 +1765,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       s.fetchStashes(),
       s.fetchConflictFiles(),
       s.fetchWorktrees(),
+      s.fetchRepoFiles(),
     ]);
   },
 
@@ -2060,6 +2065,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   clearHistory: () => set({ blame: [], fileHistory: [], historyPath: "" }),
+
+  // Completion picker data. Silent on failure: suggestions are an
+  // enhancement and must never toast errors.
+  fetchRepoFiles: async () => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      const files = await backend.GetRepoFiles();
+      set({ repoFiles: files || [] });
+    } catch (_) {
+      set({ repoFiles: [] });
+    }
+  },
 
   // Config
   fetchGitConfig: async () => {

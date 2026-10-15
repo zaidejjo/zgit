@@ -291,6 +291,20 @@ func (a *App) GetFileHistory(path, branch string, follow bool, pickaxe, pickaxeR
 	return result, nil
 }
 
+// GetRepoFiles returns all tracked file paths (for completion pickers).
+func (a *App) GetRepoFiles() ([]string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)
+	defer cancel()
+	files, err := a.engine.Git.ListFiles(ctx)
+	if err != nil {
+		return []string{}, nil
+	}
+	if files == nil {
+		return []string{}, nil
+	}
+	return files, nil
+}
+
 // GetBranches returns all local branches.
 func (a *App) GetBranches() ([]*models.Branch, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 10e9)

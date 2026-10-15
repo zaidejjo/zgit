@@ -204,3 +204,16 @@ func TestLogPickaxe(t *testing.T) {
 		t.Errorf("-Gneedle found %d commits, want exactly [add needle]", len(foundR))
 	}
 }
+
+func TestListFiles(t *testing.T) {
+	repo := initBlameRepo(t)
+	n, ctx := openTestRepo(t, repo)
+
+	files, err := n.ListFiles(ctx)
+	if err != nil {
+		t.Fatalf("ListFiles: %v", err)
+	}
+	if len(files) != 1 || files[0] != "notes.txt" {
+		t.Errorf("files = %v, want [notes.txt]", files)
+	}
+}

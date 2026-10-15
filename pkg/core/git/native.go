@@ -1577,6 +1577,15 @@ func validLineRange(s string) bool {
 	return true
 }
 
+// ListFiles returns all tracked file paths (for completion pickers).
+func (n *NativeExec) ListFiles(ctx context.Context) ([]string, error) {
+	data, err := n.run(ctx, "ls-files")
+	if err != nil {
+		return nil, err
+	}
+	return ParsePathList(data), nil
+}
+
 // RevList returns commit hashes reachable from ref, up to count.
 func (n *NativeExec) RevList(ctx context.Context, ref string, count int) ([]string, error) {
 	args := []string{"rev-list"}
