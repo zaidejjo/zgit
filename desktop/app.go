@@ -71,7 +71,8 @@ func (a *App) Run(assets embed.FS) error {
 	})
 }
 
-// chatsFilePath returns the path to the AI sessions JSON file.
+// chatsFilePath returns the legacy AI sessions JSON file, used once to
+// migrate into SQLite. New history lives in the store (see db ai_* tables).
 func (a *App) chatsFilePath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -83,24 +84,18 @@ func (a *App) chatsFilePath() string {
 // startup is called by Wails when the app starts.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	// Load persisted chat sessions
-	if path := a.chatsFilePath(); path != "" {
-		if err := a.sessionManager.LoadFromFile(path); err != nil {
-			log.Printf("load chats: %v", err)
-		}
+	// Chat history persists in SQLite with per-message write-through,
+	// so no full-file rewrite happens on every turn.
+	a.sessionManager.AttachStore(a.engine.Store)
+	if migrated, err := a.sessionManager.MigrateFileToStore(a.chatsFilePath()); err != nil {
+		log.Printf("migrate chats: %v", err)
+	} else if migrated {
+		log.Printf("migrated chats.json into sqlite")
+	}
+	if err := a.sessionManager.LoadFromStore(); err != nil {
+		log.Printf("load chats: %v", err)
 	}
 	a.restartFileWatcher()
-}
-
-// saveChats persists sessions to disk. Called after every session mutation.
-func (a *App) saveChats() {
-	path := a.chatsFilePath()
-	if path == "" {
-		return
-	}
-	if err := a.sessionManager.SaveToFile(path); err != nil {
-		log.Printf("save chats: %v", err)
-	}
 }
 
 // getGitDir uses git rev-parse to locate the actual .git directory.
@@ -1479,7 +1474,6 @@ func (a *App) AskChat(message string) (string, error) {
 		return "", fmt.Errorf("add response: %w", err)
 	}
 
-	a.saveChats()
 	return resp.Content, nil
 }
 
@@ -1551,7 +1545,6 @@ func (a *App) AskChatStream(message string) error {
 			return
 		}
 
-		a.saveChats()
 		wailsRuntime.EventsEmit(a.ctx, "ai:done", resp.Content)
 	}()
 
@@ -1588,7 +1581,6 @@ func (a *App) SessionCreate(name, mode string) (*ai.SessionSummary, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.saveChats()
 	return &ai.SessionSummary{
 		ID:           s.ID,
 		Name:         s.Name,
@@ -1609,7 +1601,6 @@ func (a *App) SessionRename(id, name string) error {
 	if err := a.sessionManager.Rename(id, name); err != nil {
 		return err
 	}
-	a.saveChats()
 	return nil
 }
 
@@ -1618,7 +1609,6 @@ func (a *App) SessionDelete(id string) error {
 	if err := a.sessionManager.Delete(id); err != nil {
 		return err
 	}
-	a.saveChats()
 	return nil
 }
 
@@ -1648,7 +1638,6 @@ func (a *App) SessionClearMessages(id string) error {
 	if err := a.sessionManager.ClearMessages(id); err != nil {
 		return err
 	}
-	a.saveChats()
 	return nil
 }
 
@@ -1657,7 +1646,6 @@ func (a *App) SessionSetMode(id, mode string) error {
 	if err := a.sessionManager.SetMode(id, mode); err != nil {
 		return err
 	}
-	a.saveChats()
 	return nil
 }
 

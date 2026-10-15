@@ -213,3 +213,62 @@ func TestStoreProjectColor(t *testing.T) {
 		t.Errorf("expected error for unknown project")
 	}
 }
+
+func TestStoreChat(t *testing.T) {
+	s := openTestStore(t)
+	if n := s.CountChatSessions(); n != 0 {
+		t.Fatalf("fresh store has %d chat sessions", n)
+	}
+
+	now := int64(1700000000)
+	if err := s.UpsertChatSession("session_1", "Ask", "ask", now, now); err != nil {
+		t.Fatal(err)
+	}
+	msgs := []struct{ role, content, tc string }{
+		{"system", "sys prompt", ""},
+		{"user", "hello", ""},
+		{"assistant", "hi", `[{"id":"c1","name":"fn","arguments":"{}"}]`},
+	}
+	for _, m := range msgs {
+		if err := s.AppendChatMessage("session_1", m.role, m.content, "", m.tc, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	metas := s.ListChatSessions()
+	if len(metas) != 1 || metas[0].MessageCount != 3 || metas[0].Name != "Ask" {
+		t.Fatalf("metas = %+v", metas)
+	}
+	got := s.GetChatMessages("session_1")
+	if len(got) != 3 || got[0].Role != "system" || got[2].ToolCallsJSON == "" {
+		t.Fatalf("messages = %+v", got)
+	}
+	if got[1].Content != "hello" || got[2].Content != "hi" {
+		t.Errorf("order/content wrong: %+v", got)
+	}
+
+	if err := s.RenameChatSession("session_1", "Renamed", now+1); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.ListChatSessions(); got[0].Name != "Renamed" {
+		t.Errorf("after rename: %+v", got[0])
+	}
+	if err := s.ReplaceChatMessages("session_1", got[:1]); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.GetChatMessages("session_1"); len(got) != 1 {
+		t.Errorf("after replace: %d messages", len(got))
+	}
+	if err := s.DeleteChatSession("session_1"); err != nil {
+		t.Fatal(err)
+	}
+	if n := s.CountChatSessions(); n != 0 {
+		t.Errorf("after delete: %d sessions", n)
+	}
+	if msgs := s.GetChatMessages("session_1"); len(msgs) != 0 {
+		t.Errorf("messages should cascade, got %d", len(msgs))
+	}
+	if err := s.DeleteChatSession("nope"); err == nil {
+		t.Errorf("expected error for unknown session")
+	}
+}

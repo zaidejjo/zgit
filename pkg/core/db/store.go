@@ -50,6 +50,10 @@ func Open(path string) (*Store, error) {
 		database.Close()
 		return nil, fmt.Errorf("pragma busy_timeout: %w", err)
 	}
+	if _, err := database.Exec(`PRAGMA foreign_keys=ON;`); err != nil {
+		database.Close()
+		return nil, fmt.Errorf("pragma foreign_keys: %w", err)
+	}
 	s := &Store{db: database}
 	if err := s.migrate(); err != nil {
 		database.Close()
@@ -99,6 +103,31 @@ func (s *Store) migrate() error {
 		fetched_at INTEGER NOT NULL
 	);`); err != nil {
 		return fmt.Errorf("migrate overview_cache: %w", err)
+	}
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS ai_sessions(
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL DEFAULT '',
+		mode TEXT NOT NULL DEFAULT 'ask',
+		created_at INTEGER NOT NULL DEFAULT 0,
+		updated_at INTEGER NOT NULL DEFAULT 0
+	);`); err != nil {
+		return fmt.Errorf("migrate ai_sessions: %w", err)
+	}
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS ai_messages(
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		session_id TEXT NOT NULL REFERENCES ai_sessions(id) ON DELETE CASCADE,
+		sort INTEGER NOT NULL DEFAULT 0,
+		role TEXT NOT NULL DEFAULT '',
+		content TEXT NOT NULL DEFAULT '',
+		tool_call_id TEXT NOT NULL DEFAULT '',
+		tool_calls TEXT NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL DEFAULT 0
+	);`); err != nil {
+		return fmt.Errorf("migrate ai_messages: %w", err)
+	}
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_ai_messages_session
+		ON ai_messages(session_id, sort);`); err != nil {
+		return fmt.Errorf("migrate ai_messages index: %w", err)
 	}
 	return nil
 }
@@ -439,6 +468,172 @@ func (s *Store) SetProjectRepos(id string, paths []string) error {
 			return err
 		}
 		sort++
+	}
+	return tx.Commit()
+}
+
+// --- AI chat ---
+//
+// Chat history lives here instead of chats.json: one row per message,
+// so saving a message is a single INSERT instead of rewriting every
+// session on every turn.
+
+// ChatSessionMeta is a session row plus its message count.
+type ChatSessionMeta struct {
+	ID           string
+	Name         string
+	Mode         string
+	MessageCount int
+	CreatedAt    int64
+	UpdatedAt    int64
+}
+
+// ChatMessageRow is one stored message. ToolCallsJSON holds the
+// marshaled tool calls ("" when none).
+type ChatMessageRow struct {
+	Role          string
+	Content       string
+	ToolCallID    string
+	ToolCallsJSON string
+	CreatedAt     int64
+}
+
+// UpsertChatSession creates or replaces a session row.
+func (s *Store) UpsertChatSession(id, name, mode string, createdAt, updatedAt int64) error {
+	_, err := s.db.Exec(`INSERT INTO ai_sessions(id, name, mode, created_at, updated_at)
+		VALUES(?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET name = excluded.name, mode = excluded.mode,
+			created_at = excluded.created_at, updated_at = excluded.updated_at`,
+		id, name, mode, createdAt, updatedAt)
+	return err
+}
+
+// TouchChatSession bumps a session's updated_at.
+func (s *Store) TouchChatSession(id string, updatedAt int64) error {
+	_, err := s.db.Exec(`UPDATE ai_sessions SET updated_at = ? WHERE id = ?`, updatedAt, id)
+	return err
+}
+
+// CountChatSessions returns the number of stored sessions.
+func (s *Store) CountChatSessions() int {
+	var n int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM ai_sessions`).Scan(&n)
+	return n
+}
+
+// ListChatSessions returns session metadata newest-first with message counts.
+func (s *Store) ListChatSessions() []ChatSessionMeta {
+	rows, err := s.db.Query(`SELECT s.id, s.name, s.mode, s.created_at, s.updated_at,
+		(SELECT COUNT(*) FROM ai_messages m WHERE m.session_id = s.id)
+		FROM ai_sessions s ORDER BY s.updated_at DESC`)
+	if err != nil {
+		return nil
+	}
+	var out []ChatSessionMeta
+	for rows.Next() {
+		var m ChatSessionMeta
+		if err := rows.Scan(&m.ID, &m.Name, &m.Mode, &m.CreatedAt, &m.UpdatedAt, &m.MessageCount); err != nil {
+			continue
+		}
+		out = append(out, m)
+	}
+	rows.Close()
+	if out == nil {
+		out = []ChatSessionMeta{}
+	}
+	return out
+}
+
+// AppendChatMessage stores one message and bumps the session clock atomically.
+func (s *Store) AppendChatMessage(sessionID, role, content, toolCallID, toolCallsJSON string, createdAt int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var sort int
+	_ = tx.QueryRow(`SELECT COALESCE(MAX(sort), -1) + 1 FROM ai_messages WHERE session_id = ?`, sessionID).Scan(&sort)
+	if _, err := tx.Exec(`INSERT INTO ai_messages(session_id, sort, role, content, tool_call_id, tool_calls, created_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?)`,
+		sessionID, sort, role, content, toolCallID, toolCallsJSON, createdAt); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE ai_sessions SET updated_at = ? WHERE id = ?`, createdAt, sessionID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// GetChatMessages returns a session's messages in order.
+func (s *Store) GetChatMessages(sessionID string) []ChatMessageRow {
+	rows, err := s.db.Query(`SELECT role, content, tool_call_id, tool_calls, created_at
+		FROM ai_messages WHERE session_id = ? ORDER BY sort ASC`, sessionID)
+	if err != nil {
+		return nil
+	}
+	var out []ChatMessageRow
+	for rows.Next() {
+		var m ChatMessageRow
+		if err := rows.Scan(&m.Role, &m.Content, &m.ToolCallID, &m.ToolCallsJSON, &m.CreatedAt); err != nil {
+			continue
+		}
+		out = append(out, m)
+	}
+	rows.Close()
+	if out == nil {
+		out = []ChatMessageRow{}
+	}
+	return out
+}
+
+// ReplaceChatMessages swaps a session's messages wholesale (used by clear).
+func (s *Store) ReplaceChatMessages(sessionID string, msgs []ChatMessageRow) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM ai_messages WHERE session_id = ?`, sessionID); err != nil {
+		return err
+	}
+	for i, m := range msgs {
+		if _, err := tx.Exec(`INSERT INTO ai_messages(session_id, sort, role, content, tool_call_id, tool_calls, created_at)
+			VALUES(?, ?, ?, ?, ?, ?, ?)`,
+			sessionID, i, m.Role, m.Content, m.ToolCallID, m.ToolCallsJSON, m.CreatedAt); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// RenameChatSession changes a session's name.
+func (s *Store) RenameChatSession(id, name string, updatedAt int64) error {
+	res, err := s.db.Exec(`UPDATE ai_sessions SET name = ?, updated_at = ? WHERE id = ?`, name, updatedAt, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("chat session not found: %s", id)
+	}
+	return nil
+}
+
+// DeleteChatSession removes a session and its messages.
+func (s *Store) DeleteChatSession(id string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM ai_messages WHERE session_id = ?`, id); err != nil {
+		return err
+	}
+	res, err := tx.Exec(`DELETE FROM ai_sessions WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("chat session not found: %s", id)
 	}
 	return tx.Commit()
 }
