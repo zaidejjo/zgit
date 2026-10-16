@@ -65,15 +65,18 @@ type Model struct {
 	pushAfterCommit bool // if true, push after commit succeeds
 
 	// Sub-models (views)
-	status   views.StatusModel
-	log      views.LogModel
-	branches views.BranchModel
-	prs      views.PRListModel
-	issues   views.IssueListModel
-	dash     views.DashModel
-	actions  views.ActionsModel
-	notes    views.NotesModel
-	helpView views.HelpModel
+	status    views.StatusModel
+	log       views.LogModel
+	branches  views.BranchModel
+	prs       views.PRListModel
+	issues    views.IssueListModel
+	dash      views.DashModel
+	actions   views.ActionsModel
+	notes     views.NotesModel
+	worktrees views.WorktreeModel
+	stash     views.StashModel
+	refs      views.RefsModel
+	helpView  views.HelpModel
 
 	// Overlay models
 	diffViewer  views.DiffModel
@@ -89,6 +92,10 @@ type Model struct {
 
 	// Transient notifications
 	toasts components.Toasts
+
+	// Double-press destructive guard
+	armedAction string
+	armedAt     time.Time
 
 	// Terminal dimensions
 	width  int
@@ -126,6 +133,9 @@ func NewModel(gitExec *gitpkg.NativeExec) *Model {
 		dash:           views.NewDashModel(),
 		actions:        views.NewActionsModel(),
 		notes:          views.NewNotesModel(),
+		worktrees:      views.NewWorktreeModel(),
+		stash:          views.NewStashModel(),
+		refs:           views.NewRefsModel(),
 		helpView:       views.HelpModel{},
 		diffViewer:     views.NewDiffModel(),
 		commitDlg:      views.NewCommitModel(),
@@ -495,6 +505,14 @@ func (m *Model) renderHeader() string {
 				if m.actions.Items != nil {
 					label = fmt.Sprintf("%s (%d)", label, len(m.actions.Items))
 				}
+			case shell.Worktrees:
+				if m.worktrees.Loaded {
+					label = fmt.Sprintf("%s (%d)", label, len(m.worktrees.Items))
+				}
+			case shell.Stash:
+				if m.stash.Loaded {
+					label = fmt.Sprintf("%s (%d)", label, len(m.stash.Items))
+				}
 			}
 		}
 		if t.ID == shell.Notes && m.notes.Loaded && m.notes.UnreadCount() > 0 {
@@ -542,6 +560,12 @@ func (m *Model) renderContent() string {
 		return m.issues.View(m.width - 2)
 	case shell.Dashboard:
 		return m.dash.View(m.width - 2)
+	case shell.Worktrees:
+		return m.worktrees.View(m.width - 2)
+	case shell.Stash:
+		return m.stash.View(m.width - 2)
+	case shell.Refs:
+		return m.refs.View(m.width - 2)
 	case shell.Actions:
 		return m.actions.View(m.width - 2)
 	case shell.Notes:
@@ -689,6 +713,7 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "R":
 		m.sub.Refresh()
 		m.refreshGitHubData()
+		m.reloadLocal()
 		return m, nil
 
 	// Tab cycles focus: Status → Log → Branches → Status
@@ -788,6 +813,15 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.fullScreenView == shell.Notes {
 		return m.handleNotesKeys(key)
 	}
+	if m.fullScreenView == shell.Worktrees {
+		return m.handleWorktreeKeys(key)
+	}
+	if m.fullScreenView == shell.Stash {
+		return m.handleStashKeys(key)
+	}
+	if m.fullScreenView == shell.Refs {
+		return m.handleRefsKeys(key)
+	}
 
 	// Delegate to focused panel
 	switch m.focusedPanel {
@@ -837,6 +871,18 @@ func (m *Model) openScreen(id shell.ScreenID) {
 	case shell.Dashboard:
 		if !m.dash.Loaded {
 			go m.fetchDashboard()
+		}
+	case shell.Worktrees:
+		if !m.worktrees.Loaded {
+			go m.fetchWorktrees()
+		}
+	case shell.Stash:
+		if !m.stash.Loaded {
+			go m.fetchStash()
+		}
+	case shell.Refs:
+		if !m.refs.Loaded {
+			go m.fetchRefs()
 		}
 	default:
 		m.ensureGHDataLoaded()
@@ -1026,6 +1072,93 @@ func (m *Model) fetchActionJobs(runID int64) {
 		jobs = []*models.Job{}
 	}
 	m.msgs <- teaMsg{view: 6, data: actionJobsEvent{runID: runID, jobs: jobs}}
+}
+
+// fetchWorktrees loads linked working trees.
+func (m *Model) fetchWorktrees() {
+	if m.git == nil {
+		m.msgs <- teaMsg{view: 8, data: worktreesEvent{err: fmt.Errorf("no git backend")}}
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15e9)
+	defer cancel()
+	items, err := m.git.WorktreeList(ctx)
+	if err != nil {
+		m.msgs <- teaMsg{view: 8, data: worktreesEvent{err: err}}
+		return
+	}
+	if items == nil {
+		items = []*models.Worktree{}
+	}
+	m.msgs <- teaMsg{view: 8, data: worktreesEvent{items: items}}
+}
+
+// fetchStash loads stash entries.
+func (m *Model) fetchStash() {
+	if m.git == nil {
+		m.msgs <- teaMsg{view: 9, data: stashEvent{err: fmt.Errorf("no git backend")}}
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15e9)
+	defer cancel()
+	items, err := m.git.StashList(ctx)
+	if err != nil {
+		m.msgs <- teaMsg{view: 9, data: stashEvent{err: err}}
+		return
+	}
+	if items == nil {
+		items = []*models.Stash{}
+	}
+	m.msgs <- teaMsg{view: 9, data: stashEvent{items: items}}
+}
+
+// fetchRefs loads tags and remotes (deduped by name).
+func (m *Model) fetchRefs() {
+	if m.git == nil {
+		m.msgs <- teaMsg{view: 10, data: refsEvent{err: fmt.Errorf("no git backend")}}
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15e9)
+	defer cancel()
+	tags, err := m.git.TagList(ctx)
+	if err != nil {
+		m.msgs <- teaMsg{view: 10, data: refsEvent{err: err}}
+		return
+	}
+	remotes, err := m.git.RemoteList(ctx)
+	if err != nil {
+		m.msgs <- teaMsg{view: 10, data: refsEvent{err: err}}
+		return
+	}
+	seen := map[string]bool{}
+	uniq := make([]*models.Remote, 0, len(remotes))
+	for _, r := range remotes {
+		if r == nil || seen[r.Name] {
+			continue
+		}
+		seen[r.Name] = true
+		uniq = append(uniq, r)
+	}
+	m.msgs <- teaMsg{view: 10, data: refsEvent{tags: tags, remotes: uniq}}
+}
+
+// reloadLocal refreshes the local-git screens (cheap, no network).
+func (m *Model) reloadLocal() {
+	go m.fetchWorktrees()
+	go m.fetchStash()
+	go m.fetchRefs()
+}
+
+// confirmTwice arms a destructive action on first press; the second
+// press within 3s confirms. Callers toast the "press again" hint.
+func (m *Model) confirmTwice(action string) bool {
+	if m.armedAction == action && time.Since(m.armedAt) < 3*time.Second {
+		m.armedAction = ""
+		return true
+	}
+	m.armedAction = action
+	m.armedAt = time.Now()
+	return false
 }
 
 // fetchNotes loads the global notification inbox.
@@ -1505,6 +1638,295 @@ func (m *Model) handleNotesKeys(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) handleWorktreeKeys(key string) (tea.Model, tea.Cmd) {
+	if m.worktrees.Prompt.Active {
+		if done, _ := m.worktrees.Prompt.TypeKey(key); done {
+			path := strings.TrimSpace(m.worktrees.Prompt.Value)
+			if path == "" {
+				m.worktrees.Prompt.Open("new worktree path: ")
+				return m, m.pushToast("path is required", components.ToneInfo)
+			}
+			return m, m.addWorktree(path)
+		}
+		return m, nil
+	}
+	if m.worktrees.TypeKey(key) {
+		return m, nil
+	}
+	switch key {
+	case "/":
+		m.worktrees.Filtering = true
+		return m, nil
+	case "a":
+		m.worktrees.Prompt.Open("new worktree path: ")
+		return m, nil
+	case "D":
+		sel, ok := m.worktrees.Selected()
+		if !ok {
+			return m, nil
+		}
+		if sel.IsMain {
+			return m, m.pushToast("cannot remove the main worktree", components.ToneInfo)
+		}
+		if !m.confirmTwice("wt-del:" + sel.Path) {
+			return m, m.pushToast(fmt.Sprintf("press D again to remove %s", sel.Path), components.ToneInfo)
+		}
+		return m, m.removeWorktree(sel.Path)
+	case "u":
+		sel, ok := m.worktrees.Selected()
+		if !ok {
+			return m, nil
+		}
+		return m, m.toggleWorktreeLock(sel)
+	case "r":
+		m.worktrees.Loaded = false
+		go m.fetchWorktrees()
+		return m, nil
+	default:
+		m.worktrees.Nav(key)
+	}
+	return m, nil
+}
+
+func (m *Model) addWorktree(path string) tea.Cmd {
+	ctx, cancel := context.WithTimeout(context.Background(), 30e9)
+	defer cancel()
+	if err := m.git.WorktreeAdd(ctx, path, "", models.WorktreeAddOptions{}); err != nil {
+		return m.pushToast(fmt.Sprintf("add failed: %v", err), components.ToneError)
+	}
+	go m.fetchWorktrees()
+	return m.pushToast("Worktree added", components.ToneSuccess)
+}
+
+func (m *Model) removeWorktree(path string) tea.Cmd {
+	ctx, cancel := context.WithTimeout(context.Background(), 30e9)
+	defer cancel()
+	if err := m.git.WorktreeRemove(ctx, path, false); err != nil {
+		return m.pushToast(fmt.Sprintf("remove failed: %v", err), components.ToneError)
+	}
+	go m.fetchWorktrees()
+	return m.pushToast("Worktree removed", components.ToneSuccess)
+}
+
+func (m *Model) toggleWorktreeLock(w *models.Worktree) tea.Cmd {
+	ctx, cancel := context.WithTimeout(context.Background(), 15e9)
+	defer cancel()
+	var err error
+	if w.Locked {
+		err = m.git.WorktreeUnlock(ctx, w.Path)
+	} else {
+		err = m.git.WorktreeLock(ctx, w.Path, "")
+	}
+	if err != nil {
+		return m.pushToast(fmt.Sprintf("lock failed: %v", err), components.ToneError)
+	}
+	go m.fetchWorktrees()
+	if w.Locked {
+		return m.pushToast("Worktree unlocked", components.ToneSuccess)
+	}
+	return m.pushToast("Worktree locked", components.ToneSuccess)
+}
+
+func (m *Model) handleStashKeys(key string) (tea.Model, tea.Cmd) {
+	if m.stash.Prompt.Active {
+		if done, _ := m.stash.Prompt.TypeKey(key); done {
+			msg := strings.TrimSpace(m.stash.Prompt.Value)
+			return m, m.pushStash(msg)
+		}
+		return m, nil
+	}
+	if m.stash.TypeKey(key) {
+		return m, nil
+	}
+	switch key {
+	case "/":
+		m.stash.Filtering = true
+		return m, nil
+	case "s":
+		m.stash.Prompt.Open("stash message (empty ok): ")
+		return m, nil
+	case "a", "p":
+		sel, ok := m.stash.Selected()
+		if !ok {
+			return m, nil
+		}
+		return m, m.applyStash(sel.Index, key == "p")
+	case "D":
+		sel, ok := m.stash.Selected()
+		if !ok {
+			return m, nil
+		}
+		if !m.confirmTwice(fmt.Sprintf("stash-drop:%d", sel.Index)) {
+			return m, m.pushToast(fmt.Sprintf("press D again to drop stash@{%d}", sel.Index), components.ToneInfo)
+		}
+		return m, m.dropStash(sel.Index)
+	case "r":
+		m.stash.Loaded = false
+		go m.fetchStash()
+		return m, nil
+	default:
+		m.stash.Nav(key)
+	}
+	return m, nil
+}
+
+func (m *Model) pushStash(msg string) tea.Cmd {
+	ctx, cancel := context.WithTimeout(context.Background(), 30e9)
+	defer cancel()
+	if err := m.git.StashPush(ctx, gitpkg.StashOptions{}, msg); err != nil {
+		return m.pushToast(fmt.Sprintf("stash failed: %v", err), components.ToneError)
+	}
+	m.sub.Refresh()
+	go m.fetchStash()
+	return m.pushToast("Stashed", components.ToneSuccess)
+}
+
+func (m *Model) applyStash(index int, pop bool) tea.Cmd {
+	ctx, cancel := context.WithTimeout(context.Background(), 30e9)
+	defer cancel()
+	var err error
+	if pop {
+		err = m.git.StashPop(ctx, index)
+	} else {
+		err = m.git.StashApply(ctx, index)
+	}
+	if err != nil {
+		verb := "apply"
+		if pop {
+			verb = "pop"
+		}
+		return m.pushToast(fmt.Sprintf("%s failed: %v", verb, err), components.ToneError)
+	}
+	m.sub.Refresh()
+	go m.fetchStash()
+	if pop {
+		return m.pushToast("Stash popped", components.ToneSuccess)
+	}
+	return m.pushToast("Stash applied", components.ToneSuccess)
+}
+
+func (m *Model) dropStash(index int) tea.Cmd {
+	ctx, cancel := context.WithTimeout(context.Background(), 15e9)
+	defer cancel()
+	if err := m.git.StashDrop(ctx, index); err != nil {
+		return m.pushToast(fmt.Sprintf("drop failed: %v", err), components.ToneError)
+	}
+	go m.fetchStash()
+	return m.pushToast("Stash dropped", components.ToneSuccess)
+}
+
+func (m *Model) handleRefsKeys(key string) (tea.Model, tea.Cmd) {
+	if m.refs.Prompt.Active {
+		if done, _ := m.refs.Prompt.TypeKey(key); done {
+			name := strings.TrimSpace(m.refs.Prompt.Value)
+			if name == "" {
+				m.refs.Prompt.Open("new tag name: ")
+				return m, m.pushToast("name is required", components.ToneInfo)
+			}
+			return m, m.createTag(name)
+		}
+		return m, nil
+	}
+	tags := m.refs.Section == views.RefsTags
+	if tags && m.refs.Tags.TypeKey(key) {
+		return m, nil
+	}
+	if !tags && m.refs.Remotes.TypeKey(key) {
+		return m, nil
+	}
+	switch key {
+	case "t":
+		m.refs.Toggle()
+		return m, nil
+	case "/":
+		if tags {
+			m.refs.Tags.Filtering = true
+		} else {
+			m.refs.Remotes.Filtering = true
+		}
+		return m, nil
+	case "c":
+		if !tags {
+			return m, nil
+		}
+		m.refs.Prompt.Open("new tag name: ")
+		return m, nil
+	case "D":
+		if !tags {
+			return m, nil
+		}
+		sel, ok := m.refs.Tags.Selected()
+		if !ok {
+			return m, nil
+		}
+		if !m.confirmTwice("tag-del:" + sel) {
+			return m, m.pushToast(fmt.Sprintf("press D again to delete tag %s", sel), components.ToneInfo)
+		}
+		return m, m.deleteTag(sel)
+	case "f", "F":
+		if tags {
+			return m, nil
+		}
+		sel, ok := m.refs.Remotes.Selected()
+		if !ok {
+			return m, nil
+		}
+		go m.fetchRemote(sel.Name, key == "F")
+		return m, m.pushToast(fmt.Sprintf("Fetching %s…", sel.Name), components.ToneInfo)
+	case "r":
+		m.refs.Loaded = false
+		go m.fetchRefs()
+		return m, nil
+	default:
+		if tags {
+			m.refs.Tags.Nav(key)
+		} else {
+			m.refs.Remotes.Nav(key)
+		}
+	}
+	return m, nil
+}
+
+func (m *Model) createTag(name string) tea.Cmd {
+	ctx, cancel := context.WithTimeout(context.Background(), 15e9)
+	defer cancel()
+	if err := m.git.TagCreate(ctx, name, "", ""); err != nil {
+		return m.pushToast(fmt.Sprintf("tag failed: %v", err), components.ToneError)
+	}
+	go m.fetchRefs()
+	return m.pushToast(fmt.Sprintf("Tag %s created", name), components.ToneSuccess)
+}
+
+func (m *Model) deleteTag(name string) tea.Cmd {
+	ctx, cancel := context.WithTimeout(context.Background(), 15e9)
+	defer cancel()
+	if err := m.git.TagDelete(ctx, name); err != nil {
+		return m.pushToast(fmt.Sprintf("delete failed: %v", err), components.ToneError)
+	}
+	go m.fetchRefs()
+	return m.pushToast(fmt.Sprintf("Tag %s deleted", name), components.ToneSuccess)
+}
+
+func (m *Model) fetchRemote(name string, prune bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 120e9)
+	defer cancel()
+	if err := m.git.Fetch(ctx, name, prune); err != nil {
+		m.msgs <- teaMsg{view: -100, data: toastEvent{
+			text: fmt.Sprintf("fetch %s failed: %v", name, err), tone: components.ToneError,
+		}}
+		return
+	}
+	m.msgs <- teaMsg{view: -100, data: toastEvent{
+		text: fmt.Sprintf("Fetched %s", name), tone: components.ToneSuccess,
+	}}
+}
+
+// toastEvent shows a transient notification from background work.
+type toastEvent struct {
+	text string
+	tone components.Tone
+}
+
 // --- Diff & Commit ---
 
 func (m *Model) openFileDiff() {
@@ -1867,6 +2289,22 @@ type notesEvent struct {
 	err   error
 }
 
+type worktreesEvent struct {
+	items []*models.Worktree
+	err   error
+}
+
+type stashEvent struct {
+	items []*models.Stash
+	err   error
+}
+
+type refsEvent struct {
+	tags    []string
+	remotes []*models.Remote
+	err     error
+}
+
 // toastTickMsg fires when the oldest toast may have expired.
 type toastTickMsg struct{}
 
@@ -1951,6 +2389,14 @@ func (m *Model) handleEngineMsg(msg teaMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Background toast (e.g. remote fetch completion).
+	if msg.view == -100 {
+		if evt, ok := msg.data.(toastEvent); ok {
+			return m, m.pushToast(evt.text, evt.tone)
+		}
+		return m, nil
+	}
+
 	switch msg.view {
 	case 0: // status
 		if evt, ok := msg.data.(statusEvent); ok {
@@ -2022,6 +2468,33 @@ func (m *Model) handleEngineMsg(msg teaMsg) (tea.Model, tea.Cmd) {
 				m.notes.Loaded = true
 			} else if evt.items != nil {
 				m.notes.UpdateNotes(evt.items)
+			}
+		}
+	case 8: // Worktrees
+		if evt, ok := msg.data.(worktreesEvent); ok {
+			if evt.err != nil {
+				m.worktrees.Error = evt.err.Error()
+				m.worktrees.Loaded = true
+			} else if evt.items != nil {
+				m.worktrees.UpdateWorktrees(evt.items)
+			}
+		}
+	case 9: // Stash
+		if evt, ok := msg.data.(stashEvent); ok {
+			if evt.err != nil {
+				m.stash.Error = evt.err.Error()
+				m.stash.Loaded = true
+			} else if evt.items != nil {
+				m.stash.UpdateStash(evt.items)
+			}
+		}
+	case 10: // Refs
+		if evt, ok := msg.data.(refsEvent); ok {
+			if evt.err != nil {
+				m.refs.Error = evt.err.Error()
+				m.refs.Loaded = true
+			} else {
+				m.refs.UpdateRefs(evt.tags, evt.remotes)
 			}
 		}
 	}

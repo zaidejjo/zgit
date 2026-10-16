@@ -95,6 +95,12 @@ func (m *Model) executePaletteCommand(id string) (tea.Model, tea.Cmd) {
 		m.focusedPanel = (m.focusedPanel - 1 + panelCount) % panelCount
 	case "dashboard":
 		m.openScreen(shell.Dashboard)
+	case "worktrees-view":
+		m.openScreen(shell.Worktrees)
+	case "stash-view":
+		m.openScreen(shell.Stash)
+	case "refs-view":
+		m.openScreen(shell.Refs)
 	case "actions-view":
 		m.openScreen(shell.Actions)
 	case "notifications":

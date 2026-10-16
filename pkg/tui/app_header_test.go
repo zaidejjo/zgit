@@ -34,3 +34,19 @@ func TestRenderHeader(t *testing.T) {
 		t.Errorf("header missing PRs tab")
 	}
 }
+
+func TestConfirmTwice(t *testing.T) {
+	m := &Model{}
+	if m.confirmTwice("del:x") {
+		t.Fatalf("first press should arm, not confirm")
+	}
+	if !m.confirmTwice("del:x") {
+		t.Fatalf("second press should confirm")
+	}
+	if m.confirmTwice("del:x") {
+		t.Fatalf("after confirm, next press re-arms")
+	}
+	if m.confirmTwice("del:y") {
+		t.Fatalf("different action should arm separately")
+	}
+}

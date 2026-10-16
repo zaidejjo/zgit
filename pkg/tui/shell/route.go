@@ -15,6 +15,9 @@ const (
 	Dashboard ScreenID = 5
 	Actions   ScreenID = 6
 	Notes     ScreenID = 7
+	Worktrees ScreenID = 8
+	Stash     ScreenID = 9
+	Refs      ScreenID = 10
 )
 
 // Tab binds a screen to its header label and hotkey.
@@ -24,7 +27,7 @@ type Tab struct {
 	Key   string
 }
 
-// Tabs is the single source of truth for the header strip, the 1–7
+// Tabs is the single source of truth for the header strip, the number
 // keys, and palette navigation dispatch.
 var Tabs = []Tab{
 	{ID: PRs, Label: "PRs", Key: "3"},
@@ -32,6 +35,9 @@ var Tabs = []Tab{
 	{ID: Dashboard, Label: "Repos", Key: "5"},
 	{ID: Actions, Label: "Actions", Key: "6"},
 	{ID: Notes, Label: "Notes", Key: "7"},
+	{ID: Worktrees, Label: "Worktrees", Key: "8"},
+	{ID: Stash, Label: "Stash", Key: "9"},
+	{ID: Refs, Label: "Refs", Key: "0"},
 }
 
 // Short returns the compact tab label for narrow terminals ("5R").
