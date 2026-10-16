@@ -61,6 +61,7 @@ export default function ProjectsPage() {
   const [newColor, setNewColor] = useState(PROJECT_COLORS[0]);
   const [showDelete, setShowDelete] = useState(false);
   const [showCleanup, setShowCleanup] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState("");
   const [activeDrag, setActiveDrag] = useState<string | null>(null);
@@ -126,6 +127,14 @@ export default function ProjectsPage() {
     if (!newName.trim()) return;
     await createProject(newName.trim(), newColor);
     setNewName("");
+  };
+
+  const handleAddRepos = async (paths: string[]) => {
+    if (!active || paths.length === 0) return;
+    for (const p of paths) {
+      await addProjectRepo(active.id, p);
+    }
+    setShowAdd(false);
   };
 
   const handleRename = async () => {
@@ -311,6 +320,7 @@ export default function ProjectsPage() {
                   onRename={handleRename}
                   onDelete={() => setShowDelete(true)}
                   onCleanup={() => setShowCleanup(true)}
+                  onAdd={() => setShowAdd(true)}
                   onFetch={() => fetchProject(active.id)}
                   onOpen={openRepo}
                   onRemove={(path) => removeProjectRepo(active.id, path)}
@@ -331,7 +341,7 @@ export default function ProjectsPage() {
                     </div>
                   </ScrollArea>
                   <p className="text-[11px] text-muted-foreground mt-2">
-                    Drag a repo into the project to add it.
+                    Drag repos in — or Add for several at once.
                   </p>
                 </div>
               </div>
@@ -386,13 +396,14 @@ export default function ProjectsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Cleanup dialog */}
+      {/* Add repos dialog */}
       {active && (
-        <CleanupDialog
-          open={showCleanup}
-          onOpenChange={setShowCleanup}
-          projectId={active.id}
+        <AddReposDialog
+          open={showAdd}
+          onOpenChange={setShowAdd}
           projectName={active.name}
+          pool={pool}
+          onAdd={handleAddRepos}
         />
       )}
     </div>
@@ -457,6 +468,7 @@ function ProjectZone(props: {
   onRename: () => void;
   onDelete: () => void;
   onCleanup: () => void;
+  onAdd: () => void;
   onFetch: () => void;
   onOpen: (path: string) => void;
   onRemove: (path: string) => void;
@@ -512,6 +524,10 @@ function ProjectZone(props: {
             </h3>
           )}
           <div className="flex gap-1 shrink-0">
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={props.onAdd} title="Add one or more repositories">
+              <Plus className="w-3.5 h-3.5 mr-1" />
+              Add
+            </Button>
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={props.onCleanup} title="Preview and delete merged branches">
               <Brush className="w-3.5 h-3.5 mr-1" />
               Cleanup
@@ -609,6 +625,10 @@ function ProjectZone(props: {
               <p className="text-xs text-muted-foreground mt-1">
                 Drag repositories here from the list on the right.
               </p>
+              <Button size="sm" variant="outline" className="h-8 mt-3" onClick={props.onAdd}>
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                Add repositories
+              </Button>
             </div>
           ) : (
             <SortableContext items={project.repos.map(asMemberId)} strategy={verticalListSortingStrategy}>
@@ -725,6 +745,131 @@ function PoolCard({ path, name, commits }: { path: string; name: string; commits
         {typeof commits === "number" && commits > 0 && ` · ${fmtCount(commits)} commits`}
       </p>
     </div>
+  );
+}
+
+/* ─── Add Repositories Dialog ─── */
+
+function AddReposDialog({ open, onOpenChange, projectName, pool, onAdd }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  projectName: string;
+  pool: RepoOverview[];
+  onAdd: (paths: string[]) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (open) {
+      setQuery("");
+      setPicked(new Set());
+    }
+  }, [open ]);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return pool;
+    return pool.filter((r) =>
+      `${r.name} ${r.path}`.toLowerCase().includes(q),
+    );
+  }, [pool, query]);
+
+  const toggle = (path: string) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (visible.every((r) => picked.has(r.path))) {
+      setPicked((prev) => {
+        const next = new Set(prev);
+        for (const r of visible) next.delete(r.path);
+        return next;
+      });
+    } else {
+      setPicked((prev) => new Set([...prev, ...visible.map((r) => r.path)]));
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Plus className="w-5 h-5" />
+            Add to {projectName}
+          </DialogTitle>
+          <DialogDescription>
+            Pick one repository or several — all checked repos join at once.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <input
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            placeholder="Filter repositories..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            autoFocus
+          />
+          {visible.length > 0 && (
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+              <Checkbox
+                checked={visible.every((r) => picked.has(r.path)) && visible.length > 0}
+                onChange={toggleAll}
+              />
+              Select all ({visible.length})
+            </label>
+          )}
+          {visible.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              {pool.length === 0
+                ? "Every known repo is already in this project. Scan for more on the Dashboard."
+                : "No repositories match."}
+            </p>
+          ) : (
+            <ScrollArea className="max-h-64">
+              <div className="space-y-0.5 pr-2">
+                {visible.map((r) => (
+                  <label
+                    key={r.path}
+                    className="flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-accent/40 cursor-pointer transition-colors"
+                    title={r.path}
+                  >
+                    <Checkbox checked={picked.has(r.path)} onChange={() => toggle(r.path)} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{r.name}</p>
+                      <p className="text-[11px] text-muted-foreground truncate font-mono mt-0.5">
+                        {r.branch || "HEAD"}
+                        {typeof r.commit_count === "number" && r.commit_count > 0 && (
+                          <span> · {fmtCount(r.commit_count)} commits</span>
+                        )}
+                      </p>
+                    </div>
+                    {!r.is_clean && (
+                      <span className="w-2 h-2 rounded-full bg-yellow-500 shrink-0 mt-1.5" title="dirty" />
+                    )}
+                  </label>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
+          <div className="flex justify-end gap-2">
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button onClick={() => onAdd([...picked])} disabled={picked.size === 0}>
+              <Plus className="w-4 h-4 mr-1.5" />
+              Add {picked.size > 0 ? `(${picked.size})` : ""}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
