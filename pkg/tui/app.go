@@ -774,11 +774,11 @@ func (m *Model) ensureGHDataLoaded() {
 
 	switch m.fullScreenView {
 	case shell.PRs: // PRs
-		if m.prs.PRs == nil {
+		if m.prs.Items == nil {
 			go m.fetchPRs()
 		}
 	case shell.Issues: // Issues
-		if m.issues.Issues == nil {
+		if m.issues.Items == nil {
 			go m.fetchIssues()
 		}
 	case shell.Actions: // Actions
@@ -1288,89 +1288,40 @@ func (m *Model) openCommitDiff(commit *models.Commit) {
 }
 
 func (m *Model) handleBranchKeys(key string) (tea.Model, tea.Cmd) {
+	if m.branches.TypeKey(key) {
+		return m, nil
+	}
 	switch key {
-	case "j", "down":
-		if len(m.branches.Branches) > 0 && m.branches.Cursor < len(m.branches.Branches)-1 {
-			m.branches.Cursor++
-		}
-	case "k", "up":
-		if m.branches.Cursor > 0 {
-			m.branches.Cursor--
-		}
-	case "g", "home":
-		m.branches.Cursor = 0
-	case "G", "end":
-		m.branches.Cursor = len(m.branches.Branches) - 1
-		if m.branches.Cursor < 0 {
-			m.branches.Cursor = 0
-		}
+	case "/":
+		m.branches.Filtering = true
+		return m, nil
 	case "c", "enter":
-		if m.branches.Cursor >= 0 && m.branches.Cursor < len(m.branches.Branches) {
-			b := m.branches.Branches[m.branches.Cursor]
+		if b, ok := m.branches.Selected(); ok {
 			if err := m.git.Checkout(context.Background(), b.Name); err != nil {
 				m.branches.Error = fmt.Sprintf("checkout %s: %v", b.Name, err)
 			} else {
 				m.sub.Refresh()
 			}
 		}
+		return m, nil
+	default:
+		m.branches.Nav(key)
 	}
 	return m, nil
 }
 
 func (m *Model) handlePRKeys(key string) (tea.Model, tea.Cmd) {
 	// Filter input mode captures all typing.
-	if m.prs.Filtering {
-		switch key {
-		case "esc", "enter":
-			m.prs.Filtering = false
-			if key == "esc" {
-				m.prs.Filter = ""
-			}
-			m.prs.ClampCursor()
-			return m, nil
-		case "backspace":
-			if len(m.prs.Filter) > 0 {
-				m.prs.Filter = m.prs.Filter[:len(m.prs.Filter)-1]
-				m.prs.ClampCursor()
-			}
-			return m, nil
-		default:
-			if len(key) == 1 || key == " " {
-				m.prs.Filter += key
-				m.prs.ClampCursor()
-			}
-			return m, nil
-		}
+	if m.prs.TypeKey(key) {
+		return m, nil
+	}
+	if m.prs.Nav(key) {
+		return m, nil
 	}
 	switch key {
 	case "/":
 		m.prs.Filtering = true
 		return m, nil
-	case "j", "down":
-		if len(m.prs.Filtered()) > 0 && m.prs.Cursor < len(m.prs.Filtered())-1 {
-			m.prs.Cursor++
-		}
-	case "k", "up":
-		if m.prs.Cursor > 0 {
-			m.prs.Cursor--
-		}
-	case "g", "home":
-		m.prs.Cursor = 0
-	case "G", "end":
-		m.prs.Cursor = len(m.prs.Filtered()) - 1
-		if m.prs.Cursor < 0 {
-			m.prs.Cursor = 0
-		}
-	case "pgdown", "ctrl+f":
-		m.prs.Cursor += m.prs.Height
-		if m.prs.Cursor >= len(m.prs.Filtered()) {
-			m.prs.Cursor = len(m.prs.Filtered()) - 1
-		}
-	case "pgup", "ctrl+b":
-		m.prs.Cursor -= m.prs.Height
-		if m.prs.Cursor < 0 {
-			m.prs.Cursor = 0
-		}
 	case "c", "o":
 		// Create PR — get current branch
 		branch := m.currentBranch()
@@ -1414,59 +1365,15 @@ func (m *Model) currentBranch() string {
 }
 
 func (m *Model) handleIssueKeys(key string) (tea.Model, tea.Cmd) {
-	// Filter input mode captures all typing.
-	if m.issues.Filtering {
-		switch key {
-		case "esc", "enter":
-			m.issues.Filtering = false
-			if key == "esc" {
-				m.issues.Filter = ""
-			}
-			m.issues.ClampCursor()
-			return m, nil
-		case "backspace":
-			if len(m.issues.Filter) > 0 {
-				m.issues.Filter = m.issues.Filter[:len(m.issues.Filter)-1]
-				m.issues.ClampCursor()
-			}
-			return m, nil
-		default:
-			if len(key) == 1 || key == " " {
-				m.issues.Filter += key
-				m.issues.ClampCursor()
-			}
-			return m, nil
-		}
+	if m.issues.TypeKey(key) {
+		return m, nil
 	}
 	switch key {
 	case "/":
 		m.issues.Filtering = true
 		return m, nil
-	case "j", "down":
-		if len(m.issues.Filtered()) > 0 && m.issues.Cursor < len(m.issues.Filtered())-1 {
-			m.issues.Cursor++
-		}
-	case "k", "up":
-		if m.issues.Cursor > 0 {
-			m.issues.Cursor--
-		}
-	case "g", "home":
-		m.issues.Cursor = 0
-	case "G", "end":
-		m.issues.Cursor = len(m.issues.Filtered()) - 1
-		if m.issues.Cursor < 0 {
-			m.issues.Cursor = 0
-		}
-	case "pgdown", "ctrl+f":
-		m.issues.Cursor += m.issues.Height
-		if m.issues.Cursor >= len(m.issues.Filtered()) {
-			m.issues.Cursor = len(m.issues.Filtered()) - 1
-		}
-	case "pgup", "ctrl+b":
-		m.issues.Cursor -= m.issues.Height
-		if m.issues.Cursor < 0 {
-			m.issues.Cursor = 0
-		}
+	default:
+		m.issues.Nav(key)
 	}
 	return m, nil
 }

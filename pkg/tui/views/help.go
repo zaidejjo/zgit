@@ -148,6 +148,7 @@ func allSections() []helpSection {
 			title: "Branch Operations (Branches panel)",
 			keys: []helpEntry{
 				{"c / enter", "Checkout branch"},
+				{"/", "Filter branch list (enter keeps, esc clears)"},
 			},
 		},
 		{

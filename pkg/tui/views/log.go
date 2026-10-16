@@ -2,12 +2,12 @@ package views
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/core/models"
+	"github.com/zaidejjo/zgit/pkg/tui/components"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
@@ -230,18 +230,8 @@ func truncateStr(s string, maxLen int) string {
 	return string(runes[:maxLen-1]) + "…"
 }
 
-// ansiEscape strips SGR/control sequences for width-safe reuse.
-var ansiEscape = regexp.MustCompile("\x1b\\[[0-9;]*[a-zA-Z]")
-
-// cursorLine rebuilds a rendered line for the selected row: ANSI is
-// stripped first (never slice styled strings by byte/rune — that
-// decapitates escapes into visible "[38;2;…" garbage), the first
-// visible rune becomes ❯, and the caller wraps it in the active style.
+// ansiEscape + cursorLine live in components (single canonical copy);
+// this alias keeps existing views and tests compiling untouched.
 func cursorLine(line string) string {
-	plain := ansiEscape.ReplaceAllString(line, "")
-	runes := []rune(plain)
-	if len(runes) == 0 {
-		return "❯"
-	}
-	return "❯" + string(runes[1:])
+	return components.CursorLine(line)
 }
