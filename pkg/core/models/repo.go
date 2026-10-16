@@ -69,6 +69,13 @@ type RepoOverview struct {
 	Error       string `json:"error,omitempty"`
 }
 
+// ScannedRepo is one repository found by a folder scan.
+type ScannedRepo struct {
+	Path    string `json:"path"`
+	Name    string `json:"name"`
+	Tracked bool   `json:"tracked"`
+}
+
 // Notification represents a GitHub notification.
 type Notification struct {
 	ID        string    `json:"id"`

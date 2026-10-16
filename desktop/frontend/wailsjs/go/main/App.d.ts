@@ -225,6 +225,8 @@ export function Run(arg1:embed.FS):Promise<void>;
 
 export function SaveGitHubToken(arg1:string):Promise<void>;
 
+export function ScanForRepos(arg1:string):Promise<Array<models.ScannedRepo>>;
+
 export function SessionActiveID():Promise<string>;
 
 export function SessionClearMessages(arg1:string):Promise<void>;
@@ -282,6 +284,8 @@ export function TagDelete(arg1:string):Promise<void>;
 export function TagList():Promise<Array<string>>;
 
 export function ToggleFavoriteRepo(arg1:string):Promise<boolean>;
+
+export function TrackRepos(arg1:Array<string>):Promise<number>;
 
 export function UndoLastAction():Promise<string>;
 

@@ -173,3 +173,52 @@ func TestEngineMigratesLegacyRecents(t *testing.T) {
 		t.Fatalf("second boot = %v, want 2 entries", got2)
 	}
 }
+
+func TestScanForRepos(t *testing.T) {
+	e := testEngine(t)
+	root := t.TempDir()
+	mk := func(rel string) {
+		if err := os.MkdirAll(filepath.Join(root, rel, ".git"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("a")                 // depth 1 repo
+	mk("grp/b")             // depth 2 repo
+	mk("grp/deep/c")        // depth 3 repo
+	mk("node_modules/skip") // skipped dir
+	if err := os.MkdirAll(filepath.Join(root, "plain"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := e.ScanForRepos(root, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := map[string]bool{}
+	for _, r := range got {
+		paths[r.Path] = true
+	}
+	for _, want := range []string{"a", "grp/b"} {
+		if !paths[filepath.Join(root, want)] {
+			t.Errorf("missing %s in %v", want, got)
+		}
+	}
+	if paths[filepath.Join(root, "grp/deep/c")] {
+		t.Errorf("depth-3 repo should be cut at maxDepth 2")
+	}
+	if paths[filepath.Join(root, "node_modules/skip")] {
+		t.Errorf("node_modules should be skipped")
+	}
+
+	// Tracked flag + TrackRepos.
+	e.TrackRepo(filepath.Join(root, "a"))
+	got, _ = e.ScanForRepos(root, 2)
+	for _, r := range got {
+		if r.Name == "a" && !r.Tracked {
+			t.Errorf("a should be flagged tracked")
+		}
+	}
+	if n := e.TrackRepos([]string{filepath.Join(root, "grp/b"), "/nonexistent", ""}); n != 1 {
+		t.Errorf("TrackRepos = %d, want 1", n)
+	}
+}

@@ -442,6 +442,10 @@ export function SaveGitHubToken(arg1) {
   return window['go']['main']['App']['SaveGitHubToken'](arg1);
 }
 
+export function ScanForRepos(arg1) {
+  return window['go']['main']['App']['ScanForRepos'](arg1);
+}
+
 export function SessionActiveID() {
   return window['go']['main']['App']['SessionActiveID']();
 }
@@ -556,6 +560,10 @@ export function TagList() {
 
 export function ToggleFavoriteRepo(arg1) {
   return window['go']['main']['App']['ToggleFavoriteRepo'](arg1);
+}
+
+export function TrackRepos(arg1) {
+  return window['go']['main']['App']['TrackRepos'](arg1);
 }
 
 export function UndoLastAction() {
