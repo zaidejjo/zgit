@@ -3,6 +3,7 @@ package components
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func testList() ZList[string] {
@@ -102,5 +103,31 @@ func TestCursorLine(t *testing.T) {
 	}
 	if CursorLine("") != "❯" {
 		t.Fatalf("empty")
+	}
+}
+
+func TestToastsPushExpire(t *testing.T) {
+	tt := NewToasts(time.Hour)
+	if !tt.Empty() {
+		t.Fatalf("fresh stack should be empty")
+	}
+	tt.Push("a", ToneInfo)
+	tt.Push("b", ToneSuccess)
+	tt.Push("c", ToneError)
+	tt.Push("d", ToneInfo) // cap 3 drops "a"
+	if got := tt.View(); strings.Contains(got, "\na\n") || strings.Contains(got, " a\n") {
+		t.Fatalf("oldest should drop:\n%s", got)
+	}
+	if !strings.Contains(tt.View(), "d") {
+		t.Fatalf("newest kept:\n%s", tt.View())
+	}
+	fast := NewToasts(20 * time.Millisecond)
+	fast.Push("x", ToneInfo)
+	time.Sleep(40 * time.Millisecond)
+	if fast.Expire() {
+		t.Fatalf("expired toast should clear")
+	}
+	if !fast.Empty() {
+		t.Fatalf("should be empty")
 	}
 }

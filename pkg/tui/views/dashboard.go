@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/zaidejjo/zgit/pkg/tui/components"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
@@ -24,61 +25,43 @@ type DashEntry struct {
 
 // DashModel holds state for the repository dashboard view.
 type DashModel struct {
-	Entries   []DashEntry
-	Loaded    bool // false while the async scan runs
-	Cursor    int
-	Offset    int
-	Error     string
-	Height    int
-	Filter    string
-	Filtering bool
+	components.ZList[DashEntry]
+	Loaded bool // false while the async scan runs
+	Error  string
+}
+
+// Entries aliases the underlying items (read-only snapshot).
+func (m *DashModel) Entries() []DashEntry {
+	return m.Items
 }
 
 // NewDashModel creates a dashboard view model.
 func NewDashModel() DashModel {
-	return DashModel{Height: 20}
+	m := DashModel{}
+	m.Height = 20
+	m.Match = func(e DashEntry, q string) bool {
+		return strings.Contains(strings.ToLower(e.Name+" "+e.Path), q)
+	}
+	m.Render = dashRow
+	return m
 }
 
 // UpdateEntries refreshes the dashboard data.
 func (m *DashModel) UpdateEntries(entries []DashEntry) {
-	m.Entries = entries
+	m.Items = entries
 	m.Loaded = true
 	m.Error = ""
 	m.ClampCursor()
 }
 
-// Filtered returns entries matching the filter (name or path substring).
-func (m *DashModel) Filtered() []DashEntry {
-	q := strings.ToLower(strings.TrimSpace(m.Filter))
-	if q == "" {
-		return m.Entries
-	}
-	out := make([]DashEntry, 0, len(m.Entries))
-	for _, e := range m.Entries {
-		if strings.Contains(strings.ToLower(e.Name+" "+e.Path), q) {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
-// ClampCursor keeps the cursor inside the filtered list.
-func (m *DashModel) ClampCursor() {
-	if m.Cursor >= len(m.Filtered()) {
-		m.Cursor = 0
-	}
-	if m.Cursor < 0 {
-		m.Cursor = 0
-	}
-}
-
 // Selected returns the cursor entry (filter-aware).
 func (m *DashModel) Selected() *DashEntry {
-	visible := m.Filtered()
-	if len(visible) == 0 || m.Cursor < 0 || m.Cursor >= len(visible) {
+	e, ok := m.ZList.Selected()
+	if !ok {
 		return nil
 	}
-	return &visible[m.Cursor]
+	out := e
+	return &out
 }
 
 // View renders the dashboard list.
@@ -89,97 +72,67 @@ func (m *DashModel) View(width int) string {
 	if !m.Loaded {
 		return styles.LoadingStyle.Render("Scanning repositories...")
 	}
-	if len(m.Entries) == 0 {
+	if len(m.Items) == 0 {
 		return styles.SubtitleStyle.Render("No repositories yet — open one with 'zgit -C <path>'")
 	}
 
-	m.ensureCursorVisible()
-
 	var b strings.Builder
-	title := fmt.Sprintf(" Repositories (%d)", len(m.Entries))
+	title := fmt.Sprintf(" Repositories (%d)", len(m.Items))
 	if strings.TrimSpace(m.Filter) != "" {
-		title = fmt.Sprintf(" Repositories (%d/%d) filter: %s", len(m.Filtered()), len(m.Entries), m.Filter)
+		title = fmt.Sprintf(" Repositories (%d/%d) filter: %s", len(m.Filtered()), len(m.Items), m.Filter)
 	}
 	b.WriteString(styles.SectionTitleStyle.Render(title))
 	b.WriteString("\n")
-	if m.Filtering {
-		b.WriteString(styles.FilterBarStyle.Render(" /" + m.Filter + "█"))
-		b.WriteString("\n")
-	}
-
-	visible := m.Filtered()
-	if len(visible) == 0 && strings.TrimSpace(m.Filter) != "" {
+	b.WriteString(m.FilterBar())
+	if len(m.Filtered()) == 0 && strings.TrimSpace(m.Filter) != "" {
 		return b.String() + styles.SubtitleStyle.Render("No repositories match filter")
 	}
-	if len(visible) > m.Height {
-		end := m.Offset + m.Height
-		if end > len(visible) {
-			end = len(visible)
-		}
-		visible = visible[m.Offset:end]
-	}
 
-	for i, e := range visible {
-		globalIdx := m.Offset + i
-
-		var mark string
-		switch {
-		case e.Err != "":
-			mark = styles.StatusDeletedStyle.Render("✗")
-		case !e.Clean:
-			mark = styles.StatusUnstagedStyle.Render("●")
-		default:
-			mark = styles.StatusStagedStyle.Render("●")
-		}
-
-		name := e.Name
-		star := ""
-		if e.Favorite {
-			star = styles.StatusUnstagedStyle.Render("★ ")
-		}
-		openTag := ""
-		if e.Current {
-			openTag = styles.ListItemActiveStyle.Render(" ‹open›")
-		}
-
-		detail := e.Branch
-		if e.Err != "" {
-			detail = "unreachable"
-		} else {
-			if e.Dirty > 0 {
-				detail += fmt.Sprintf(" %d dirty", e.Dirty)
-			}
-			if e.Ahead > 0 || e.Behind > 0 {
-				detail += fmt.Sprintf(" +%d/-%d", e.Ahead, e.Behind)
-			}
-		}
-		if detail == "" {
-			detail = "—"
-		}
-
-		line := fmt.Sprintf(" %s %s%s%s  %s", mark, star, truncateStr(name, 38),
-			openTag, styles.SubtitleStyle.Render(truncateStr(detail, 40)))
-		if lipgloss.Width(line) > width {
-			line = fmt.Sprintf(" %s %s%s", mark, star, truncateStr(name, width-8))
-		}
-
-		if globalIdx == m.Cursor {
-			b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
-		} else {
-			b.WriteString(styles.ListItemStyle.Render(line))
-		}
-		b.WriteString("\n")
-	}
-
-	return b.String()
+	return b.String() + m.ViewRows(width)
 }
 
-func (m *DashModel) ensureCursorVisible() {
-	m.ClampCursor()
-	if m.Cursor < m.Offset {
-		m.Offset = m.Cursor
+// dashRow renders one repository row (no cursor — ZList wraps it).
+func dashRow(e DashEntry, width int) string {
+	var mark string
+	switch {
+	case e.Err != "":
+		mark = styles.StatusDeletedStyle.Render("✗")
+	case !e.Clean:
+		mark = styles.StatusUnstagedStyle.Render("●")
+	default:
+		mark = styles.StatusStagedStyle.Render("●")
 	}
-	if m.Cursor >= m.Offset+m.Height {
-		m.Offset = m.Cursor - m.Height + 1
+
+	name := e.Name
+	star := ""
+	if e.Favorite {
+		star = styles.StatusUnstagedStyle.Render("★ ")
 	}
+	openTag := ""
+	if e.Current {
+		openTag = styles.ListItemActiveStyle.Render(" ‹open›")
+	}
+
+	detail := e.Branch
+	if e.Err != "" {
+		detail = "unreachable"
+	} else {
+		if e.Dirty > 0 {
+			detail += fmt.Sprintf(" %d dirty", e.Dirty)
+		}
+		if e.Ahead > 0 || e.Behind > 0 {
+			detail += fmt.Sprintf(" +%d/-%d", e.Ahead, e.Behind)
+		}
+	}
+	if detail == "" {
+		detail = "—"
+	}
+
+	line := fmt.Sprintf(" %s %s%s%s  %s", mark, star, truncateStr(name, 38),
+		openTag, styles.SubtitleStyle.Render(truncateStr(detail, 40)))
+	if lipgloss.Width(line) > width {
+		line = fmt.Sprintf(" %s %s%s", mark, star, truncateStr(name, width-8))
+	}
+
+	return line
 }
