@@ -3,7 +3,7 @@ import {
   GitCommitHorizontal, History, GitBranch, GitPullRequest,
   CircleDot, Play, Globe, Tag, Settings, Bell,
   Upload, Download, RotateCcw, Archive, Undo2,
-  Sparkles, Search, ArrowRight, GitFork,
+  Sparkles, Search, ArrowRight, GitFork, Folder,
   FileText, Star, Plus, Trash2, Merge, Palette, LayoutDashboard, FolderKanban,
 } from "lucide-react";
 import { useAppStore, type Theme, THEMES } from "@/store/app";
@@ -25,6 +25,35 @@ interface CommandPaletteProps {
   onNavigate: (tabId: string) => void;
 }
 
+/** Subsequence fuzzy score (higher = better), null when no match.
+ *  Rewards prefixes, word starts and consecutive runs; prefers short targets. */
+function fuzzyScore(rawQuery: string, rawText: string): number | null {
+  const q = rawQuery.toLowerCase();
+  const text = rawText.toLowerCase();
+  if (!q) return 0;
+  let score = 0;
+  let ti = 0;
+  let consec = 0;
+  for (let qi = 0; qi < q.length; qi++) {
+    const found = text.indexOf(q[qi], ti);
+    if (found === -1) return null;
+    const prev = found > 0 ? text[found - 1] : "";
+    if (found === ti) {
+      consec++;
+      score += 10 + consec * 5;
+    } else {
+      consec = 0;
+      score += 5;
+      if (found === 0 || prev === "/" || prev === "-" || prev === "_" || prev === " " || prev === ".") {
+        score += 8;
+      }
+    }
+    if (qi === 0 && found === 0) score += 15;
+    ti = found + 1;
+  }
+  return score - text.length * 0.1;
+}
+
 export default function CommandPalette({ open, onClose, onNavigate }: CommandPaletteProps) {
   const {
     gitFetch, gitPull, gitPush,
@@ -35,6 +64,9 @@ export default function CommandPalette({ open, onClose, onNavigate }: CommandPal
     fetchStashes, stashPop, stashApply, stashDrop,
     stashes, theme, setTheme,
     userPreferences,
+    recentRepos, fetchRecentRepos, openRepo, repoPath,
+    branches, currentBranch, fetchBranches, checkoutBranch,
+    projects, fetchProjects,
   } = useAppStore();
   const aiShortcut = userPreferences?.keybindings?.toggle_ai_panel || "Ctrl+Shift+A";
 
@@ -43,12 +75,16 @@ export default function CommandPalette({ open, onClose, onNavigate }: CommandPal
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Reset state on open
+  // Reset state on open + make sure dynamic sources are loaded
   useEffect(() => {
     if (open) {
       setQuery("");
       setSelectedIdx(0);
       setTimeout(() => inputRef.current?.focus(), 50);
+      const s = useAppStore.getState();
+      if (s.recentRepos.length === 0) s.fetchRecentRepos().catch(() => {});
+      if (s.branches.length === 0) s.fetchBranches().catch(() => {});
+      if (s.projects.length === 0) s.fetchProjects().catch(() => {});
     }
   }, [open]);
 
@@ -63,6 +99,47 @@ export default function CommandPalette({ open, onClose, onNavigate }: CommandPal
   }, [open, onClose]);
 
   const commands: Command[] = useMemo(() => [
+    // Repositories — most useful first
+    ...recentRepos.slice(0, 6).map((r) => {
+      const name = r.split("/").pop() || r;
+      const current = r === repoPath;
+      return {
+        id: `repo-${r}`,
+        label: current ? `${name} (current)` : `Open ${name}`,
+        description: r,
+        icon: <Folder className="w-4 h-4" />,
+        action: () => { if (!current) openRepo(r); onClose(); },
+        category: "Repositories",
+      };
+    }),
+
+    // Branches of the current repo
+    ...branches.slice(0, 6).map((b) => {
+      const current = b.name === currentBranch;
+      return {
+        id: `branch-${b.name}`,
+        label: current ? `${b.name} (current)` : `Switch to ${b.name}`,
+        description: [b.upstream, b.latest_msg].filter(Boolean).join(" · ") || undefined,
+        icon: <GitBranch className="w-4 h-4" />,
+        action: () => { if (!current) checkoutBranch(b.name); onClose(); },
+        category: "Branches",
+      };
+    }),
+
+    // Projects
+    ...projects.map((p) => ({
+      id: `project-${p.id}`,
+      label: `Project: ${p.name}`,
+      description: `${p.repos.length} ${p.repos.length === 1 ? "repo" : "repos"}`,
+      icon: <FolderKanban className="w-4 h-4" />,
+      action: () => {
+        useAppStore.setState({ activeProjectId: p.id });
+        onNavigate("projects");
+        onClose();
+      },
+      category: "Projects",
+    })),
+
     // Navigation
     { id: "nav-status",   label: "Go to Status",     icon: <GitCommitHorizontal className="w-4 h-4" />, action: () => { onNavigate("status"); onClose(); }, category: "Navigation" },
     { id: "nav-log",      label: "Go to Log",        icon: <History className="w-4 h-4" />, action: () => { onNavigate("log"); onClose(); }, category: "Navigation" },
@@ -101,18 +178,34 @@ export default function CommandPalette({ open, onClose, onNavigate }: CommandPal
       category: "Appearance",
       shortcut: theme === t.id ? "active" : undefined,
     })),
-  ], [onNavigate, onClose, gitFetch, gitPull, gitPush, stageAll, unstageAll, stashPush, undoLastAction, undoDescription, toggleAIPanel, theme, setTheme, aiShortcut]);
+  ], [onNavigate, onClose, gitFetch, gitPull, gitPush, stageAll, unstageAll, stashPush, undoLastAction, undoDescription, toggleAIPanel, theme, setTheme, aiShortcut, recentRepos, repoPath, openRepo, branches, currentBranch, checkoutBranch, projects]);
 
-  // Filter commands by query
+  // Fuzzy filter with #branch / @repo prefix modes, ranked by score.
+  // Empty query shows everything grouped (dynamic sources first).
   const filtered = useMemo(() => {
-    if (!query.trim()) return commands;
-    const q = query.toLowerCase();
-    return commands.filter(
-      (c) =>
-        c.label.toLowerCase().includes(q) ||
-        c.description?.toLowerCase().includes(q) ||
-        c.category.toLowerCase().includes(q)
-    );
+    const raw = query.trim();
+    if (!raw) return commands;
+    let q = raw;
+    let onlyCategory: string | null = null;
+    if (q.startsWith("#")) { onlyCategory = "Branches"; q = q.slice(1).trim(); }
+    else if (q.startsWith("@")) { onlyCategory = "Repositories"; q = q.slice(1).trim(); }
+    else if (q.startsWith(">")) { q = q.slice(1).trim(); }
+    if (!q) {
+      return onlyCategory ? commands.filter((c) => c.category === onlyCategory) : commands;
+    }
+    const scored: { cmd: Command; score: number; idx: number }[] = [];
+    commands.forEach((c, idx) => {
+      if (onlyCategory && c.category !== onlyCategory) return;
+      const text = c.description ? `${c.label} ${c.description}` : c.label;
+      const s = fuzzyScore(q, text);
+      if (s !== null) {
+        scored.push({ cmd: c, score: s, idx });
+      } else if (!onlyCategory && c.category.toLowerCase().includes(q.toLowerCase())) {
+        scored.push({ cmd: c, score: 0.5, idx });
+      }
+    });
+    scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
+    return scored.map((s) => s.cmd);
   }, [commands, query]);
 
   // Keyboard navigation
@@ -160,7 +253,7 @@ export default function CommandPalette({ open, onClose, onNavigate }: CommandPal
           <input
             ref={inputRef}
             type="text"
-            placeholder="Search commands, pages, git actions..."
+            placeholder="Search actions, #branches, @repos..."
             value={query}
             onChange={(e) => { setQuery(e.target.value); setSelectedIdx(0); }}
             onKeyDown={handleKeyDown}
@@ -217,6 +310,22 @@ export default function CommandPalette({ open, onClose, onNavigate }: CommandPal
               No commands match "{query}"
             </div>
           )}
+        </div>
+
+        {/* Hints */}
+        <div className="flex items-center gap-3 px-4 py-2 border-t border-border/30 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <kbd className="px-1 py-0.5 rounded bg-muted/50 font-mono">↑↓</kbd> navigate
+          </span>
+          <span className="flex items-center gap-1">
+            <kbd className="px-1 py-0.5 rounded bg-muted/50 font-mono">↵</kbd> run
+          </span>
+          <span className="hidden sm:flex items-center gap-1">
+            <kbd className="px-1 py-0.5 rounded bg-muted/50 font-mono">#</kbd> branches
+          </span>
+          <span className="hidden sm:flex items-center gap-1">
+            <kbd className="px-1 py-0.5 rounded bg-muted/50 font-mono">@</kbd> repos
+          </span>
         </div>
       </div>
     </>
