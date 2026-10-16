@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor,
   closestCenter, useDroppable, useDraggable, useSensor, useSensors,
@@ -151,20 +151,9 @@ export default function ProjectsPage() {
       {projects.length === 0 ? (
         <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4">
           <div className="w-full md:w-80 shrink-0 flex flex-col gap-3">
-            <div
-              className="relative overflow-hidden rounded-2xl border border-border/50 bg-card/60 p-5 shadow-xl transition-shadow"
-              style={{ boxShadow: `0 8px 40px -18px ${newColor}` }}
-            >
-              {/* live color glow */}
-              <div
-                className="absolute inset-x-0 top-0 h-1 transition-colors"
-                style={{ background: `linear-gradient(90deg, transparent, ${newColor}, transparent)` }}
-              />
+            <div className="rounded-xl border border-border/50 bg-card p-5">
               <div className="flex items-center gap-2.5 mb-1.5">
-                <span
-                  className="flex items-center justify-center w-9 h-9 rounded-xl transition-colors"
-                  style={{ backgroundColor: `${newColor}1f`, color: newColor }}
-                >
+                <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-accent text-muted-foreground">
                   <FolderKanban className="w-5 h-5" />
                 </span>
                 <div>
@@ -180,48 +169,61 @@ export default function ProjectsPage() {
                 Name
               </label>
               <input
-                className="mt-1.5 flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="mt-1.5 flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 placeholder="e.g. Work, OSS, Demos"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleCreate()}
                 autoFocus
               />
-              <div className="mt-3.5 mb-1 flex items-center justify-between">
+              <div className="mt-3.5 mb-1.5 flex items-center justify-between">
                 <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                   Color
                 </label>
-                <span
-                  className="text-[11px] font-mono px-1.5 py-0.5 rounded"
-                  style={{ backgroundColor: `${newColor}1a`, color: newColor }}
-                >
-                  {newColor}
+                <span className="text-[11px] font-mono text-muted-foreground">
+                  {newName.trim() || "Preview"}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                {PROJECT_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => setNewColor(c)}
-                    title={c}
-                    className={cn(
-                      "w-7 h-7 rounded-full transition-all press-scale",
-                      newColor === c
-                        ? "ring-2 ring-offset-2 ring-offset-background scale-110"
-                        : "hover:scale-110 opacity-70 hover:opacity-100",
-                    )}
-                    style={{
-                      backgroundColor: c,
-                      ...(newColor === c ? { ["--tw-ring-color" as string]: c } : {}),
-                    }}
-                  >
-                    {newColor === c && (
-                      <Check className="w-3.5 h-3.5 mx-auto text-black/70" />
-                    )}
-                  </button>
-                ))}
+              <div
+                className="flex items-center gap-2 rounded-lg border border-border/50 bg-background/60 px-3 py-2.5"
+              >
+                <span
+                  className="text-sm font-semibold truncate flex-1 min-w-0"
+                  style={{ color: newColor }}
+                >
+                  {newName.trim() || "Your project"}
+                </span>
+                <span
+                  className="flex items-center gap-2 shrink-0"
+                >
+                  {PROJECT_COLORS.map((c) => {
+                    const active = newColor === c;
+                    return (
+                      <button
+                        key={c}
+                        onClick={() => setNewColor(c)}
+                        title={c}
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: 9999,
+                          backgroundColor: c,
+                          border: "none",
+                          padding: 0,
+                          cursor: "pointer",
+                          outline: active ? `2px solid ${c}` : "none",
+                          outlineOffset: 2,
+                          opacity: active ? 1 : 0.55,
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.opacity = active ? "1" : "0.55"; }}
+                      />
+                    );
+                  })}
+                </span>
               </div>
               <Button
+                variant="secondary"
                 className="w-full h-10 mt-4 font-medium"
                 onClick={handleCreate}
                 disabled={!newName.trim()}
@@ -462,19 +464,8 @@ function ProjectZone(props: {
   const { project, statusByPath } = props;
   const { setNodeRef, isOver } = useDroppable({ id: "project-zone" });
   const [colorOpen, setColorOpen] = useState(false);
-  const colorRef = useRef<HTMLDivElement>(null);
   const { setProjectColor } = useAppStore();
-
-  useEffect(() => {
-    if (!colorOpen) return;
-    const close = (e: MouseEvent) => {
-      if (colorRef.current && !colorRef.current.contains(e.target as Node)) {
-        setColorOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [colorOpen]);
+  const selectedColor = project.color || PROJECT_COLORS[0];
 
   return (
     <div
@@ -487,33 +478,21 @@ function ProjectZone(props: {
       {/* Hero */}
       <div className="px-4 pt-4 pb-3 border-b border-border/40 bg-gradient-to-b from-accent/40 to-transparent">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="relative shrink-0" ref={colorRef}>
-            <button
-              onClick={() => setColorOpen((o) => !o)}
-              title="Change project color"
-              className="block w-4 h-4 rounded-md shadow-sm transition-transform hover:scale-125"
-              style={{ backgroundColor: project.color || "var(--primary)" }}
-            />
-            {colorOpen && (
-              <div className="absolute left-0 top-6 z-30 flex items-center gap-1.5 rounded-xl border border-border bg-popover p-2 shadow-xl">
-                {PROJECT_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => { setProjectColor(project.id, c); setColorOpen(false); }}
-                    title={c}
-                    className={cn(
-                      "w-6 h-6 rounded-full transition-all hover:scale-110",
-                      (project.color || PROJECT_COLORS[0]) === c && "ring-2 ring-offset-2 ring-offset-popover",
-                    )}
-                    style={{
-                      backgroundColor: c,
-                      ...((project.color || PROJECT_COLORS[0]) === c ? { ["--tw-ring-color" as string]: c } : {}),
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+          <button
+            onClick={() => setColorOpen((o) => !o)}
+            title="Change project color"
+            style={{
+              width: 16,
+              height: 16,
+              borderRadius: 6,
+              flexShrink: 0,
+              backgroundColor: selectedColor,
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              boxShadow: colorOpen ? `0 0 0 2px var(--background), 0 0 0 4px ${selectedColor}` : "0 1px 3px rgba(0,0,0,0.4)",
+            }}
+          />
           {props.renaming ? (
             <input
               className="h-8 rounded-md border border-input bg-background px-2.5 text-base font-bold flex-1 min-w-0"
@@ -555,9 +534,50 @@ function ProjectZone(props: {
             </Button>
           </div>
         </div>
+        {/* Color editor — inline expanding row, fully inline-styled so it
+            can never degrade into unstyled stripes if a utility class
+            fails to generate. */}
+        {colorOpen && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginTop: 10,
+              padding: "8px 10px",
+              borderRadius: 10,
+              border: "1px solid var(--border)",
+              backgroundColor: "var(--popover)",
+            }}
+          >
+            {PROJECT_COLORS.map((c) => {
+              const active = selectedColor === c;
+              return (
+                <button
+                  key={c}
+                  onClick={() => { setProjectColor(project.id, c); setColorOpen(false); }}
+                  title={c}
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 9999,
+                    backgroundColor: c,
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    outline: active ? `2px solid ${c}` : "2px solid transparent",
+                    outlineOffset: 2,
+                    opacity: active ? 1 : 0.65,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = active ? "1" : "0.65"; }}
+                />
+              );
+            })}
+          </div>
+        )}
         {/* Stat chips */}
-        <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
-          <Badge variant="secondary" className="text-[11px]">
+        <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">          <Badge variant="secondary" className="text-[11px]">
             {project.repos.length} {project.repos.length === 1 ? "repo" : "repos"}
           </Badge>
           {props.commits > 0 && (

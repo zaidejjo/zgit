@@ -70,18 +70,6 @@ export function CancelWorkflowRun(arg1) {
   return window['go']['main']['App']['CancelWorkflowRun'](arg1);
 }
 
-export function GetNotifications(arg1) {
-  return window['go']['main']['App']['GetNotifications'](arg1);
-}
-
-export function MarkAllNotificationsRead() {
-  return window['go']['main']['App']['MarkAllNotificationsRead']();
-}
-
-export function MarkNotificationRead(arg1) {
-  return window['go']['main']['App']['MarkNotificationRead'](arg1);
-}
-
 export function CheckoutBranch(arg1) {
   return window['go']['main']['App']['CheckoutBranch'](arg1);
 }
@@ -144,10 +132,6 @@ export function DeleteBranch(arg1, arg2) {
 
 export function DeleteProject(arg1) {
   return window['go']['main']['App']['DeleteProject'](arg1);
-}
-
-export function SetProjectColor(arg1, arg2) {
-  return window['go']['main']['App']['SetProjectColor'](arg1, arg2);
 }
 
 export function DeleteProviderAIConfig(arg1) {
@@ -248,6 +232,10 @@ export function GetLog(arg1) {
 
 export function GetMergeConflictDetail(arg1) {
   return window['go']['main']['App']['GetMergeConflictDetail'](arg1);
+}
+
+export function GetNotifications(arg1) {
+  return window['go']['main']['App']['GetNotifications'](arg1);
 }
 
 export function GetPRChecks(arg1) {
@@ -360,6 +348,14 @@ export function LockWorktree(arg1, arg2) {
 
 export function LogoutGitHub() {
   return window['go']['main']['App']['LogoutGitHub']();
+}
+
+export function MarkAllNotificationsRead() {
+  return window['go']['main']['App']['MarkAllNotificationsRead']();
+}
+
+export function MarkNotificationRead(arg1) {
+  return window['go']['main']['App']['MarkNotificationRead'](arg1);
 }
 
 export function MergePullRequest(arg1, arg2) {
@@ -484,6 +480,10 @@ export function SessionSwitch(arg1) {
 
 export function SetAIConfig(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SetAIConfig'](arg1, arg2, arg3, arg4);
+}
+
+export function SetProjectColor(arg1, arg2) {
+  return window['go']['main']['App']['SetProjectColor'](arg1, arg2);
 }
 
 export function SetProjectRepos(arg1, arg2) {
