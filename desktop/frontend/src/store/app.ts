@@ -227,6 +227,12 @@ export interface IssueComment {
   is_minimized: boolean;
 }
 
+export interface ScannedRepo {
+  path: string;
+  name: string;
+  tracked: boolean;
+}
+
 export interface NotificationItem {
   id: string;
   reason: string;
@@ -836,6 +842,9 @@ interface AppState {
   fetchProjectCleanup: (id: string, base: string) => Promise<void>;
   deleteRepoBranch: (repoPath: string, branch: string) => Promise<boolean>;
   removeRepo: (path: string) => Promise<void>;
+  pickDirectory: () => Promise<string | null>;
+  scanRepos: (root: string) => Promise<ScannedRepo[]>;
+  trackRepos: (paths: string[]) => Promise<number>;
 
   // File history & blame
   fetchBlame: (path: string, ref?: string, lines?: string) => Promise<void>;
@@ -2265,6 +2274,46 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().setSuccessMessage("Removed from app (files untouched)");
     } catch (e: any) {
       set({ error: e.message || "Failed to remove repo" });
+    }
+  },
+
+  pickDirectory: async () => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      return (await backend.PickDirectory()) || null;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to pick directory" });
+      return null;
+    }
+  },
+
+  scanRepos: async (root) => {
+    const backend = getBackend();
+    if (!backend) return [];
+    set((s) => ({ loading: { ...s.loading, repoScan: true } }));
+    try {
+      return (await backend.ScanForRepos(root)) || [];
+    } catch (e: any) {
+      set({ error: e.message || "Failed to scan folder" });
+      return [];
+    } finally {
+      set((s) => ({ loading: { ...s.loading, repoScan: false } }));
+    }
+  },
+
+  trackRepos: async (paths) => {
+    const backend = getBackend();
+    if (!backend) return 0;
+    try {
+      const n: number = await backend.TrackRepos(paths);
+      await get().fetchDashboard(true);
+      if (n === 1) get().setSuccessMessage("Added 1 repo");
+      else if (n > 1) get().setSuccessMessage(`Added ${n} repos`);
+      return n;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to add repos" });
+      return 0;
     }
   },
 

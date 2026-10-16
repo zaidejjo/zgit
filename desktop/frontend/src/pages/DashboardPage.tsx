@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
-  LayoutDashboard, Star, FolderOpen, RefreshCw, Trash2,
+  LayoutDashboard, Star, FolderOpen, FolderSearch, RefreshCw, Trash2,
   ArrowUpWideNarrow, ArrowDownWideNarrow, GitBranch, AlertTriangle, X,
   ChevronDown, EyeOff, History,
 } from "lucide-react";
-import { useAppStore, type RepoOverview } from "@/store/app";
+import { useAppStore, type RepoOverview, type ScannedRepo } from "@/store/app";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import EmptyState from "@/components/EmptyState";
 
@@ -34,8 +38,42 @@ export default function DashboardPage() {
   const {
     dashboard, loading, repoPath, openRepo,
     fetchDashboard, toggleFavorite, fetchAllRepos, pruneDeadRepos, removeRepo,
+    pickDirectory, scanRepos, trackRepos,
   } = useAppStore();
   const [showDead, setShowDead] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanRoot, setScanRoot] = useState("");
+  const [scanResults, setScanResults] = useState<ScannedRepo[]>([]);
+  const [scanPicked, setScanPicked] = useState<Set<string>>(new Set());
+
+  const scanning = !!loading.repoScan;
+
+  const handleScanFolder = async () => {
+    const dir = await pickDirectory();
+    if (!dir) return;
+    setScanRoot(dir);
+    setScanResults([]);
+    setScanPicked(new Set());
+    setScanOpen(true);
+    const found = await scanRepos(dir);
+    setScanResults(found);
+    setScanPicked(new Set(found.filter((r) => !r.tracked).map((r) => r.path)));
+  };
+
+  const toggleScanPick = (path: string) => {
+    setScanPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
+  const handleAddScanned = async () => {
+    if (scanPicked.size === 0) return;
+    await trackRepos([...scanPicked]);
+    setScanOpen(false);
+  };
 
   useEffect(() => {
     fetchDashboard();
@@ -79,6 +117,10 @@ export default function DashboardPage() {
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button size="sm" variant="outline" className="h-8" onClick={handleScanFolder} disabled={busy || refreshing || scanning} title="Find git repositories in a folder and add them">
+            <FolderSearch className={cn("w-3.5 h-3.5 mr-1.5", scanning && "animate-spin")} />
+            {scanning ? "Scanning..." : "Scan folder"}
+          </Button>
           <Button size="sm" variant="outline" className="h-8" onClick={() => fetchDashboard(true)} disabled={busy || refreshing}>
             <RefreshCw className={cn("w-3.5 h-3.5 mr-1.5", (busy || refreshing) && "animate-spin")} />
             {refreshing ? "Refreshing..." : "Refresh"}
@@ -176,6 +218,82 @@ export default function DashboardPage() {
           )}
         </ScrollArea>
       )}
+
+      {/* Scan dialog */}
+      <Dialog open={scanOpen} onOpenChange={setScanOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FolderSearch className="w-5 h-5" />
+              Add repositories
+            </DialogTitle>
+            <DialogDescription className="font-mono text-[11px] truncate" title={scanRoot}>
+              {scanRoot}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {scanning && scanResults.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">Scanning for git repositories...</p>
+            ) : scanResults.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                No git repositories found here. Try a parent folder.
+              </p>
+            ) : (
+              <>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                  <Checkbox
+                    checked={scanResults.filter((r) => !r.tracked).every((r) => scanPicked.has(r.path))}
+                    onChange={() => {
+                      const untracked = scanResults.filter((r) => !r.tracked);
+                      if (untracked.every((r) => scanPicked.has(r.path))) setScanPicked(new Set());
+                      else setScanPicked(new Set(untracked.map((r) => r.path)));
+                    }}
+                  />
+                  Select all new ({scanResults.filter((r) => !r.tracked).length})
+                </label>
+                <ScrollArea className="max-h-64">
+                  <div className="space-y-0.5 pr-2">
+                    {scanResults.map((r) => (
+                      <label
+                        key={r.path}
+                        className={cn(
+                          "flex items-start gap-2.5 px-2.5 py-2 rounded-lg transition-colors",
+                          r.tracked ? "opacity-50" : "hover:bg-accent/40 cursor-pointer",
+                        )}
+                        title={r.path}
+                      >
+                        <Checkbox
+                          checked={r.tracked || scanPicked.has(r.path)}
+                          disabled={r.tracked}
+                          onChange={() => toggleScanPick(r.path)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {r.name}
+                            {r.tracked && (
+                              <span className="ml-1.5 text-[10px] text-muted-foreground font-normal">already added</span>
+                            )}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground truncate font-mono">{r.path}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </>
+            )}
+            <div className="flex justify-end gap-2">
+              <DialogClose asChild>
+                <Button variant="outline">Close</Button>
+              </DialogClose>
+              <Button onClick={handleAddScanned} disabled={scanPicked.size === 0}>
+                <FolderOpen className="w-4 h-4 mr-1.5" />
+                Add {scanPicked.size > 0 ? `(${scanPicked.size})` : ""}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

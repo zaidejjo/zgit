@@ -114,4 +114,56 @@ func init() {
 	reposCmd.Flags().BoolVar(&reposPrune, "prune", false, "drop recent entries whose paths no longer exist")
 	reposCmd.Flags().StringVar(&reposRemove, "remove", "", "forget a repo in the app (files on disk untouched)")
 	rootCmd.AddCommand(reposCmd)
+	reposCmd.AddCommand(reposAddCmd)
+	reposCmd.AddCommand(reposScanCmd)
+}
+
+var reposAddCmd = &cobra.Command{
+	Use:   "add <path>...",
+	Short: "Add repositories to the app without opening them",
+	Args:  cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		engine, err := core.New(core.DefaultEngineOptions())
+		if err != nil {
+			return fmt.Errorf("init engine: %w", err)
+		}
+		if n := engine.TrackRepos(args); n == 1 {
+			fmt.Fprintln(os.Stdout, "Added 1 repo")
+		} else {
+			fmt.Fprintf(os.Stdout, "Added %d repos\n", n)
+		}
+		return nil
+	},
+}
+
+var reposScanCmd = &cobra.Command{
+	Use:   "scan <dir>",
+	Short: "Find git repositories under a directory and add them all",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		engine, err := core.New(core.DefaultEngineOptions())
+		if err != nil {
+			return fmt.Errorf("init engine: %w", err)
+		}
+		found, err := engine.ScanForRepos(args[0], 4)
+		if err != nil {
+			return fmt.Errorf("scan: %w", err)
+		}
+		paths := make([]string, 0, len(found))
+		for _, r := range found {
+			mark := ""
+			if r.Tracked {
+				mark = "(already added)"
+			} else {
+				paths = append(paths, r.Path)
+			}
+			fmt.Fprintf(os.Stdout, "%-50s %s\n", r.Path, mark)
+		}
+		if n := engine.TrackRepos(paths); n == 1 {
+			fmt.Fprintln(os.Stdout, "Added 1 repo")
+		} else {
+			fmt.Fprintf(os.Stdout, "Added %d repos\n", n)
+		}
+		return nil
+	},
 }

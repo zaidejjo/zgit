@@ -1286,6 +1286,22 @@ export namespace models {
 	    }
 	}
 	
+	export class ScannedRepo {
+	    path: string;
+	    name: string;
+	    tracked: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScannedRepo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.name = source["name"];
+	        this.tracked = source["tracked"];
+	    }
+	}
 	export class Stash {
 	    index: number;
 	    message: string;

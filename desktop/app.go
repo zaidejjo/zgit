@@ -696,6 +696,16 @@ func (a *App) ToggleFavoriteRepo(path string) (bool, error) {
 	return a.engine.ToggleFavoriteRepo(path)
 }
 
+// ScanForRepos finds git repositories under root (4 levels deep).
+func (a *App) ScanForRepos(root string) ([]models.ScannedRepo, error) {
+	return a.engine.ScanForRepos(root, 4)
+}
+
+// TrackRepos records repos in the app. Returns how many were new.
+func (a *App) TrackRepos(paths []string) (int, error) {
+	return a.engine.TrackRepos(paths), nil
+}
+
 // FetchAllRepos fetches the default remote of every dashboard repo.
 // Returns the number of repos fetched; the first failure aborts.
 func (a *App) FetchAllRepos() (int, error) {
