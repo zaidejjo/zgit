@@ -1,4 +1,5 @@
-// Package config manages zgit configuration via a YAML file.
+// Package config manages zgit configuration via a TOML file.
+// (Legacy config.yaml is migrated once, then kept as config.yaml.bak.)
 package config
 
 import (
@@ -9,7 +10,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-const configFileName = "config.yaml"
+const configFileName = "config.toml"
+const legacyConfigFileName = "config.yaml"
 
 // Config holds all zgit configuration values.
 type Config struct {
@@ -84,7 +86,7 @@ func New() (*Manager, error) {
 
 	v := viper.New()
 	v.SetConfigName("config")
-	v.SetConfigType("yaml")
+	v.SetConfigType("toml")
 	v.AddConfigPath(configDir)
 
 	// Defaults
@@ -111,6 +113,10 @@ func New() (*Manager, error) {
 
 	m := &Manager{v: v, path: configDir}
 
+	// One-time migration: config.yaml -> config.toml. The YAML file is
+	// kept as config.yaml.bak so no user data is ever lost.
+	migrateLegacyYAML(configDir)
+
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			// First run — create default config
@@ -123,6 +129,30 @@ func New() (*Manager, error) {
 	}
 
 	return m, nil
+}
+
+// migrateLegacyYAML converts config.yaml to config.toml once. It runs
+// only when no TOML exists yet; failures are silent so a broken YAML
+// never blocks startup (viper then starts from defaults).
+func migrateLegacyYAML(configDir string) {
+	tomlPath := filepath.Join(configDir, configFileName)
+	if _, err := os.Stat(tomlPath); err == nil {
+		return // already migrated
+	}
+	yamlPath := filepath.Join(configDir, legacyConfigFileName)
+	if _, err := os.Stat(yamlPath); err != nil {
+		return // nothing to migrate
+	}
+	yv := viper.New()
+	yv.SetConfigFile(yamlPath)
+	if err := yv.ReadInConfig(); err != nil {
+		return
+	}
+	if err := yv.WriteConfigAs(tomlPath); err != nil {
+		return
+	}
+	// Keep the original as backup, out of viper's way.
+	_ = os.Rename(yamlPath, yamlPath+".bak")
 }
 
 // Load returns the full parsed config.
