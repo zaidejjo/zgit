@@ -39,11 +39,6 @@ export function CancelDeviceFlow():Promise<void>;
 
 export function CancelWorkflowRun(arg1:number):Promise<void>;
 
-export function GetNotifications(arg1:boolean):Promise<Array<models.Notification>>;
-
-export function MarkAllNotificationsRead():Promise<void>;
-
-export function MarkNotificationRead(arg1:string):Promise<void>;
 export function CheckoutBranch(arg1:string):Promise<void>;
 
 export function CheckoutOurs(arg1:string):Promise<void>;
@@ -75,8 +70,6 @@ export function CurrentBranch():Promise<string>;
 export function DeleteBranch(arg1:string,arg2:boolean):Promise<void>;
 
 export function DeleteProject(arg1:string):Promise<void>;
-
-export function SetProjectColor(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteProviderAIConfig(arg1:string):Promise<void>;
 
@@ -127,6 +120,8 @@ export function GetIssues(arg1:string):Promise<Array<models.Issue>>;
 export function GetLog(arg1:number):Promise<Array<models.Commit>>;
 
 export function GetMergeConflictDetail(arg1:string):Promise<models.MergeConflictDetail>;
+
+export function GetNotifications(arg1:boolean):Promise<Array<models.Notification>>;
 
 export function GetPRChecks(arg1:number):Promise<main.PRChecks>;
 
@@ -183,6 +178,10 @@ export function ListWorkflowRuns():Promise<Array<models.WorkflowRun>>;
 export function LockWorktree(arg1:string,arg2:string):Promise<void>;
 
 export function LogoutGitHub():Promise<void>;
+
+export function MarkAllNotificationsRead():Promise<void>;
+
+export function MarkNotificationRead(arg1:string):Promise<void>;
 
 export function MergePullRequest(arg1:number,arg2:string):Promise<void>;
 
@@ -245,6 +244,8 @@ export function SessionSetMode(arg1:string,arg2:string):Promise<void>;
 export function SessionSwitch(arg1:string):Promise<ai.SessionSummary>;
 
 export function SetAIConfig(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function SetProjectColor(arg1:string,arg2:string):Promise<void>;
 
 export function SetProjectRepos(arg1:string,arg2:Array<string>):Promise<void>;
 

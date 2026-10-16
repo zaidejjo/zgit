@@ -799,6 +799,48 @@ export namespace models {
 		}
 	}
 	
+	export class MergeConflictDetail {
+	    path: string;
+	    ours: string;
+	    theirs: string;
+	    ancestor?: string;
+	    raw_content: string;
+	    blocks: ConflictBlock[];
+	    has_merge: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MergeConflictDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.ours = source["ours"];
+	        this.theirs = source["theirs"];
+	        this.ancestor = source["ancestor"];
+	        this.raw_content = source["raw_content"];
+	        this.blocks = this.convertValues(source["blocks"], ConflictBlock);
+	        this.has_merge = source["has_merge"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Notification {
 	    id: string;
 	    reason: string;
@@ -828,49 +870,6 @@ export namespace models {
 	        this.repo_name = source["repo_name"];
 	        this.repo_url = source["repo_url"];
 	        this.html_url = source["html_url"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	
-	export class MergeConflictDetail {
-	    path: string;
-	    ours: string;
-	    theirs: string;
-	    ancestor?: string;
-	    raw_content: string;
-	    blocks: ConflictBlock[];
-	    has_merge: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new MergeConflictDetail(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.path = source["path"];
-	        this.ours = source["ours"];
-	        this.theirs = source["theirs"];
-	        this.ancestor = source["ancestor"];
-	        this.raw_content = source["raw_content"];
-	        this.blocks = this.convertValues(source["blocks"], ConflictBlock);
-	        this.has_merge = source["has_merge"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
