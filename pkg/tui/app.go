@@ -35,9 +35,12 @@ const (
 // Full-screen view identifiers (override panel layout).
 // Values 3+ to avoid overlap with subscriber event IDs (0=status,1=log,2=branches).
 const (
-	fsNone  = -1 // normal panel layout
-	fsPR    = 3  // matches old ViewPR for subscriber compatibility
-	fsIssue = 4  // matches old ViewIssue
+	fsNone      = -1 // normal panel layout
+	fsPR        = 3  // matches old ViewPR for subscriber compatibility
+	fsIssue     = 4  // matches old ViewIssue
+	fsDashboard = 5
+	fsActions   = 6
+	fsNotes     = 7
 )
 
 // Application modes (overlays and dialogs).
@@ -73,6 +76,9 @@ type Model struct {
 	branches views.BranchModel
 	prs      views.PRListModel
 	issues   views.IssueListModel
+	dash     views.DashModel
+	actions  views.ActionsModel
+	notes    views.NotesModel
 	helpView views.HelpModel
 
 	// Overlay models
@@ -120,6 +126,9 @@ func NewModel(gitExec *gitpkg.NativeExec) *Model {
 		branches:       views.NewBranchModel(),
 		prs:            views.NewPRListModel(),
 		issues:         views.NewIssueListModel(),
+		dash:           views.NewDashModel(),
+		actions:        views.NewActionsModel(),
+		notes:          views.NewNotesModel(),
 		helpView:       views.HelpModel{},
 		diffViewer:     views.NewDiffModel(),
 		commitDlg:      views.NewCommitModel(),
@@ -493,6 +502,18 @@ func (m *Model) renderHeader() string {
 	tabs = append(tabs, tab("Branches", panelActive && m.focusedPanel == PanelBranch))
 	tabs = append(tabs, tab("3 PRs", m.fullScreenView == fsPR))
 	tabs = append(tabs, tab("4 Issues", m.fullScreenView == fsIssue))
+	// Compact labels on narrow terminals so the strip never wraps.
+	reposLabel, actionsLabel := "5 Repos", "6 Actions"
+	if m.width > 0 && m.width < 110 {
+		reposLabel, actionsLabel = "5R", "6A"
+	}
+	tabs = append(tabs, tab(reposLabel, m.fullScreenView == fsDashboard))
+	tabs = append(tabs, tab(actionsLabel, m.fullScreenView == fsActions))
+	notesLabel := "7 Notes"
+	if m.notes.Loaded && m.notes.UnreadCount() > 0 {
+		notesLabel = fmt.Sprintf("7 Notes (%d)", m.notes.UnreadCount())
+	}
+	tabs = append(tabs, tab(notesLabel, m.fullScreenView == fsNotes))
 	left := lipgloss.JoinHorizontal(lipgloss.Center, tabs...)
 
 	var meta []string
@@ -531,6 +552,12 @@ func (m *Model) renderContent() string {
 		return m.prs.View(m.width - 2)
 	case fsIssue:
 		return m.issues.View(m.width - 2)
+	case fsDashboard:
+		return m.dash.View(m.width - 2)
+	case fsActions:
+		return m.actions.View(m.width - 2)
+	case fsNotes:
+		return m.notes.View(m.width - 2)
 	}
 
 	// Panel layout: Status | (Log / Branches)
@@ -743,6 +770,20 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.fullScreenView = fsIssue
 		m.ensureGHDataLoaded()
 		return m, nil
+	case "5":
+		m.fullScreenView = fsDashboard
+		if !m.dash.Loaded {
+			go m.fetchDashboard()
+		}
+		return m, nil
+	case "6":
+		m.fullScreenView = fsActions
+		m.ensureGHDataLoaded()
+		return m, nil
+	case "7":
+		m.fullScreenView = fsNotes
+		m.ensureGHDataLoaded()
+		return m, nil
 	}
 
 	// If help is open, route keys to help model for search
@@ -764,6 +805,15 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.fullScreenView == fsIssue {
 		return m.handleIssueKeys(key)
+	}
+	if m.fullScreenView == fsDashboard {
+		return m.handleDashKeys(key)
+	}
+	if m.fullScreenView == fsActions {
+		return m.handleActionsKeys(key)
+	}
+	if m.fullScreenView == fsNotes {
+		return m.handleNotesKeys(key)
 	}
 
 	// Delegate to focused panel
@@ -787,13 +837,21 @@ func (m *Model) ensureGHDataLoaded() {
 	}
 
 	switch m.fullScreenView {
-	case 3: // PRs
+	case fsPR: // PRs
 		if m.prs.PRs == nil {
 			go m.fetchPRs()
 		}
-	case 4: // Issues
+	case fsIssue: // Issues
 		if m.issues.Issues == nil {
 			go m.fetchIssues()
+		}
+	case fsActions: // Actions
+		if m.actions.Runs == nil {
+			go m.fetchActions()
+		}
+	case fsNotes: // Notifications
+		if !m.notes.Loaded {
+			go m.fetchNotes()
 		}
 	}
 }
@@ -804,6 +862,8 @@ func (m *Model) refreshGitHubData() {
 	}
 	go m.fetchPRs()
 	go m.fetchIssues()
+	go m.fetchActions()
+	go m.fetchNotes()
 }
 
 func (m *Model) fetchPRs() {
@@ -850,6 +910,188 @@ func (m *Model) fetchIssues() {
 	}
 
 	m.msgs <- teaMsg{view: 4, data: issueEvent{issues: issues}}
+}
+
+// fetchDashboard loads recents + favorites with a quick per-repo status.
+// Runs async; entries stream in as one update.
+func (m *Model) fetchDashboard() {
+	cfg, err := config.New()
+	if err != nil {
+		m.msgs <- teaMsg{view: 5, data: dashEvent{err: err}}
+		return
+	}
+	seen := map[string]bool{}
+	var paths []string
+	for _, p := range cfg.GetFavoriteRepos() {
+		if !seen[p] {
+			seen[p] = true
+			paths = append(paths, p)
+		}
+	}
+	for _, p := range cfg.GetRecentRepos() {
+		if !seen[p] {
+			seen[p] = true
+			paths = append(paths, p)
+		}
+	}
+	current := ""
+	if m.git != nil {
+		current = m.git.Path()
+	}
+	if current != "" && !seen[current] {
+		paths = append([]string{current}, paths...)
+	}
+	favs := map[string]bool{}
+	for _, p := range cfg.GetFavoriteRepos() {
+		favs[p] = true
+	}
+
+	entries := make([]views.DashEntry, 0, len(paths))
+	for _, p := range paths {
+		e := views.DashEntry{Name: baseName(p), Path: p, Favorite: favs[p], Current: p == current}
+		if st, err := quickRepoStatus(p); err != nil {
+			e.Err = "unreachable"
+		} else {
+			e.Branch = st.Branch
+			e.Clean = st.IsClean
+			e.Dirty = len(st.Files)
+			e.Ahead = st.Ahead
+			e.Behind = st.Behind
+		}
+		entries = append(entries, e)
+	}
+	m.msgs <- teaMsg{view: 5, data: dashEvent{entries: entries}}
+}
+
+// quickRepoStatus stats one repo without touching the current exec.
+func quickRepoStatus(path string) (*models.Status, error) {
+	exec, err := gitpkg.NewNativeExec("")
+	if err != nil {
+		return nil, err
+	}
+	if err := exec.Open(path); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10e9)
+	defer cancel()
+	return exec.Status(ctx)
+}
+
+// switchRepo repoints the TUI at another local repo.
+func (m *Model) switchRepo(path string) {
+	if m.git == nil {
+		m.dash.Error = "no git backend"
+		return
+	}
+	if err := m.git.Open(path); err != nil {
+		m.dash.Error = fmt.Sprintf("open %s: %v", path, err)
+		return
+	}
+	if cfg, err := config.New(); err == nil {
+		cfg.AddRecentRepo(path)
+		_ = cfg.Save()
+	}
+	m.prs = views.NewPRListModel()
+	m.issues = views.NewIssueListModel()
+	m.actions = views.NewActionsModel()
+	m.notes = views.NewNotesModel()
+	m.ghOwner, m.ghRepo, m.ghDetected = "", "", false
+	m.tryDetectRepo()
+	m.sub.Refresh()
+	m.fullScreenView = fsNone
+	m.focusedPanel = PanelStatus
+	go m.fetchDashboard()
+}
+
+// fetchActions loads workflow runs for the detected repo.
+func (m *Model) fetchActions() {
+	if m.gh == nil || !m.ghDetected {
+		m.msgs <- teaMsg{view: 6, data: actionsEvent{err: fmt.Errorf("GitHub not authenticated; run 'zgit auth login'")}}
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15e9)
+	defer cancel()
+	runs, err := m.gh.ListWorkflowRuns(ctx, m.ghOwner, m.ghRepo, github.RunsFilter{Limit: 30})
+	if err != nil {
+		m.msgs <- teaMsg{view: 6, data: actionsEvent{err: err}}
+		return
+	}
+	if runs == nil {
+		runs = []*models.WorkflowRun{}
+	}
+	m.msgs <- teaMsg{view: 6, data: actionsEvent{runs: runs}}
+}
+
+// fetchActionJobs loads jobs for one run (drill-in).
+func (m *Model) fetchActionJobs(runID int64) {
+	if m.gh == nil || !m.ghDetected {
+		m.msgs <- teaMsg{view: 6, data: actionJobsEvent{runID: runID, err: fmt.Errorf("GitHub not authenticated")}}
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15e9)
+	defer cancel()
+	jobs, err := m.gh.ListWorkflowJobs(ctx, m.ghOwner, m.ghRepo, runID)
+	if err != nil {
+		m.msgs <- teaMsg{view: 6, data: actionJobsEvent{runID: runID, err: err}}
+		return
+	}
+	if jobs == nil {
+		jobs = []*models.Job{}
+	}
+	m.msgs <- teaMsg{view: 6, data: actionJobsEvent{runID: runID, jobs: jobs}}
+}
+
+// fetchNotes loads the global notification inbox.
+func (m *Model) fetchNotes() {
+	if m.gh == nil {
+		m.msgs <- teaMsg{view: 7, data: notesEvent{err: fmt.Errorf("GitHub not authenticated; run 'zgit auth login'")}}
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15e9)
+	defer cancel()
+	items, err := m.gh.ListNotifications(ctx, m.notes.ShowAll, 30)
+	if err != nil {
+		m.msgs <- teaMsg{view: 7, data: notesEvent{err: err}}
+		return
+	}
+	if items == nil {
+		items = []*models.Notification{}
+	}
+	m.msgs <- teaMsg{view: 7, data: notesEvent{items: items}}
+}
+
+// markNoteRead marks one thread read (server + local flip).
+func (m *Model) markNoteRead(id string) {
+	m.notes.MarkRead(id)
+	if m.gh == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10e9)
+		defer cancel()
+		_ = m.gh.MarkNotificationRead(ctx, id)
+	}()
+}
+
+// markAllNotesRead marks the whole inbox read.
+func (m *Model) markAllNotesRead() {
+	m.notes.MarkAllRead()
+	if m.gh == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10e9)
+		defer cancel()
+		_ = m.gh.MarkAllNotificationsRead(ctx)
+	}()
+}
+
+// baseName returns the last path segment.
+func baseName(p string) string {
+	if i := strings.LastIndex(p, "/"); i >= 0 {
+		return p[i+1:]
+	}
+	return p
 }
 
 // --- View-specific key handlers ---
@@ -1279,6 +1521,162 @@ func (m *Model) handleIssueKeys(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// filterKeys routes typing to a filterable list model. Returns true when
+// the key was consumed by filter input.
+func filterKeys(key string, filtering *bool, filter *string, clamp func()) bool {
+	if *filtering {
+		switch key {
+		case "esc", "enter":
+			*filtering = false
+			if key == "esc" {
+				*filter = ""
+			}
+			clamp()
+			return true
+		case "backspace":
+			if len(*filter) > 0 {
+				*filter = (*filter)[:len(*filter)-1]
+				clamp()
+			}
+			return true
+		default:
+			if len(key) == 1 || key == " " {
+				*filter += key
+				clamp()
+			}
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) handleDashKeys(key string) (tea.Model, tea.Cmd) {
+	if filterKeys(key, &m.dash.Filtering, &m.dash.Filter, m.dash.ClampCursor) {
+		return m, nil
+	}
+	switch key {
+	case "/":
+		m.dash.Filtering = true
+		return m, nil
+	case "j", "down":
+		if len(m.dash.Filtered()) > 0 && m.dash.Cursor < len(m.dash.Filtered())-1 {
+			m.dash.Cursor++
+		}
+	case "k", "up":
+		if m.dash.Cursor > 0 {
+			m.dash.Cursor--
+		}
+	case "g", "home":
+		m.dash.Cursor = 0
+	case "G", "end":
+		m.dash.Cursor = len(m.dash.Filtered()) - 1
+		if m.dash.Cursor < 0 {
+			m.dash.Cursor = 0
+		}
+	case "enter":
+		if sel := m.dash.Selected(); sel != nil {
+			m.switchRepo(sel.Path)
+		}
+	case "r":
+		m.dash.Loaded = false
+		go m.fetchDashboard()
+	}
+	return m, nil
+}
+
+func (m *Model) handleActionsKeys(key string) (tea.Model, tea.Cmd) {
+	// In job drill-in, backspace/esc returns to runs.
+	if m.actions.JobsFor != 0 && (key == "backspace" || key == "esc") {
+		m.actions.Jobs = nil
+		m.actions.JobsFor = 0
+		m.actions.Cursor = 0
+		m.actions.Offset = 0
+		return m, nil
+	}
+	// Filter input captures all typing (runs list only).
+	if m.actions.JobsFor == 0 && m.actions.Filtering {
+		filterKeys(key, &m.actions.Filtering, &m.actions.Filter, m.actions.ClampCursor)
+		return m, nil
+	}
+	n := len(m.actions.Filtered())
+	if m.actions.JobsFor != 0 {
+		n = len(m.actions.Jobs)
+	}
+	switch key {
+	case "/":
+		if m.actions.JobsFor == 0 {
+			m.actions.Filtering = true
+		}
+		return m, nil
+	case "j", "down":
+		if n > 0 && m.actions.Cursor < n-1 {
+			m.actions.Cursor++
+		}
+	case "k", "up":
+		if m.actions.Cursor > 0 {
+			m.actions.Cursor--
+		}
+	case "g", "home":
+		m.actions.Cursor = 0
+	case "G", "end":
+		m.actions.Cursor = n - 1
+		if m.actions.Cursor < 0 {
+			m.actions.Cursor = 0
+		}
+	case "enter":
+		if m.actions.JobsFor == 0 {
+			if run := m.actions.SelectedRun(); run != nil {
+				go m.fetchActionJobs(run.ID)
+			}
+		}
+	case "r":
+		m.actions.Runs = nil
+		go m.fetchActions()
+	}
+	return m, nil
+}
+
+func (m *Model) handleNotesKeys(key string) (tea.Model, tea.Cmd) {
+	if filterKeys(key, &m.notes.Filtering, &m.notes.Filter, m.notes.ClampCursor) {
+		return m, nil
+	}
+	switch key {
+	case "/":
+		m.notes.Filtering = true
+		return m, nil
+	case "j", "down":
+		if len(m.notes.Ordered()) > 0 && m.notes.Cursor < len(m.notes.Ordered())-1 {
+			m.notes.Cursor++
+		}
+	case "k", "up":
+		if m.notes.Cursor > 0 {
+			m.notes.Cursor--
+		}
+	case "g", "home":
+		m.notes.Cursor = 0
+	case "G", "end":
+		m.notes.Cursor = len(m.notes.Ordered()) - 1
+		if m.notes.Cursor < 0 {
+			m.notes.Cursor = 0
+		}
+	case "x":
+		if sel := m.notes.Selected(); sel != nil && sel.Unread {
+			m.markNoteRead(sel.ID)
+		}
+	case "X":
+		m.markAllNotesRead()
+	case "u":
+		// Toggle unread/all (server-side) and reload.
+		m.notes.ShowAll = !m.notes.ShowAll
+		m.notes.Loaded = false
+		go m.fetchNotes()
+	case "r":
+		m.notes.Loaded = false
+		go m.fetchNotes()
+	}
+	return m, nil
+}
+
 // --- Diff & Commit ---
 
 func (m *Model) openFileDiff() {
@@ -1620,6 +2018,27 @@ type issueEvent struct {
 	err    error
 }
 
+type dashEvent struct {
+	entries []views.DashEntry
+	err     error
+}
+
+type actionsEvent struct {
+	runs []*models.WorkflowRun
+	err  error
+}
+
+type actionJobsEvent struct {
+	runID int64
+	jobs  []*models.Job
+	err   error
+}
+
+type notesEvent struct {
+	items []*models.Notification
+	err   error
+}
+
 type prCreateResultEvent struct {
 	Result views.PRCreateResultInfo
 }
@@ -1732,6 +2151,38 @@ func (m *Model) handleEngineMsg(msg teaMsg) (tea.Model, tea.Cmd) {
 				m.issues.Error = evt.err.Error()
 			} else if evt.issues != nil {
 				m.issues.UpdateIssues(evt.issues)
+			}
+		}
+	case 5: // Dashboard
+		if evt, ok := msg.data.(dashEvent); ok {
+			if evt.err != nil {
+				m.dash.Error = evt.err.Error()
+				m.dash.Loaded = true
+			} else if evt.entries != nil {
+				m.dash.UpdateEntries(evt.entries)
+			}
+		}
+	case 6: // Actions
+		if evt, ok := msg.data.(actionsEvent); ok {
+			if evt.err != nil {
+				m.actions.Error = evt.err.Error()
+			} else if evt.runs != nil {
+				m.actions.UpdateRuns(evt.runs)
+			}
+		} else if evt, ok := msg.data.(actionJobsEvent); ok {
+			if evt.err != nil {
+				m.actions.Error = evt.err.Error()
+			} else if evt.jobs != nil {
+				m.actions.UpdateJobs(evt.runID, evt.jobs)
+			}
+		}
+	case 7: // Notifications
+		if evt, ok := msg.data.(notesEvent); ok {
+			if evt.err != nil {
+				m.notes.Error = evt.err.Error()
+				m.notes.Loaded = true
+			} else if evt.items != nil {
+				m.notes.UpdateNotes(evt.items)
 			}
 		}
 	}
