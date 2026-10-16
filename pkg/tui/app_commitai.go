@@ -127,8 +127,5 @@ func (m *Model) populateCommitFromAI(msg string) {
 		body = strings.TrimSpace(parts[1])
 	}
 
-	m.commitDlg.Subject.SetValue(subject)
-	if body != "" {
-		m.commitDlg.Body.SetValue(body)
-	}
+	m.commitDlg.SetAIMessage(subject, body)
 }

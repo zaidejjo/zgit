@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
@@ -13,8 +15,8 @@ type ConfigState int
 
 const (
 	ConfigClosed  ConfigState = iota
-	ConfigInput               // entering a value
-	ConfigSelect              // selecting from a list
+	ConfigInput               // entering a value (huh input form)
+	ConfigSelect              // selecting from a list (huh select form)
 	ConfigLoading             // validating (e.g. fetching user from token)
 	ConfigResult              // showing success/error
 )
@@ -53,7 +55,7 @@ var KnownProviders = []KnownProvider{
 	{Name: "custom", DefaultModel: "", DefaultEndpoint: ""},
 }
 
-// ProviderModels maps provider names to recommended/fetchable models.
+// ProviderModelOptions maps provider names to recommended/fetchable models.
 var ProviderModelOptions = map[string][]string{
 	"openrouter":  {"deepseek/deepseek-r1", "anthropic/claude-3.5-sonnet", "openai/gpt-4o", "google/gemini-2.5-flash"},
 	"openai":      {"gpt-4o", "gpt-4o-mini", "o1", "o3-mini"},
@@ -74,21 +76,30 @@ func IsCustomModelOption(item string) bool {
 }
 
 // ConfigModel is an overlay for editing config values with multi-step provider support.
+// Each step builds a single-field huh form; the app orchestrator (app_config.go)
+// advances steps exactly as before (completion == old Enter semantics).
 type ConfigModel struct {
 	State   ConfigState
 	Field   ConfigField
-	Input   string
+	Input   string // last completed input value (GetInput compat)
 	Cursor  int
 	Result  string
 	Success bool
 	Width   int
 
-	// List selection state
+	// List selection state (SelectItems builds the form; SelectCursor is
+	// synced on completion so GetSelectedItem keeps working).
 	SelectItems  []string // items for selection list
 	SelectCursor int
 
 	// Provider being configured (set when entering provider-specific fields)
 	TargetProvider string
+
+	form      *huh.Form
+	inputVal  string // huh-bound input value
+	selectVal string // huh-bound select value
+	inputMode bool   // true when the current step is a text input
+	needInit  bool
 }
 
 // NewConfigModel creates a default config dialog.
@@ -96,15 +107,66 @@ func NewConfigModel() ConfigModel {
 	return ConfigModel{}
 }
 
+// buildInput creates the text-entry form for the current Field.
+func (m *ConfigModel) buildInput(prompt, placeholder string, password, allowEmpty bool) {
+	m.inputMode = true
+	field := huh.NewInput().
+		Title(prompt).
+		Placeholder(placeholder).
+		Value(&m.inputVal)
+	if password {
+		field = field.EchoMode(huh.EchoModePassword)
+	}
+	if !allowEmpty {
+		field = field.Validate(func(s string) error {
+			if strings.TrimSpace(s) == "" {
+				return fmt.Errorf("a value is required")
+			}
+			return nil
+		})
+	}
+	m.form = huh.NewForm(huh.NewGroup(field)).WithShowHelp(true)
+	m.applyWidth()
+	m.needInit = true
+}
+
+// buildSelect creates the list form from SelectItems (values == labels so
+// GetSelectedItem keeps returning the exact legacy strings).
+func (m *ConfigModel) buildSelect(title string) {
+	m.inputMode = false
+	opts := make([]huh.Option[string], 0, len(m.SelectItems))
+	for _, item := range m.SelectItems {
+		opts = append(opts, huh.NewOption(item, item))
+	}
+	m.form = huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title(title).
+				Key("pick").
+				Options(opts...).
+				Value(&m.selectVal),
+		),
+	).WithShowHelp(true)
+	m.applyWidth()
+	m.needInit = true
+}
+
+func (m *ConfigModel) applyWidth() {
+	if m.form != nil && m.Width > 0 {
+		m.form = m.form.WithWidth(m.Width - 4)
+	}
+}
+
 // OpenGitHubToken starts editing the GitHub token.
 func (m *ConfigModel) OpenGitHubToken() {
 	m.State = ConfigInput
 	m.Field = FieldGitHubToken
+	m.inputVal = ""
 	m.Input = ""
-	m.Cursor = 0
 	m.Result = ""
 	m.Success = false
 	m.TargetProvider = ""
+	m.buildInput("GitHub Token", "ghp_… / github_pat_…", true, false)
 }
 
 // OpenAIProviderList shows the provider menu for selecting which to configure.
@@ -121,6 +183,7 @@ func (m *ConfigModel) OpenAIProviderList(configuredProviders []string) {
 	m.Field = FieldAIProviderList
 	m.Result = ""
 	m.Success = false
+	m.buildSelect("AI Providers")
 }
 
 // OpenAIProviderPicker shows the featured providers list + "Add custom provider...".
@@ -140,6 +203,7 @@ func (m *ConfigModel) OpenAIProviderPicker() {
 	m.Field = FieldAIProviderMenu
 	m.Result = ""
 	m.Success = false
+	m.buildSelect("Pick a provider")
 }
 
 // OpenAIProviderFullList shows all known providers (for "Add custom provider..." flow).
@@ -154,6 +218,7 @@ func (m *ConfigModel) OpenAIProviderFullList() {
 	m.Field = FieldAIProviderMenu
 	m.Result = ""
 	m.Success = false
+	m.buildSelect("Pick a provider")
 }
 
 // OpenAIProviderActions shows actions for an already-configured provider.
@@ -171,6 +236,7 @@ func (m *ConfigModel) OpenAIProviderActions(provider string) {
 	m.Field = FieldAIProviderActions
 	m.Result = ""
 	m.Success = false
+	m.buildSelect(provider)
 }
 
 // OpenAIProviderKey starts editing the API key for a specific provider.
@@ -178,10 +244,11 @@ func (m *ConfigModel) OpenAIProviderKey(provider string) {
 	m.State = ConfigInput
 	m.Field = FieldAIAPIKey
 	m.TargetProvider = provider
+	m.inputVal = ""
 	m.Input = ""
-	m.Cursor = 0
 	m.Result = ""
 	m.Success = false
+	m.buildInput(provider+" API Key", "sk-…", true, false)
 }
 
 // OpenAIProviderModel opens model selection for a provider.
@@ -204,13 +271,7 @@ func (m *ConfigModel) OpenAIProviderModel(provider string, options []string, cus
 
 	if len(merged) == 0 && len(customModels) == 0 {
 		// No known options and no saved custom models — free-form input
-		m.State = ConfigInput
-		m.Field = FieldAIModel
-		m.TargetProvider = provider
-		m.Input = ""
-		m.Cursor = 0
-		m.Result = ""
-		m.Success = false
+		m.openCustomModelInput(provider)
 		return
 	}
 
@@ -223,6 +284,23 @@ func (m *ConfigModel) OpenAIProviderModel(provider string, options []string, cus
 	m.TargetProvider = provider
 	m.Result = ""
 	m.Success = false
+	m.buildSelect(provider + " Model")
+}
+
+// OpenCustomModelInput opens free-form model entry (custom model flow).
+func (m *ConfigModel) OpenCustomModelInput(provider string) {
+	m.openCustomModelInput(provider)
+}
+
+func (m *ConfigModel) openCustomModelInput(provider string) {
+	m.State = ConfigInput
+	m.Field = FieldAIModel
+	m.TargetProvider = provider
+	m.inputVal = ""
+	m.Input = ""
+	m.Result = ""
+	m.Success = false
+	m.buildInput(provider+" Model", "model id", false, false)
 }
 
 // OpenAIProviderEndpoint opens endpoint editing for a provider.
@@ -230,10 +308,11 @@ func (m *ConfigModel) OpenAIProviderEndpoint(provider string, defaultEndpoint st
 	m.State = ConfigInput
 	m.Field = FieldAIEndpoint
 	m.TargetProvider = provider
+	m.inputVal = defaultEndpoint
 	m.Input = defaultEndpoint
-	m.Cursor = len(m.Input)
 	m.Result = ""
 	m.Success = false
+	m.buildInput(provider+" Endpoint", "https://…", false, true)
 }
 
 // Active returns true if dialog is visible.
@@ -241,14 +320,13 @@ func (m *ConfigModel) Active() bool {
 	return m.State != ConfigClosed
 }
 
-// HandlePaste inserts pasted text at cursor position. Called from app level on tea.PasteMsg.
+// HandlePaste appends pasted text to the input value. Called from app level
+// on tea paste messages.
 func (m *ConfigModel) HandlePaste(text string) {
-	if m.State != ConfigInput {
+	if m.State != ConfigInput || !m.inputMode {
 		return
 	}
-	// Insert text at cursor, preserving masked display
-	m.Input = m.Input[:m.Cursor] + text + m.Input[m.Cursor:]
-	m.Cursor += len(text)
+	m.inputVal += text
 }
 
 // Close dismisses the dialog.
@@ -256,6 +334,7 @@ func (m *ConfigModel) Close() {
 	m.State = ConfigClosed
 	m.TargetProvider = ""
 	m.SelectItems = nil
+	m.form = nil
 }
 
 // GetInput returns trimmed input.
@@ -265,6 +344,9 @@ func (m *ConfigModel) GetInput() string {
 
 // GetSelectedItem returns the currently selected list item.
 func (m *ConfigModel) GetSelectedItem() string {
+	if m.selectVal != "" {
+		return m.selectVal
+	}
 	if m.SelectCursor >= 0 && m.SelectCursor < len(m.SelectItems) {
 		return m.SelectItems[m.SelectCursor]
 	}
@@ -279,98 +361,143 @@ func (m *ConfigModel) GetSelectedProvider() string {
 	return item
 }
 
-// HandleKey processes key presses. Returns true if handled.
-func (m *ConfigModel) HandleKey(key string) bool {
-	switch m.State {
-	case ConfigInput:
-		return m.handleInputKey(key)
-	case ConfigSelect:
-		return m.handleSelectKey(key)
-	case ConfigLoading:
-		return true
-	case ConfigResult:
-		switch key {
-		case "esc", "enter":
+// Update drives the huh form. Completion maps to ConfigLoading (the app
+// orchestrator picks it up exactly like the old Enter key did).
+func (m *ConfigModel) Update(msg tea.Msg) (*ConfigModel, tea.Cmd) {
+	if !m.Active() {
+		return m, nil
+	}
+	if m.needInit {
+		m.needInit = false
+		if m.form != nil {
+			return m, m.form.Init()
+		}
+		return m, nil
+	}
+
+	// Loading and Result states swallow input except close keys.
+	if m.State == ConfigLoading {
+		return m, nil
+	}
+	if m.State == ConfigResult {
+		if key, ok := msg.(tea.KeyMsg); ok && (key.String() == "esc" || key.String() == "enter") {
 			m.Close()
-			return true
+		}
+		return m, nil
+	}
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.Width = msg.Width
+		m.applyWidth()
+		return m, nil
+
+	case tea.KeyMsg:
+		// Esc cancels — or steps back to the provider list mid-flow
+		// (preserves the legacy "Esc to go back" signal).
+		if msg.String() == "esc" {
+			if m.inputMode && m.TargetProvider != "" && m.Field != FieldGitHubToken {
+				m.State = ConfigResult
+				m.Success = true
+				m.Result = "saved"
+				return m, nil
+			}
+			m.Close()
+			return m, nil
 		}
 	}
-	return true
+
+	if m.form == nil {
+		return m, nil
+	}
+	f, cmd := m.form.Update(msg)
+	if nf, ok := f.(*huh.Form); ok {
+		m.form = nf
+	}
+	if m.form.State == huh.StateCompleted {
+		m.completeStep()
+		return m, nil
+	}
+	if m.form.State == huh.StateAborted {
+		m.Close()
+		return m, nil
+	}
+	return m, cmd
 }
 
-func (m *ConfigModel) handleInputKey(key string) bool {
-	switch key {
-	case "esc":
-		// Go back to provider list if configuring a provider
-		if m.TargetProvider != "" && m.Field != FieldGitHubToken {
-			// Signal to parent to go back to provider list
-			m.State = ConfigResult
-			m.Success = true
-			m.Result = "saved"
-			return true
-		}
-		m.Close()
-		return true
-	case "enter":
-		if m.GetInput() != "" || m.Field == FieldAIEndpoint {
-			m.State = ConfigLoading
-			return true
-		}
-		return true
-	case "backspace":
-		if m.Cursor > 0 {
-			m.Input = m.Input[:m.Cursor-1] + m.Input[m.Cursor:]
-			m.Cursor--
-		}
-	case "left":
-		if m.Cursor > 0 {
-			m.Cursor--
-		}
-	case "right":
-		if m.Cursor < len(m.Input) {
-			m.Cursor++
-		}
-	case "home":
-		m.Cursor = 0
-	case "end":
-		m.Cursor = len(m.Input)
-	case " ":
-		m.Input = m.Input[:m.Cursor] + " " + m.Input[m.Cursor:]
-		m.Cursor++
+// RefreshForm rebuilds the current step's form (used when staying on a
+// step, e.g. separator rows that complete without choosing).
+func (m *ConfigModel) RefreshForm() {
+	switch {
+	case m.inputMode:
+		m.buildInput(m.inputTitle(), m.inputPlaceholder(), m.inputPassword(), m.inputAllowEmpty())
 	default:
-		if len(key) == 1 && key[0] >= 32 && key[0] < 127 {
-			m.Input = m.Input[:m.Cursor] + key + m.Input[m.Cursor:]
-			m.Cursor++
-		}
+		m.buildSelect(m.selectTitle())
 	}
-	return true
 }
 
-func (m *ConfigModel) handleSelectKey(key string) bool {
-	switch key {
-	case "esc":
-		m.Close()
-		return true
-	case "enter":
-		if m.SelectCursor >= 0 && m.SelectCursor < len(m.SelectItems) {
-			m.State = ConfigLoading
-			return true
-		}
-		return true
-	case "j", "down":
-		if m.SelectCursor < len(m.SelectItems)-1 {
-			m.SelectCursor++
-		}
-	case "k", "up":
-		if m.SelectCursor > 0 {
-			m.SelectCursor--
-		}
-	case "g", "home":
-		m.SelectCursor = 0
-	case "G", "end":
-		m.SelectCursor = len(m.SelectItems) - 1
+func (m *ConfigModel) inputTitle() string {
+	switch m.Field {
+	case FieldGitHubToken:
+		return "GitHub Token"
+	case FieldAIAPIKey:
+		return m.TargetProvider + " API Key"
+	case FieldAIModel:
+		return m.TargetProvider + " Model"
+	default:
+		return m.TargetProvider + " Endpoint"
 	}
-	return true
+}
+
+func (m *ConfigModel) inputPlaceholder() string {
+	switch m.Field {
+	case FieldGitHubToken:
+		return "ghp_… / github_pat_…"
+	case FieldAIAPIKey:
+		return "sk-…"
+	case FieldAIModel:
+		return "model id"
+	default:
+		return "https://…"
+	}
+}
+
+func (m *ConfigModel) inputPassword() bool {
+	return m.Field == FieldGitHubToken || m.Field == FieldAIAPIKey
+}
+
+func (m *ConfigModel) inputAllowEmpty() bool {
+	return m.Field == FieldAIEndpoint
+}
+
+func (m *ConfigModel) selectTitle() string {
+	switch m.Field {
+	case FieldAIProviderList:
+		return "AI Providers"
+	case FieldAIProviderMenu:
+		return "Pick a provider"
+	case FieldAIProviderActions:
+		return m.TargetProvider
+	default:
+		return m.TargetProvider + " Model"
+	}
+}
+
+// completeStep syncs form values and advances to ConfigLoading so the
+// orchestrator processes the step (same as the legacy Enter key).
+func (m *ConfigModel) completeStep() {
+	if m.inputMode {
+		m.Input = m.inputVal
+	} else {
+		m.Input = ""
+		for i, item := range m.SelectItems {
+			if item == m.selectVal {
+				m.SelectCursor = i
+				break
+			}
+		}
+	}
+	m.State = ConfigLoading
 }
 
 // SetResult displays the outcome.
@@ -398,10 +525,18 @@ func (m *ConfigModel) View(width int) string {
 	title := m.dialogTitle()
 
 	switch m.State {
-	case ConfigInput:
-		m.renderInput(&b, dialogW, title)
-	case ConfigSelect:
-		m.renderSelect(&b, dialogW, title)
+	case ConfigInput, ConfigSelect:
+		b.WriteString(lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(styles.Mauve).
+			Width(dialogW).
+			Padding(0, 1).
+			Background(styles.Surface).
+			Render(strings.Join([]string{
+				lipgloss.NewStyle().Bold(true).Foreground(styles.Mauve).Render(title),
+				"",
+				m.formView(),
+			}, "\n")))
 	case ConfigLoading:
 		m.renderLoading(&b, dialogW, title)
 	case ConfigResult:
@@ -412,6 +547,14 @@ func (m *ConfigModel) View(width int) string {
 		Width(width).
 		Align(lipgloss.Center).
 		Render(b.String())
+}
+
+// formView renders the huh form (guarded for nil during transitions).
+func (m *ConfigModel) formView() string {
+	if m.form == nil {
+		return styles.LoadingStyle.Render("Loading...")
+	}
+	return m.form.View()
 }
 
 func (m *ConfigModel) dialogTitle() string {
@@ -441,106 +584,6 @@ func (m *ConfigModel) dialogTitle() string {
 		return prefix + " AI Endpoint"
 	}
 	return prefix + " Config"
-}
-
-func (m *ConfigModel) renderInput(b *strings.Builder, dialogW int, title string) {
-	prompt := ""
-	switch m.Field {
-	case FieldGitHubToken:
-		prompt = "Enter GitHub Personal Access Token (classic or fine-grained):"
-	case FieldAIAPIKey:
-		prompt = "Enter API key:"
-	case FieldAIModel:
-		prompt = "Enter model name:"
-	case FieldAIEndpoint:
-		prompt = "Enter API endpoint URL:"
-	}
-
-	display := m.Input
-	// Mask token/API key fields
-	if m.Field == FieldGitHubToken || m.Field == FieldAIAPIKey {
-		display = strings.Repeat("•", len(m.Input))
-		if m.Cursor < len(display) {
-			display = display[:m.Cursor] + "█" + display[m.Cursor:]
-		}
-	} else if m.Cursor < len(display) {
-		display = display[:m.Cursor] + "█" + display[m.Cursor:]
-	} else {
-		display += " "
-	}
-
-	inputLine := "> " + display
-
-	hint := " Enter to confirm  Esc to cancel"
-	if m.TargetProvider != "" {
-		hint = " Enter to confirm  Esc to go back"
-	}
-
-	b.WriteString(lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(styles.Mauve).
-		Width(dialogW).
-		Padding(0, 1).
-		Background(styles.Surface).
-		Render(strings.Join([]string{
-			lipgloss.NewStyle().Bold(true).Foreground(styles.Mauve).Render(title),
-			"",
-			lipgloss.NewStyle().Foreground(styles.Subtext).Render(prompt),
-			inputLine,
-			"",
-			lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true).Render(hint),
-		}, "\n")))
-}
-
-func (m *ConfigModel) renderSelect(b *strings.Builder, dialogW int, title string) {
-	items := make([]string, 0, len(m.SelectItems)+4)
-	items = append(items, lipgloss.NewStyle().Bold(true).Foreground(styles.Mauve).Render(title))
-	items = append(items, "")
-	items = append(items, lipgloss.NewStyle().Foreground(styles.Subtext).Render(" Select an option:"))
-
-	avail := 12 // header + hints
-	maxItems := dialogW/2 - 2
-	if maxItems < 5 {
-		maxItems = 5
-	}
-	start := 0
-	if m.SelectCursor > maxItems-1 {
-		start = m.SelectCursor - maxItems + 1
-	}
-	end := start + maxItems
-	if end > len(m.SelectItems) {
-		end = len(m.SelectItems)
-	}
-
-	for i := start; i < end; i++ {
-		item := m.SelectItems[i]
-		if i == m.SelectCursor {
-			items = append(items, lipgloss.NewStyle().
-				Foreground(styles.Mauve).
-				Bold(true).
-				Render("▸ "+item))
-		} else {
-			items = append(items, lipgloss.NewStyle().
-				Foreground(styles.Text).
-				Render("  "+item))
-		}
-		avail++
-	}
-
-	items = append(items, "")
-	hint := " ↑↓ navigate  Enter select  Esc cancel"
-	if m.TargetProvider != "" {
-		hint = " ↑↓ navigate  Enter select"
-	}
-	items = append(items, lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true).Render(hint))
-
-	b.WriteString(lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(styles.Mauve).
-		Width(dialogW).
-		Padding(0, 1).
-		Background(styles.Surface).
-		Render(strings.Join(items, "\n")))
 }
 
 func (m *ConfigModel) renderLoading(b *strings.Builder, dialogW int, title string) {

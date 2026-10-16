@@ -22,33 +22,31 @@ type configResultMsg struct {
 
 // updateConfig handles the config dialog lifecycle.
 func (m *Model) updateConfig(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	if km, ok := msg.(tea.KeyMsg); ok {
 		// Detect bracketed paste (Ctrl+Shift+V) — handle BEFORE normal key processing
 		// to avoid double-inserting characters.
-		if msg.Paste && m.configDlg.State == views.ConfigInput {
-			m.configDlg.HandlePaste(string(msg.Runes))
+		if km.Paste && m.configDlg.State == views.ConfigInput {
+			m.configDlg.HandlePaste(string(km.Runes))
 			return m, nil
 		}
+	}
 
-		key := msg.String()
-		handled := m.configDlg.HandleKey(key)
-		if !handled {
-			return m, nil
-		}
+	updated, cmd := m.configDlg.Update(msg)
+	m.configDlg = *updated
 
-		// On enter in loading state, process selection/value
-		if key == "enter" && m.configDlg.State == views.ConfigLoading {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		// A completed step lands in loading state — process it.
+		if key.String() == "enter" && m.configDlg.State == views.ConfigLoading {
 			m.processConfigAction()
-			return m, nil
+			return m, cmd
 		}
 
 		// On enter in result state, advance or close
-		if key == "enter" && m.configDlg.State == views.ConfigResult && m.configDlg.Success {
+		if key.String() == "enter" && m.configDlg.State == views.ConfigResult && m.configDlg.Success {
 			// If "saved" result during provider config, advance to next step
 			if m.configDlg.Result == "saved" && m.configDlg.TargetProvider != "" {
 				m.advanceProviderConfig()
-				return m, nil
+				return m, cmd
 			}
 		}
 
@@ -56,9 +54,14 @@ func (m *Model) updateConfig(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.configDlg.Active() {
 			m.mode = modeNormal
 		}
+		return m, cmd
 	}
 
-	return m, nil
+	// Non-key messages (e.g. resize): exit mode if closed.
+	if !m.configDlg.Active() {
+		m.mode = modeNormal
+	}
+	return m, cmd
 }
 
 // processConfigAction handles Enter at the saving step.
@@ -80,9 +83,9 @@ func (m *Model) processConfigAction() {
 
 	case views.FieldAIProviderMenu:
 		item := m.configDlg.GetSelectedItem()
-		// Skip separator line
+		// Skip separator line (rebuild the step so the form stays live)
 		if item == "───" {
-			m.configDlg.State = views.ConfigSelect // stay in select
+			m.configDlg.RefreshForm()
 			return
 		}
 		if item == "Add custom provider..." {
@@ -125,12 +128,7 @@ func (m *Model) processConfigAction() {
 		item := m.configDlg.GetSelectedItem()
 		if views.IsCustomModelOption(item) {
 			// Open free-form text input for custom model
-			m.configDlg.State = views.ConfigInput
-			m.configDlg.Field = views.FieldAIModel
-			m.configDlg.Input = ""
-			m.configDlg.Cursor = 0
-			m.configDlg.Result = ""
-			m.configDlg.Success = false
+			m.configDlg.OpenCustomModelInput(m.configDlg.TargetProvider)
 			return
 		}
 		m.saveProviderModel()

@@ -1574,7 +1574,7 @@ func (m *Model) updateCommit(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "ctrl+g":
 			// AI generate commit message from staged diff
-			if m.commitDlg.State == views.CommitInputSubject || m.commitDlg.State == views.CommitInputBody {
+			if m.commitDlg.State == views.CommitForm {
 				go m.generateAICommitMsg()
 				return m, nil
 			}

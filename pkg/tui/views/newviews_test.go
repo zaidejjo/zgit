@@ -146,3 +146,59 @@ func TestPaletteFuzzyRanking(t *testing.T) {
 		t.Fatalf("want empty, got %v", m.Filtered)
 	}
 }
+
+func TestDialogValidators(t *testing.T) {
+	if ValidateCommitSubject("") == nil {
+		t.Errorf("empty subject should fail")
+	}
+	if ValidateCommitSubject("   ") == nil {
+		t.Errorf("blank subject should fail")
+	}
+	if ValidateCommitSubject(strings.Repeat("x", 73)) == nil {
+		t.Errorf("73-char subject should fail")
+	}
+	if ValidateCommitSubject("fix: tidy imports") != nil {
+		t.Errorf("valid subject should pass")
+	}
+	if ValidatePRTitle("") == nil {
+		t.Errorf("empty title should fail")
+	}
+	if ValidatePRTitle("Add feature") != nil {
+		t.Errorf("valid title should pass")
+	}
+}
+
+func TestConfigStepCompletion(t *testing.T) {
+	m := NewConfigModel()
+	m.OpenAIProviderKey("openai")
+	if m.State != ConfigInput || m.Field != FieldAIAPIKey {
+		t.Fatalf("key step = %+v", m)
+	}
+	m.inputVal = "sk-test"
+	m.completeStep()
+	if m.State != ConfigLoading || m.GetInput() != "sk-test" {
+		t.Fatalf("after complete = %+v input=%q", m.State, m.GetInput())
+	}
+
+	m.OpenAIProviderModel("openai", []string{"gpt-4o"}, []string{"my-model"})
+	if m.State != ConfigSelect {
+		t.Fatalf("model step should be select, = %v", m.State)
+	}
+	foundCustom := false
+	for _, it := range m.SelectItems {
+		if IsCustomModelOption(it) {
+			foundCustom = true
+		}
+	}
+	if !foundCustom {
+		t.Fatalf("custom sentinel missing: %v", m.SelectItems)
+	}
+	m.selectVal = "my-model"
+	m.completeStep()
+	if m.State != ConfigLoading || m.GetSelectedItem() != "my-model" {
+		t.Fatalf("after select = %+v item=%q", m.State, m.GetSelectedItem())
+	}
+	if m.GetSelectedProvider() != "my-model" {
+		t.Fatalf("provider passthrough = %q", m.GetSelectedProvider())
+	}
+}
