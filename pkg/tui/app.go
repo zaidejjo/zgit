@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -86,6 +87,9 @@ type Model struct {
 	help     help.Model
 	viewport viewport.Model
 
+	// Transient notifications
+	toasts components.Toasts
+
 	// Terminal dimensions
 	width  int
 	height int
@@ -130,6 +134,7 @@ func NewModel(gitExec *gitpkg.NativeExec) *Model {
 		prCreateDlg:    views.NewPRCreateModel(),
 		prMergeDlg:     views.NewPRMergeModel(),
 		help:           help.New(),
+		toasts:         components.NewToasts(4 * time.Second),
 		mode:           modeNormal,
 		focusedPanel:   PanelStatus,
 		fullScreenView: shell.Panels,
@@ -368,6 +373,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Reinstall listener for next subscriber message
 		return updated, tea.Batch(cmd, listenForMessages(m.msgs))
 
+	case toastTickMsg:
+		if m.toasts.Expire() {
+			return m, func() tea.Msg {
+				time.Sleep(4 * time.Second)
+				return toastTickMsg{}
+			}
+		}
+		return m, nil
+
 	default:
 		return m, nil
 	}
@@ -389,8 +403,11 @@ func (m *Model) View() string {
 	content := m.renderHeader() + "\n" + m.renderContent()
 	statusBar := m.renderStatusBar()
 	fullLayout := content
+	if toastBlock := m.toasts.View(); toastBlock != "" {
+		fullLayout = fmt.Sprintf("%s\n%s", fullLayout, toastBlock)
+	}
 	if statusBar != "" {
-		fullLayout = fmt.Sprintf("%s\n%s", content, statusBar)
+		fullLayout = fmt.Sprintf("%s\n%s", fullLayout, statusBar)
 	}
 
 	// Pad fullLayout to exactly m.height lines so overlay centering is pixel-perfect
@@ -459,6 +476,26 @@ func (m *Model) renderHeader() string {
 		label := t.Full()
 		if compact {
 			label = t.Short()
+		}
+		if !compact {
+			switch t.ID {
+			case shell.PRs:
+				if m.prs.Items != nil {
+					label = fmt.Sprintf("%s (%d)", label, len(m.prs.Items))
+				}
+			case shell.Issues:
+				if m.issues.Items != nil {
+					label = fmt.Sprintf("%s (%d)", label, len(m.issues.Items))
+				}
+			case shell.Dashboard:
+				if m.dash.Loaded {
+					label = fmt.Sprintf("%s (%d)", label, len(m.dash.Items))
+				}
+			case shell.Actions:
+				if m.actions.Items != nil {
+					label = fmt.Sprintf("%s (%d)", label, len(m.actions.Items))
+				}
+			}
 		}
 		if t.ID == shell.Notes && m.notes.Loaded && m.notes.UnreadCount() > 0 {
 			label = fmt.Sprintf("%s (%d)", label, m.notes.UnreadCount())
@@ -782,7 +819,7 @@ func (m *Model) ensureGHDataLoaded() {
 			go m.fetchIssues()
 		}
 	case shell.Actions: // Actions
-		if m.actions.Runs == nil {
+		if m.actions.Items == nil {
 			go m.fetchActions()
 		}
 	case shell.Notes: // Notifications
@@ -928,14 +965,12 @@ func quickRepoStatus(path string) (*models.Status, error) {
 }
 
 // switchRepo repoints the TUI at another local repo.
-func (m *Model) switchRepo(path string) {
+func (m *Model) switchRepo(path string) tea.Cmd {
 	if m.git == nil {
-		m.dash.Error = "no git backend"
-		return
+		return m.pushToast("no git backend", components.ToneError)
 	}
 	if err := m.git.Open(path); err != nil {
-		m.dash.Error = fmt.Sprintf("open %s: %v", path, err)
-		return
+		return m.pushToast(fmt.Sprintf("open failed: %v", err), components.ToneError)
 	}
 	if cfg, err := config.New(); err == nil {
 		cfg.AddRecentRepo(path)
@@ -945,12 +980,14 @@ func (m *Model) switchRepo(path string) {
 	m.issues = views.NewIssueListModel()
 	m.actions = views.NewActionsModel()
 	m.notes = views.NewNotesModel()
+	m.dash.Error = ""
 	m.ghOwner, m.ghRepo, m.ghDetected = "", "", false
 	m.tryDetectRepo()
 	m.sub.Refresh()
 	m.fullScreenView = shell.Panels
 	m.focusedPanel = PanelStatus
 	go m.fetchDashboard()
+	return m.pushToast(fmt.Sprintf("Switched to %s", baseName(path)), components.ToneSuccess)
 }
 
 // fetchActions loads workflow runs for the detected repo.
@@ -1378,150 +1415,82 @@ func (m *Model) handleIssueKeys(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// filterKeys routes typing to a filterable list model. Returns true when
-// the key was consumed by filter input.
-func filterKeys(key string, filtering *bool, filter *string, clamp func()) bool {
-	if *filtering {
-		switch key {
-		case "esc", "enter":
-			*filtering = false
-			if key == "esc" {
-				*filter = ""
-			}
-			clamp()
-			return true
-		case "backspace":
-			if len(*filter) > 0 {
-				*filter = (*filter)[:len(*filter)-1]
-				clamp()
-			}
-			return true
-		default:
-			if len(key) == 1 || key == " " {
-				*filter += key
-				clamp()
-			}
-			return true
-		}
-	}
-	return false
-}
-
 func (m *Model) handleDashKeys(key string) (tea.Model, tea.Cmd) {
-	if filterKeys(key, &m.dash.Filtering, &m.dash.Filter, m.dash.ClampCursor) {
+	if m.dash.TypeKey(key) {
 		return m, nil
 	}
 	switch key {
 	case "/":
 		m.dash.Filtering = true
 		return m, nil
-	case "j", "down":
-		if len(m.dash.Filtered()) > 0 && m.dash.Cursor < len(m.dash.Filtered())-1 {
-			m.dash.Cursor++
-		}
-	case "k", "up":
-		if m.dash.Cursor > 0 {
-			m.dash.Cursor--
-		}
-	case "g", "home":
-		m.dash.Cursor = 0
-	case "G", "end":
-		m.dash.Cursor = len(m.dash.Filtered()) - 1
-		if m.dash.Cursor < 0 {
-			m.dash.Cursor = 0
-		}
 	case "enter":
 		if sel := m.dash.Selected(); sel != nil {
-			m.switchRepo(sel.Path)
+			return m, m.switchRepo(sel.Path)
 		}
 	case "r":
 		m.dash.Loaded = false
 		go m.fetchDashboard()
+	default:
+		m.dash.Nav(key)
 	}
 	return m, nil
 }
 
 func (m *Model) handleActionsKeys(key string) (tea.Model, tea.Cmd) {
-	// In job drill-in, backspace/esc returns to runs.
-	if m.actions.JobsFor != 0 && (key == "backspace" || key == "esc") {
-		m.actions.Jobs = nil
-		m.actions.JobsFor = 0
-		m.actions.Cursor = 0
-		m.actions.Offset = 0
-		return m, nil
-	}
-	// Filter input captures all typing (runs list only).
-	if m.actions.JobsFor == 0 && m.actions.Filtering {
-		filterKeys(key, &m.actions.Filtering, &m.actions.Filter, m.actions.ClampCursor)
-		return m, nil
-	}
-	n := len(m.actions.Filtered())
+	// Job drill-in has its own navigation.
 	if m.actions.JobsFor != 0 {
-		n = len(m.actions.Jobs)
+		switch key {
+		case "backspace", "esc":
+			m.actions.Jobs = nil
+			m.actions.JobsFor = 0
+			m.actions.Cursor = 0
+			m.actions.Offset = 0
+		case "j", "down":
+			if len(m.actions.Jobs) > 0 && m.actions.Cursor < len(m.actions.Jobs)-1 {
+				m.actions.Cursor++
+			}
+		case "k", "up":
+			if m.actions.Cursor > 0 {
+				m.actions.Cursor--
+			}
+		}
+		return m, nil
+	}
+	if m.actions.TypeKey(key) {
+		return m, nil
 	}
 	switch key {
 	case "/":
-		if m.actions.JobsFor == 0 {
-			m.actions.Filtering = true
-		}
+		m.actions.Filtering = true
 		return m, nil
-	case "j", "down":
-		if n > 0 && m.actions.Cursor < n-1 {
-			m.actions.Cursor++
-		}
-	case "k", "up":
-		if m.actions.Cursor > 0 {
-			m.actions.Cursor--
-		}
-	case "g", "home":
-		m.actions.Cursor = 0
-	case "G", "end":
-		m.actions.Cursor = n - 1
-		if m.actions.Cursor < 0 {
-			m.actions.Cursor = 0
-		}
 	case "enter":
-		if m.actions.JobsFor == 0 {
-			if run := m.actions.SelectedRun(); run != nil {
-				go m.fetchActionJobs(run.ID)
-			}
+		if run := m.actions.SelectedRun(); run != nil {
+			go m.fetchActionJobs(run.ID)
 		}
 	case "r":
-		m.actions.Runs = nil
+		m.actions.Items = nil
 		go m.fetchActions()
+	default:
+		m.actions.Nav(key)
 	}
 	return m, nil
 }
 
 func (m *Model) handleNotesKeys(key string) (tea.Model, tea.Cmd) {
-	if filterKeys(key, &m.notes.Filtering, &m.notes.Filter, m.notes.ClampCursor) {
+	if m.notes.TypeKey(key) {
 		return m, nil
 	}
 	switch key {
 	case "/":
 		m.notes.Filtering = true
 		return m, nil
-	case "j", "down":
-		if len(m.notes.Ordered()) > 0 && m.notes.Cursor < len(m.notes.Ordered())-1 {
-			m.notes.Cursor++
-		}
-	case "k", "up":
-		if m.notes.Cursor > 0 {
-			m.notes.Cursor--
-		}
-	case "g", "home":
-		m.notes.Cursor = 0
-	case "G", "end":
-		m.notes.Cursor = len(m.notes.Ordered()) - 1
-		if m.notes.Cursor < 0 {
-			m.notes.Cursor = 0
-		}
 	case "x":
 		if sel := m.notes.Selected(); sel != nil && sel.Unread {
 			m.markNoteRead(sel.ID)
 		}
 	case "X":
 		m.markAllNotesRead()
+		return m, m.pushToast("Inbox cleared", components.ToneSuccess)
 	case "u":
 		// Toggle unread/all (server-side) and reload.
 		m.notes.ShowAll = !m.notes.ShowAll
@@ -1530,6 +1499,8 @@ func (m *Model) handleNotesKeys(key string) (tea.Model, tea.Cmd) {
 	case "r":
 		m.notes.Loaded = false
 		go m.fetchNotes()
+	default:
+		m.notes.Nav(key)
 	}
 	return m, nil
 }
@@ -1894,6 +1865,17 @@ type actionJobsEvent struct {
 type notesEvent struct {
 	items []*models.Notification
 	err   error
+}
+
+// toastTickMsg fires when the oldest toast may have expired.
+type toastTickMsg struct{}
+
+// pushToast shows a transient notification for ~4s.
+func (m *Model) pushToast(text string, tone components.Tone) tea.Cmd {
+	m.toasts.Push(text, tone)
+	return tea.Tick(4*time.Second, func(time.Time) tea.Msg {
+		return toastTickMsg{}
+	})
 }
 
 type prCreateResultEvent struct {

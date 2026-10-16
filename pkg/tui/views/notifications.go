@@ -6,25 +6,29 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/core/models"
+	"github.com/zaidejjo/zgit/pkg/tui/components"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
 // NotesModel holds state for the GitHub notifications inbox.
 type NotesModel struct {
-	Items     []*models.Notification
-	ShowAll   bool // false = unread only (server-side)
-	Loaded    bool
-	Cursor    int
-	Offset    int
-	Error     string
-	Height    int
-	Filter    string
-	Filtering bool
+	components.ZList[*models.Notification]
+	ShowAll bool // false = unread only (server-side)
+	Loaded  bool
+	Error   string
 }
 
 // NewNotesModel creates the notifications view model.
 func NewNotesModel() NotesModel {
-	return NotesModel{Height: 20}
+	m := NotesModel{}
+	m.Height = 20
+	m.Match = func(it *models.Notification, q string) bool {
+		hay := strings.ToLower(strings.Join([]string{
+			it.Title, it.RepoName, it.Reason, it.Type,
+		}, " "))
+		return strings.Contains(hay, q)
+	}
+	return m
 }
 
 // UpdateNotes refreshes the inbox.
@@ -59,34 +63,6 @@ func (m *NotesModel) MarkRead(id string) {
 func (m *NotesModel) MarkAllRead() {
 	for _, it := range m.Items {
 		it.Unread = false
-	}
-}
-
-// Filtered returns items matching the filter (title/repo/reason).
-func (m *NotesModel) Filtered() []*models.Notification {
-	q := strings.ToLower(strings.TrimSpace(m.Filter))
-	if q == "" {
-		return m.Items
-	}
-	out := make([]*models.Notification, 0, len(m.Items))
-	for _, it := range m.Items {
-		hay := strings.ToLower(strings.Join([]string{
-			it.Title, it.RepoName, it.Reason, it.Type,
-		}, " "))
-		if strings.Contains(hay, q) {
-			out = append(out, it)
-		}
-	}
-	return out
-}
-
-// ClampCursor keeps the cursor inside the filtered list.
-func (m *NotesModel) ClampCursor() {
-	if m.Cursor >= len(m.Filtered()) {
-		m.Cursor = 0
-	}
-	if m.Cursor < 0 {
-		m.Cursor = 0
 	}
 }
 
@@ -149,8 +125,6 @@ func (m *NotesModel) View(width int) string {
 		return styles.SubtitleStyle.Render("Inbox zero — nothing unread")
 	}
 
-	m.ensureCursorVisible()
-
 	var b strings.Builder
 	mode := "Unread"
 	if m.ShowAll {
@@ -162,11 +136,9 @@ func (m *NotesModel) View(width int) string {
 	}
 	b.WriteString(styles.SectionTitleStyle.Render(title))
 	b.WriteString("\n")
-	if m.Filtering {
-		b.WriteString(styles.FilterBarStyle.Render(" /" + m.Filter + "█"))
-		b.WriteString("\n")
-	}
+	b.WriteString(m.FilterBar())
 
+	m.EnsureVisible()
 	visible := m.Ordered()
 
 	if len(visible) == 0 && strings.TrimSpace(m.Filter) != "" {
@@ -207,14 +179,4 @@ func (m *NotesModel) View(width int) string {
 	}
 
 	return b.String()
-}
-
-func (m *NotesModel) ensureCursorVisible() {
-	m.ClampCursor()
-	if m.Cursor < m.Offset {
-		m.Offset = m.Cursor
-	}
-	if m.Cursor >= m.Offset+m.Height {
-		m.Offset = m.Cursor - m.Height + 1
-	}
 }

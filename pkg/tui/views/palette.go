@@ -1,6 +1,7 @@
 package views
 
 import (
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -185,20 +186,36 @@ func (m *PaletteModel) HandleKey(key string) bool {
 	return true
 }
 
-// filter updates the filtered results based on input query.
+// filter updates the filtered results based on input query, ranked by
+// fuzzy score (prefix/word/consecutive bonuses, shorter wins ties).
 func (m *PaletteModel) filter() {
 	query := strings.ToLower(m.Input)
 	m.Filtered = nil
 
+	type scored struct {
+		idx   int
+		score float64
+	}
+	var ranked []scored
 	for i, cmd := range m.Commands {
 		if query == "" {
 			m.Filtered = append(m.Filtered, i)
 			continue
 		}
-		label := strings.ToLower(cmd.Label)
-		id := strings.ToLower(cmd.ID)
-		if fuzzyMatch(query, label) || fuzzyMatch(query, id) {
-			m.Filtered = append(m.Filtered, i)
+		best := -1.0
+		for _, field := range []string{cmd.Label, cmd.ID, cmd.Description} {
+			if s := fuzzyScore(query, strings.ToLower(field)); s > best {
+				best = s
+			}
+		}
+		if best >= 0 {
+			ranked = append(ranked, scored{i, best})
+		}
+	}
+	if query != "" {
+		sort.SliceStable(ranked, func(a, b int) bool { return ranked[a].score > ranked[b].score })
+		for _, r := range ranked {
+			m.Filtered = append(m.Filtered, r.idx)
 		}
 	}
 
@@ -210,15 +227,40 @@ func (m *PaletteModel) filter() {
 	}
 }
 
+// fuzzyScore ranks a subsequence match; -1 means no match.
+func fuzzyScore(query, str string) float64 {
+	qi := 0
+	score := 0.0
+	consec := 0
+	for si := 0; si < len(str) && qi < len(query); si++ {
+		if str[si] != query[qi] {
+			consec = 0
+			continue
+		}
+		if si == 0 {
+			score += 15 // prefix match
+		} else {
+			if prev := str[si-1]; prev == '/' || prev == '-' || prev == '_' || prev == ' ' {
+				score += 8 // word start
+			}
+		}
+		if consec > 0 {
+			score += 5 + float64(consec)*2 // consecutive run
+		} else {
+			score += 5
+		}
+		consec++
+		qi++
+	}
+	if qi != len(query) {
+		return -1
+	}
+	return score - float64(len(str))*0.1
+}
+
 // fuzzyMatch returns true if all chars in query appear in str in order.
 func fuzzyMatch(query, str string) bool {
-	qi := 0
-	for si := 0; si < len(str) && qi < len(query); si++ {
-		if str[si] == query[qi] {
-			qi++
-		}
-	}
-	return qi == len(query)
+	return fuzzyScore(query, str) >= 0
 }
 
 // View renders the command palette overlay with scrollable item list and accent selection.

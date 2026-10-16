@@ -122,3 +122,27 @@ func TestBranchSelfTrackingShort(t *testing.T) {
 		t.Fatalf("foreign upstream should stay:\n%s", out)
 	}
 }
+
+func TestPaletteFuzzyRanking(t *testing.T) {
+	m := NewPaletteModel()
+	m.Commands = []PaletteCommand{
+		{ID: "commit-push", Label: "Commit & Push"},
+		{ID: "stash", Label: "Stash"},
+		{ID: "commit", Label: "Commit"},
+	}
+	m.Input = "commit"
+	m.filter()
+	if len(m.Filtered) != 2 {
+		t.Fatalf("filtered = %v", m.Filtered)
+	}
+	// Exact short prefix "Commit" outranks longer "Commit & Push".
+	first := m.Commands[m.Filtered[0]]
+	if first.ID != "commit" {
+		t.Fatalf("first = %q, want commit", first.ID)
+	}
+	m.Input = "zzz"
+	m.filter()
+	if len(m.Filtered) != 0 {
+		t.Fatalf("want empty, got %v", m.Filtered)
+	}
+}

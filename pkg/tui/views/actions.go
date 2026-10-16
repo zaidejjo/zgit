@@ -6,31 +6,42 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/core/models"
+	"github.com/zaidejjo/zgit/pkg/tui/components"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
 // ActionsModel holds state for the CI workflow runs view. Enter drills
 // into the selected run's jobs; backspace returns to the run list.
 type ActionsModel struct {
-	Runs      []*models.WorkflowRun
-	Jobs      []*models.Job
-	JobsFor   int64 // run id whose jobs are shown, 0 = run list
-	Cursor    int
-	Offset    int
-	Error     string
-	Height    int
-	Filter    string
-	Filtering bool
+	components.ZList[*models.WorkflowRun]
+	Jobs    []*models.Job
+	JobsFor int64 // run id whose jobs are shown, 0 = run list
+	Error   string
+}
+
+// Runs aliases the underlying items.
+func (m *ActionsModel) Runs() []*models.WorkflowRun {
+	return m.Items
 }
 
 // NewActionsModel creates the actions view model.
 func NewActionsModel() ActionsModel {
-	return ActionsModel{Height: 20}
+	m := ActionsModel{}
+	m.Height = 20
+	m.Match = func(r *models.WorkflowRun, q string) bool {
+		hay := strings.ToLower(strings.Join([]string{
+			r.WorkflowName, r.Branch, r.HeadSHA, r.Event,
+			fmt.Sprintf("%d", r.RunNumber),
+		}, " "))
+		return strings.Contains(hay, q)
+	}
+	m.Render = actionsRow
+	return m
 }
 
 // UpdateRuns refreshes the run list (clears any job drill-in).
 func (m *ActionsModel) UpdateRuns(runs []*models.WorkflowRun) {
-	m.Runs = runs
+	m.Items = runs
 	m.Jobs = nil
 	m.JobsFor = 0
 	m.Error = ""
@@ -46,49 +57,13 @@ func (m *ActionsModel) UpdateJobs(runID int64, jobs []*models.Job) {
 	m.Error = ""
 }
 
-// Filtered returns runs matching the filter (workflow/branch/sha/event).
-func (m *ActionsModel) Filtered() []*models.WorkflowRun {
-	q := strings.ToLower(strings.TrimSpace(m.Filter))
-	if q == "" {
-		return m.Runs
-	}
-	out := make([]*models.WorkflowRun, 0, len(m.Runs))
-	for _, r := range m.Runs {
-		hay := strings.ToLower(strings.Join([]string{
-			r.WorkflowName, r.Branch, r.HeadSHA, r.Event,
-			fmt.Sprintf("%d", r.RunNumber),
-		}, " "))
-		if strings.Contains(hay, q) {
-			out = append(out, r)
-		}
-	}
-	return out
-}
-
-// ClampCursor keeps the cursor inside the visible list.
-func (m *ActionsModel) ClampCursor() {
-	n := len(m.Filtered())
-	if m.JobsFor != 0 {
-		n = len(m.Jobs)
-	}
-	if m.Cursor >= n {
-		m.Cursor = 0
-	}
-	if m.Cursor < 0 {
-		m.Cursor = 0
-	}
-}
-
 // SelectedRun returns the cursor run (filter-aware), or nil in job view.
 func (m *ActionsModel) SelectedRun() *models.WorkflowRun {
 	if m.JobsFor != 0 {
 		return nil
 	}
-	visible := m.Filtered()
-	if len(visible) == 0 || m.Cursor < 0 || m.Cursor >= len(visible) {
-		return nil
-	}
-	return visible[m.Cursor]
+	run, _ := m.Selected()
+	return run
 }
 
 func runMark(r *models.WorkflowRun) string {
@@ -128,64 +103,45 @@ func (m *ActionsModel) View(width int) string {
 	if m.Error != "" {
 		return styles.ErrorStyle.Render("Error: " + m.Error)
 	}
-	if m.Runs == nil {
+	if m.Items == nil {
 		return styles.LoadingStyle.Render("Loading workflow runs...")
 	}
 	if m.JobsFor != 0 {
 		return m.jobsView(width)
 	}
 
-	if len(m.Runs) == 0 {
+	if len(m.Items) == 0 {
 		return styles.SubtitleStyle.Render("No workflow runs found")
 	}
 
-	m.ensureCursorVisible()
-
 	var b strings.Builder
-	title := fmt.Sprintf(" Actions (%d)", len(m.Runs))
+	title := fmt.Sprintf(" Actions (%d)", len(m.Items))
 	if strings.TrimSpace(m.Filter) != "" {
-		title = fmt.Sprintf(" Actions (%d/%d) filter: %s", len(m.Filtered()), len(m.Runs), m.Filter)
+		title = fmt.Sprintf(" Actions (%d/%d) filter: %s", len(m.Filtered()), len(m.Items), m.Filter)
 	}
 	b.WriteString(styles.SectionTitleStyle.Render(title))
 	b.WriteString("\n")
-	if m.Filtering {
-		b.WriteString(styles.FilterBarStyle.Render(" /" + m.Filter + "█"))
-		b.WriteString("\n")
-	}
-
-	visible := m.Filtered()
-	if len(visible) == 0 && strings.TrimSpace(m.Filter) != "" {
+	b.WriteString(m.FilterBar())
+	if len(m.Filtered()) == 0 && strings.TrimSpace(m.Filter) != "" {
 		return b.String() + styles.SubtitleStyle.Render("No runs match filter")
 	}
-	if len(visible) > m.Height {
-		end := m.Offset + m.Height
-		if end > len(visible) {
-			end = len(visible)
-		}
-		visible = visible[m.Offset:end]
-	}
 
-	for i, r := range visible {
-		globalIdx := m.Offset + i
-		head := r.HeadSHA
-		if len(head) > 7 {
-			head = head[:7]
-		}
-		line := fmt.Sprintf(" %s %s  #%d %s %s",
-			runMark(r), truncateStr(r.WorkflowName, 28),
-			r.RunNumber, truncateStr(r.Branch, 24), head)
-		if lipgloss.Width(line) > width {
-			line = fmt.Sprintf(" %s %s #%d", runMark(r), truncateStr(r.WorkflowName, width-12), r.RunNumber)
-		}
-		if globalIdx == m.Cursor {
-			b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
-		} else {
-			b.WriteString(styles.ListItemStyle.Render(line))
-		}
-		b.WriteString("\n")
-	}
+	return b.String() + m.ViewRows(width)
+}
 
-	return b.String()
+// actionsRow renders one run row (no cursor — ZList wraps it).
+func actionsRow(r *models.WorkflowRun, width int) string {
+	head := r.HeadSHA
+	if len(head) > 7 {
+		head = head[:7]
+	}
+	line := fmt.Sprintf(" %s %s  #%d %s %s",
+		runMark(r), truncateStr(r.WorkflowName, 28),
+		r.RunNumber, truncateStr(r.Branch, 24), head)
+	if lipgloss.Width(line) > width {
+		line = fmt.Sprintf(" %s %s #%d", runMark(r), truncateStr(r.WorkflowName, width-12), r.RunNumber)
+	}
+	return line
 }
 
 func (m *ActionsModel) jobsView(width int) string {
@@ -214,14 +170,4 @@ func (m *ActionsModel) jobsView(width int) string {
 		b.WriteString("\n")
 	}
 	return b.String()
-}
-
-func (m *ActionsModel) ensureCursorVisible() {
-	m.ClampCursor()
-	if m.Cursor < m.Offset {
-		m.Offset = m.Cursor
-	}
-	if m.Cursor >= m.Offset+m.Height {
-		m.Offset = m.Cursor - m.Height + 1
-	}
 }
