@@ -26,7 +26,6 @@ const navItems = [
   { id: "pull-requests", label: "PRs", Icon: GitPullRequest },
   { id: "issues",   label: "Issues",   Icon: CircleDot },
   { id: "actions",  label: "Actions",  Icon: Play },
-  { id: "notifications", label: "Notifications", Icon: Bell },
   { id: "ai",       label: "AI",       Icon: Brain },
 ] as const;
 
@@ -46,6 +45,7 @@ export default function AppLayout() {
     theme, setTheme,
     loadUserPreferences, userPreferences,
     notifications, fetchNotifications,
+    markNotificationRead,
   } = useAppStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -64,6 +64,8 @@ export default function AppLayout() {
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const repoMenuRef = useRef<HTMLDivElement>(null);
   const themeMenuRef = useRef<HTMLDivElement>(null);
+  const bellRef = useRef<HTMLDivElement>(null);
+  const [bellOpen, setBellOpen] = useState(false);
 
   // Initialize
   useEffect(() => {
@@ -182,6 +184,19 @@ export default function AppLayout() {
     }
   }, [themeMenuOpen]);
 
+  // Close notifications dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) {
+        setBellOpen(false);
+      }
+    };
+    if (bellOpen) {
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+    }
+  }, [bellOpen]);
+
   // Auto-dismiss error
   useEffect(() => {
     if (error) {
@@ -215,7 +230,7 @@ export default function AppLayout() {
     const p = location.pathname.slice(1);
     return navItems.find((n) => n.id === p)?.id
       || bottomNavItems.find((n) => n.id === p)?.id
-      || "status";
+      || (p === "notifications" ? p : "status");
   };
 
   const paletteShortcut = userPreferences?.keybindings?.command_palette || "Ctrl+K";
@@ -352,8 +367,6 @@ export default function AppLayout() {
             const NavIcon = item.Icon;
             const isActive = currentNavId === item.id && !isBottomNav;
             const isStatusWithDirty = item.id === "status" && dirtyCount > 0;
-            const isNotificationsWithUnread = item.id === "notifications" && unreadCount > 0;
-            const badgeCount = isStatusWithDirty ? dirtyCount : isNotificationsWithUnread ? unreadCount : 0;
             return (
               <button
                 key={item.id}
@@ -367,9 +380,9 @@ export default function AppLayout() {
               >
                 <NavIcon className="w-4 h-4 shrink-0" />
                 {!sidebarCollapsed && <span className="flex-1 text-left">{item.label}</span>}
-                {!sidebarCollapsed && badgeCount > 0 && (
+                {!sidebarCollapsed && isStatusWithDirty && (
                   <span className="w-5 h-5 flex items-center justify-center rounded-full bg-primary/15 text-[10px] font-medium text-primary">
-                    {badgeCount > 9 ? "9+" : badgeCount}
+                    {dirtyCount > 9 ? "9+" : dirtyCount}
                   </span>
                 )}
               </button>
@@ -497,6 +510,79 @@ export default function AppLayout() {
                 >
                   Sign In
                 </button>
+              )}
+
+              {/* Notifications bell */}
+              {ghAuthenticated && (
+                <div className="relative" ref={bellRef}>
+                  <button
+                    onClick={() => setBellOpen((o) => !o)}
+                    className={cn(
+                      "relative p-1.5 rounded-md transition-all duration-150 press-scale",
+                      bellOpen
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                    )}
+                    title="Notifications"
+                  >
+                    <Bell className="w-4 h-4" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-0.5 flex items-center justify-center rounded-full bg-primary text-[9px] font-semibold text-primary-foreground tabular-nums">
+                        {unreadCount > 9 ? "9+" : unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {bellOpen && (
+                    <div className="absolute right-0 top-full mt-1 z-50 w-80 max-w-[85vw] rounded-xl glass shadow-2xl overflow-hidden">
+                      <div className="flex items-center gap-2 px-3 py-2 border-b border-border/30">
+                        <span className="text-xs font-medium">Notifications</span>
+                        {unreadCount > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium tabular-nums">
+                            {unreadCount} unread
+                          </span>
+                        )}
+                      </div>
+                      <div className="max-h-80 overflow-y-auto py-1">
+                        {notifications.length === 0 ? (
+                          <p className="text-xs text-muted-foreground text-center py-6">Inbox zero. Enjoy the quiet.</p>
+                        ) : (
+                          [...notifications]
+                            .sort((a, b) => Number(b.unread) - Number(a.unread))
+                            .slice(0, 6)
+                            .map((n) => (
+                              <button
+                                key={n.id}
+                                onClick={() => {
+                                  const url = n.html_url || n.repo_url;
+                                  if (url) window.open(url, "_blank");
+                                  if (n.unread) markNotificationRead(n.id);
+                                  setBellOpen(false);
+                                }}
+                                className="flex items-start gap-2 w-full px-3 py-2 text-left transition-colors hover:bg-accent/30"
+                              >
+                                <span className={cn("w-1.5 h-1.5 rounded-full mt-1.5 shrink-0", n.unread ? "bg-primary" : "bg-transparent")} />
+                                <span className="flex-1 min-w-0">
+                                  <span className={cn("block text-xs truncate", n.unread ? "font-semibold" : "text-muted-foreground")}>
+                                    {n.title || "(no title)"}
+                                  </span>
+                                  <span className="block text-[10px] text-muted-foreground truncate mt-0.5">
+                                    {n.repo_name}{n.reason ? ` · ${n.reason.replace(/_/g, " ")}` : ""}
+                                  </span>
+                                </span>
+                              </button>
+                            ))
+                        )}
+                      </div>
+                      <button
+                        onClick={() => { setBellOpen(false); handleNav("notifications"); }}
+                        className="w-full px-3 py-2 text-xs text-center text-primary hover:bg-accent/30 transition-colors border-t border-border/30"
+                      >
+                        View all notifications
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* AI Assistant trigger */}
