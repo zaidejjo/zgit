@@ -1,6 +1,7 @@
 package views
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/zaidejjo/zgit/pkg/core/models"
@@ -85,5 +86,39 @@ func TestNotesUnreadFirst(t *testing.T) {
 	m.MarkAllRead()
 	if m.UnreadCount() != 0 {
 		t.Fatalf("mark all failed")
+	}
+}
+
+func TestCursorLineStripsANSI(t *testing.T) {
+	styled := "\x1b[38;2;166;227;161m◆\x1b[0m 3fec75a msg"
+	got := cursorLine(styled)
+	if got != "❯ 3fec75a msg" {
+		t.Fatalf("cursorLine = %q", got)
+	}
+	if strings.Contains(got, "[") && strings.Contains(got, "38;2") {
+		t.Fatalf("ANSI leaked: %q", got)
+	}
+	if cursorLine("") != "❯" {
+		t.Fatalf("empty should be bare cursor")
+	}
+	// Multibyte first rune survives.
+	if got := cursorLine("◆ abc"); got != "❯ abc" {
+		t.Fatalf("multibyte = %q", got)
+	}
+}
+
+func TestBranchSelfTrackingShort(t *testing.T) {
+	m := NewBranchModel()
+	m.UpdateBranches([]*models.Branch{
+		{Name: "dev", IsHead: true, Upstream: "origin/dev", LatestMsg: "Merge PR #61"},
+		{Name: "feat/x", Upstream: "origin/feat/x", LatestMsg: "wip"},
+		{Name: "other", Upstream: "fork/other", Ahead: 1, LatestMsg: "change"},
+	})
+	out := m.View(100)
+	if strings.Contains(out, "[origin/dev]") || strings.Contains(out, "[origin/feat/x]") {
+		t.Fatalf("self-tracking upstream should collapse:\n%s", out)
+	}
+	if !strings.Contains(out, "[fork/other") {
+		t.Fatalf("foreign upstream should stay:\n%s", out)
 	}
 }

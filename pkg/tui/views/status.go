@@ -98,7 +98,7 @@ func (m StatusModel) View(width int) string {
 			localIdx := stagedOffset + i
 			if localIdx == m.Cursor {
 				// Replace first space with ❯ prefix. First byte is always ASCII space (safe byte slice).
-				b.WriteString(styles.ListItemActiveStyle.Render("❯" + line[1:]))
+				b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
 			} else {
 				b.WriteString(styles.ListItemStyle.Render(line))
 			}
@@ -114,7 +114,7 @@ func (m StatusModel) View(width int) string {
 			line := fmt.Sprintf("  %s  %s", statusMark("unstaged"), formatFilePath(f.Path, width-6))
 			localIdx := unstagedOffset + i
 			if localIdx == m.Cursor {
-				b.WriteString(styles.ListItemActiveStyle.Render("❯" + line[1:]))
+				b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
 			} else {
 				b.WriteString(styles.ListItemStyle.Render(line))
 			}
@@ -130,7 +130,7 @@ func (m StatusModel) View(width int) string {
 			line := fmt.Sprintf("  %s  %s", statusMark("untracked"), formatFilePath(f.Path, width-6))
 			localIdx := untrackedOffset + i
 			if localIdx == m.Cursor {
-				b.WriteString(styles.ListItemActiveStyle.Render("❯" + line[1:]))
+				b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
 			} else {
 				b.WriteString(styles.ListItemStyle.Render(line))
 			}

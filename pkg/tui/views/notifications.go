@@ -199,7 +199,7 @@ func (m *NotesModel) View(width int) string {
 		}
 
 		if globalIdx == m.Cursor {
-			b.WriteString(styles.ListItemActiveStyle.Render("❯" + line[1:]))
+			b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
 		} else {
 			b.WriteString(styles.ListItemStyle.Render(line))
 		}

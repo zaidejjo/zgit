@@ -55,26 +55,45 @@ func (m BranchModel) View(width int) string {
 	for i, br := range visible {
 		globalIdx := m.Offset + i
 		marker := "  "
+		name := br.Name
 		if br.IsHead {
 			marker = styles.StatusStagedStyle.Render("*")
+			name = styles.StatusStagedStyle.Render(br.Name)
 		}
 
+		// Self-tracking upstreams (origin/<name>) repeat the branch
+		// name — show only ahead/behind counts for those.
 		trackInfo := ""
 		if br.Upstream != "" {
+			up := br.Upstream
+			self := up == "origin/"+br.Name
+			if self {
+				up = ""
+			}
 			track := ""
 			if br.Ahead > 0 {
-				track += fmt.Sprintf(" +%d", br.Ahead)
+				track += fmt.Sprintf("↑%d", br.Ahead)
 			}
 			if br.Behind > 0 {
-				track += fmt.Sprintf(" -%d", br.Behind)
+				if track != "" {
+					track += " "
+				}
+				track += fmt.Sprintf("↓%d", br.Behind)
 			}
-			trackInfo = styles.SubtitleStyle.Render(fmt.Sprintf(" [%s%s]", br.Upstream, track))
+			if up != "" {
+				if track != "" {
+					track = " " + track
+				}
+				trackInfo = styles.SubtitleStyle.Render(fmt.Sprintf(" [%s%s]", up, track))
+			} else if track != "" {
+				trackInfo = " " + styles.SubtitleStyle.Render(track)
+			}
 		}
 
 		// Calculate available width for message: marker (2) + " " + name + trackInfo + " " + msg
 		markerWidth := lipgloss.Width(marker)
 		trackWidth := lipgloss.Width(trackInfo)
-		nameWidth := lipgloss.Width(br.Name)
+		nameWidth := lipgloss.Width(name)
 		msgMax := width - markerWidth - 1 - nameWidth - 1 - trackWidth - 1
 		if msgMax < 0 {
 			msgMax = 0
@@ -86,12 +105,12 @@ func (m BranchModel) View(width int) string {
 			msg = styles.SubtitleStyle.Render(" " + trimmed)
 		}
 
-		line := fmt.Sprintf(" %s %s%s%s", marker, br.Name, trackInfo, msg)
+		line := fmt.Sprintf(" %s %s%s%s", marker, name, trackInfo, msg)
 
 		// Verify line fits panel width — if not, strip msg entirely
 		if lipgloss.Width(line) > width {
 			msg = ""
-			line = fmt.Sprintf(" %s %s%s", marker, br.Name, trackInfo)
+			line = fmt.Sprintf(" %s %s%s", marker, name, trackInfo)
 			// If still too wide, truncate name
 			if lipgloss.Width(line) > width {
 				availName := width - markerWidth - 1 - trackWidth - 1
@@ -105,7 +124,7 @@ func (m BranchModel) View(width int) string {
 
 		if globalIdx == m.Cursor {
 			// Replace leading space with ❯ prefix
-			b.WriteString(styles.ListItemActiveStyle.Render("❯" + line[1:]))
+			b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
 		} else {
 			b.WriteString(styles.ListItemStyle.Render(line))
 		}
