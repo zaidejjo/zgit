@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/zaidejjo/zgit/pkg/core/config"
 	gitpkg "github.com/zaidejjo/zgit/pkg/core/git"
 	"github.com/zaidejjo/zgit/pkg/core/github"
@@ -383,6 +385,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Reinstall listener for next subscriber message
 		return updated, tea.Batch(cmd, listenForMessages(m.msgs))
 
+	case tea.MouseMsg:
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			m.scrollFocused(-3)
+			return m, nil
+		case tea.MouseButtonWheelDown:
+			m.scrollFocused(3)
+			return m, nil
+		}
+		return m, nil
+
 	case toastTickMsg:
 		if m.toasts.Expire() {
 			return m, func() tea.Msg {
@@ -716,6 +729,9 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.reloadLocal()
 		return m, nil
 
+	case "L":
+		return m, m.toggleTheme()
+
 	// Tab cycles focus: Status → Log → Branches → Status
 	case "tab":
 		if m.fullScreenView != shell.Panels {
@@ -979,20 +995,37 @@ func (m *Model) fetchDashboard() {
 		favs[p] = true
 	}
 
-	entries := make([]views.DashEntry, 0, len(paths))
-	for _, p := range paths {
-		e := views.DashEntry{Name: baseName(p), Path: p, Favorite: favs[p], Current: p == current}
-		if st, err := quickRepoStatus(p); err != nil {
-			e.Err = "unreachable"
-		} else {
-			e.Branch = st.Branch
-			e.Clean = st.IsClean
-			e.Dirty = len(st.Files)
-			e.Ahead = st.Ahead
-			e.Behind = st.Behind
-		}
-		entries = append(entries, e)
+	entries := make([]views.DashEntry, len(paths))
+	// Bounded worker pool: N sequential git stats become ~N/4 wall time.
+	// Order is preserved (slot per path) since the view sorts nothing.
+	const workers = 4
+	var wg sync.WaitGroup
+	slots := make(chan int, len(paths))
+	for i := range paths {
+		slots <- i
 	}
+	close(slots)
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range slots {
+				p := paths[i]
+				e := views.DashEntry{Name: baseName(p), Path: p, Favorite: favs[p], Current: p == current}
+				if st, err := quickRepoStatus(p); err != nil {
+					e.Err = "unreachable"
+				} else {
+					e.Branch = st.Branch
+					e.Clean = st.IsClean
+					e.Dirty = len(st.Files)
+					e.Ahead = st.Ahead
+					e.Behind = st.Behind
+				}
+				entries[i] = e
+			}
+		}()
+	}
+	wg.Wait()
 	m.msgs <- teaMsg{view: 5, data: dashEvent{entries: entries}}
 }
 
@@ -2308,6 +2341,70 @@ type refsEvent struct {
 // toastTickMsg fires when the oldest toast may have expired.
 type toastTickMsg struct{}
 
+// scrollFocused moves the focused list by delta rows (mouse wheel).
+func (m *Model) scrollFocused(delta int) {
+	move := func(cursor *int, n int) {
+		*cursor += delta
+		if n <= 0 {
+			*cursor = 0
+			return
+		}
+		if *cursor < 0 {
+			*cursor = 0
+		}
+		if *cursor >= n {
+			*cursor = n - 1
+		}
+	}
+	if m.fullScreenView != shell.Panels {
+		switch m.fullScreenView {
+		case shell.PRs:
+			move(&m.prs.Cursor, len(m.prs.Filtered()))
+		case shell.Issues:
+			move(&m.issues.Cursor, len(m.issues.Filtered()))
+		case shell.Dashboard:
+			move(&m.dash.Cursor, len(m.dash.Filtered()))
+		case shell.Actions:
+			if m.actions.JobsFor != 0 {
+				move(&m.actions.Cursor, len(m.actions.Jobs))
+			} else {
+				move(&m.actions.Cursor, len(m.actions.Filtered()))
+			}
+		case shell.Notes:
+			move(&m.notes.Cursor, len(m.notes.Ordered()))
+		case shell.Worktrees:
+			move(&m.worktrees.Cursor, len(m.worktrees.Filtered()))
+		case shell.Stash:
+			move(&m.stash.Cursor, len(m.stash.Filtered()))
+		case shell.Refs:
+			if m.refs.Section == views.RefsTags {
+				move(&m.refs.Tags.Cursor, len(m.refs.Tags.Filtered()))
+			} else {
+				move(&m.refs.Remotes.Cursor, len(m.refs.Remotes.Filtered()))
+			}
+		}
+		return
+	}
+	switch m.focusedPanel {
+	case PanelStatus:
+		move(&m.status.Cursor, len(m.status.VisibleFiles()))
+	case PanelLog:
+		move(&m.log.Cursor, len(m.log.Commits))
+	case PanelBranch:
+		move(&m.branches.Cursor, len(m.branches.Filtered()))
+	}
+}
+
+// toggleTheme flips light/dark, persists, and announces it.
+func (m *Model) toggleTheme() tea.Cmd {
+	if styles.Dark {
+		m.setTheme("light", true)
+		return m.pushToast("Light theme", components.ToneInfo)
+	}
+	m.setTheme("dark", true)
+	return m.pushToast("Dark theme", components.ToneInfo)
+}
+
 // pushToast shows a transient notification for ~4s.
 func (m *Model) pushToast(text string, tone components.Tone) tea.Cmd {
 	m.toasts.Push(text, tone)
@@ -2622,12 +2719,65 @@ func listenForMessages(msgs <-chan teaMsg) tea.Cmd {
 
 // Run starts the TUI application.
 func Run(gitExec *gitpkg.NativeExec) error {
-	m := NewModel(gitExec)
+	return RunWithMouse(gitExec, false)
+}
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
+// RunWithMouse starts the TUI, optionally reporting mouse wheel events
+// for list scrolling.
+func RunWithMouse(gitExec *gitpkg.NativeExec, mouse bool) error {
+	m := NewModel(gitExec)
+	m.applyTheme()
+
+	opts := []tea.ProgramOption{tea.WithAltScreen()}
+	if mouse {
+		opts = append(opts, tea.WithMouseCellMotion())
+	}
+	p := tea.NewProgram(m, opts...)
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
 		return err
 	}
 	return nil
+}
+
+// applyTheme selects light/dark from config (tui.theme) or terminal
+// background detection when unset.
+func (m *Model) applyTheme() {
+	want := ""
+	if cfg, err := config.New(); err == nil {
+		want = cfg.GetString("tui.theme")
+	}
+	if want == "" {
+		if termenv.HasDarkBackground() {
+			want = "dark"
+		} else {
+			want = "light"
+		}
+	}
+	m.setTheme(want, false)
+}
+
+// setTheme swaps the palette and rebuilds styles. When persist is true
+// the choice is saved to config.
+func (m *Model) setTheme(want string, persist bool) {
+	if want == "light" {
+		styles.SetLight()
+	} else {
+		styles.SetDark()
+	}
+	styles.Refresh()
+	if persist {
+		if cfg, err := config.New(); err == nil {
+			cfg.Set("tui.theme", want)
+			_ = cfg.Save()
+		}
+	}
+}
+
+// themeName reports the active theme for toggles and help.
+func (m *Model) themeName() string {
+	if styles.Dark {
+		return "dark"
+	}
+	return "light"
 }

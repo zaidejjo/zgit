@@ -9,18 +9,26 @@ import (
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
-// SelectionStyle is the highlighted item style.
-var SelectionStyle = lipgloss.NewStyle().Background(styles.Mauve).Foreground(styles.Base).Bold(true)
+// SelectionStyle is the highlighted item style (built per render so
+// theme switches apply).
+func SelectionStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Background(styles.Mauve).Foreground(styles.Base).Bold(true)
+}
 
 // accentStyle is for keybinding hints (normal rows).
-var accentStyle = lipgloss.NewStyle().Foreground(styles.Mauve)
+func accentStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(styles.Mauve)
+}
 
 // accentStyleSelected is for keybinding hints on the selected row.
-// Uses dark foreground to contrast with Mauve background.
-var accentStyleSelected = lipgloss.NewStyle().Foreground(styles.Surface).Bold(true)
+func accentStyleSelected() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(styles.Surface).Bold(true)
+}
 
 // mutedStyle is for secondary text.
-var mutedStyle = lipgloss.NewStyle().Foreground(styles.Subtext)
+func mutedStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(styles.Subtext)
+}
 
 const maxVisibleResults = 7
 
@@ -332,9 +340,9 @@ func (m PaletteModel) View(width int) string {
 		keysStr := ""
 		if cmd.Keys != "" {
 			if isSelected {
-				keysStr = "  " + accentStyleSelected.Render(cmd.Keys)
+				keysStr = "  " + accentStyleSelected().Render(cmd.Keys)
 			} else {
-				keysStr = "  " + accentStyle.Render(cmd.Keys)
+				keysStr = "  " + accentStyle().Render(cmd.Keys)
 			}
 		}
 
@@ -373,10 +381,10 @@ func (m PaletteModel) View(width int) string {
 		}
 
 		if isSelected {
-			b.WriteString(SelectionStyle.Render(line))
+			b.WriteString(SelectionStyle().Render(line))
 			b.WriteString("\n")
 			// Description on next line, indented
-			desc := mutedStyle.Render("  " + cmd.Description)
+			desc := mutedStyle().Render("  " + cmd.Description)
 			b.WriteString(desc)
 			b.WriteString("\n")
 		} else {
