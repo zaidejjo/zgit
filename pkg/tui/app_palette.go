@@ -3,6 +3,7 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/zaidejjo/zgit/pkg/core/config"
+	"github.com/zaidejjo/zgit/pkg/tui/shell"
 	"github.com/zaidejjo/zgit/pkg/tui/views"
 )
 
@@ -93,22 +94,15 @@ func (m *Model) executePaletteCommand(id string) (tea.Model, tea.Cmd) {
 	case "prev-panel":
 		m.focusedPanel = (m.focusedPanel - 1 + panelCount) % panelCount
 	case "dashboard":
-		m.fullScreenView = fsDashboard
-		if !m.dash.Loaded {
-			go m.fetchDashboard()
-		}
+		m.openScreen(shell.Dashboard)
 	case "actions-view":
-		m.fullScreenView = fsActions
-		m.ensureGHDataLoaded()
+		m.openScreen(shell.Actions)
 	case "notifications":
-		m.fullScreenView = fsNotes
-		m.ensureGHDataLoaded()
+		m.openScreen(shell.Notes)
 	case "prs-view":
-		m.fullScreenView = fsPR
-		m.ensureGHDataLoaded()
+		m.openScreen(shell.PRs)
 	case "issues-view":
-		m.fullScreenView = fsIssue
-		m.ensureGHDataLoaded()
+		m.openScreen(shell.Issues)
 	case "help":
 		m.showHelp = true
 		m.helpView.Input = ""
