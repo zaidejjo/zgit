@@ -202,3 +202,84 @@ func TestConfigStepCompletion(t *testing.T) {
 		t.Fatalf("provider passthrough = %q", m.GetSelectedProvider())
 	}
 }
+
+func TestWorktreeFiltered(t *testing.T) {
+	m := NewWorktreeModel()
+	m.UpdateWorktrees([]*models.Worktree{
+		{Path: "/r/main", Branch: "dev", IsMain: true},
+		{Path: "/r/feat", Branch: "feat/x"},
+	})
+	m.Filter = "feat"
+	if got := m.Filtered(); len(got) != 1 || got[0].Branch != "feat/x" {
+		t.Fatalf("filtered = %+v", got)
+	}
+	if out := m.View(100); !strings.Contains(out, "Worktrees (1/2)") {
+		t.Fatalf("title missing:\n%s", out)
+	}
+}
+
+func TestStashFiltered(t *testing.T) {
+	m := NewStashModel()
+	m.UpdateStash([]*models.Stash{
+		{Index: 0, Message: "wip login"},
+		{Index: 1, Message: "experiment"},
+	})
+	m.Filter = "login"
+	if got := m.Filtered(); len(got) != 1 || got[0].Index != 0 {
+		t.Fatalf("filtered = %+v", got)
+	}
+}
+
+func TestRefsSections(t *testing.T) {
+	m := NewRefsModel()
+	m.UpdateRefs([]string{"v1.0", "v2.0"}, []*models.Remote{
+		{Name: "origin", URL: "git@github.com:o/r.git"},
+	})
+	if m.Section != RefsTags {
+		t.Fatalf("default section should be tags")
+	}
+	m.Toggle()
+	if m.Section != RefsRemotes {
+		t.Fatalf("toggle should flip section")
+	}
+	// Filter applies per-section lists; tags list matches one.
+	m.Section = RefsTags
+	m.Tags.Filter = "v1"
+	if got := m.Tags.Filtered(); len(got) != 1 {
+		t.Fatalf("tags filtered = %v", got)
+	}
+	if out := m.View(100); !strings.Contains(out, "origin") {
+		t.Fatalf("remotes section missing:\n%s", out)
+	}
+}
+
+func TestPromptKeys(t *testing.T) {
+	var p Prompt
+	if done, cancel := p.TypeKey("a"); done || cancel {
+		t.Fatalf("closed prompt should ignore keys")
+	}
+	p.Open("name: ")
+	for _, k := range []string{"v", "1", ".", "0"} {
+		if done, cancel := p.TypeKey(k); done || cancel {
+			t.Fatalf("typing should not finish")
+		}
+	}
+	if p.Value != "v1.0" {
+		t.Fatalf("value = %q", p.Value)
+	}
+	p.TypeKey("backspace")
+	if p.Value != "v1." {
+		t.Fatalf("after backspace = %q", p.Value)
+	}
+	p.TypeKey("0")
+	if done, _ := p.TypeKey("enter"); !done || !p.Active && p.Value != "v1.0" {
+		t.Fatalf("enter should finish")
+	}
+	p.Open("x: ")
+	if _, cancel := p.TypeKey("esc"); !cancel || p.Active {
+		t.Fatalf("esc should cancel")
+	}
+	if !strings.Contains(p.View(), "") {
+		t.Fatalf("closed view should be empty, got %q", p.View())
+	}
+}

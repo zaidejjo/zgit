@@ -3,8 +3,8 @@ package shell
 import "testing"
 
 func TestRouteTable(t *testing.T) {
-	if len(Tabs) != 5 {
-		t.Fatalf("tabs = %d, want 5", len(Tabs))
+	if len(Tabs) != 8 {
+		t.Fatalf("tabs = %d, want 8", len(Tabs))
 	}
 	seenKeys := map[string]bool{}
 	seenIDs := map[ScreenID]bool{}
@@ -30,8 +30,17 @@ func TestRouteTable(t *testing.T) {
 	if ByKey("5") == nil || ByKey("5").ID != Dashboard {
 		t.Errorf("ByKey(5) should be Dashboard")
 	}
-	if ByKey("9") != nil {
-		t.Errorf("ByKey(9) should be nil")
+	if ByKey("8") == nil || ByKey("8").ID != Worktrees {
+		t.Errorf("ByKey(8) should be Worktrees")
+	}
+	if ByKey("9") == nil || ByKey("9").ID != Stash {
+		t.Errorf("ByKey(9) should be Stash")
+	}
+	if ByKey("0") == nil || ByKey("0").ID != Refs {
+		t.Errorf("ByKey(0) should be Refs")
+	}
+	if ByKey("2") != nil {
+		t.Errorf("ByKey(2) should be nil (panel key, not a tab)")
 	}
 	if Known(Panels) {
 		t.Errorf("Panels is not a fullscreen tab")
