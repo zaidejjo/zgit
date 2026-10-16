@@ -171,7 +171,7 @@ func (m *PRListModel) View(width int) string {
 
 		if globalIdx == m.Cursor {
 			// ❯ replaces leading space
-			b.WriteString(styles.ListItemActiveStyle.Render("❯" + line[1:]))
+			b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
 		} else {
 			b.WriteString(styles.ListItemStyle.Render(line))
 		}

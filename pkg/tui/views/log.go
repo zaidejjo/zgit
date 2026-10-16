@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -125,14 +126,7 @@ func (m LogModel) View(width int) string {
 		}
 
 		if globalIdx == m.Cursor {
-			// Cursor: ❯ prefix replaces first rune (handles multi-byte tree symbols)
-			runes := []rune(line)
-			if len(runes) > 0 {
-				cursorLine := "❯" + string(runes[1:])
-				b.WriteString(styles.ListItemActiveStyle.Render(cursorLine))
-			} else {
-				b.WriteString(styles.ListItemActiveStyle.Render("❯"))
-			}
+			b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
 		} else {
 			b.WriteString(styles.ListItemStyle.Render(line))
 		}
@@ -234,4 +228,20 @@ func truncateStr(s string, maxLen int) string {
 		return s
 	}
 	return string(runes[:maxLen-1]) + "…"
+}
+
+// ansiEscape strips SGR/control sequences for width-safe reuse.
+var ansiEscape = regexp.MustCompile("\x1b\\[[0-9;]*[a-zA-Z]")
+
+// cursorLine rebuilds a rendered line for the selected row: ANSI is
+// stripped first (never slice styled strings by byte/rune — that
+// decapitates escapes into visible "[38;2;…" garbage), the first
+// visible rune becomes ❯, and the caller wraps it in the active style.
+func cursorLine(line string) string {
+	plain := ansiEscape.ReplaceAllString(line, "")
+	runes := []rune(plain)
+	if len(runes) == 0 {
+		return "❯"
+	}
+	return "❯" + string(runes[1:])
 }

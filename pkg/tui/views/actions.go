@@ -178,7 +178,7 @@ func (m *ActionsModel) View(width int) string {
 			line = fmt.Sprintf(" %s %s #%d", runMark(r), truncateStr(r.WorkflowName, width-12), r.RunNumber)
 		}
 		if globalIdx == m.Cursor {
-			b.WriteString(styles.ListItemActiveStyle.Render("❯" + line[1:]))
+			b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
 		} else {
 			b.WriteString(styles.ListItemStyle.Render(line))
 		}
@@ -207,7 +207,7 @@ func (m *ActionsModel) jobsView(width int) string {
 		globalIdx := m.Offset + i
 		line := fmt.Sprintf(" %s %s", jobMark(j), truncateStr(j.Name, width-6))
 		if globalIdx == m.Cursor {
-			b.WriteString(styles.ListItemActiveStyle.Render("❯" + line[1:]))
+			b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
 		} else {
 			b.WriteString(styles.ListItemStyle.Render(line))
 		}
