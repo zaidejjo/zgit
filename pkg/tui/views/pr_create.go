@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/core/github"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
@@ -16,10 +15,11 @@ import (
 type PRCreateState int
 
 const (
-	PRCreateInputTitle PRCreateState = iota
-	PRCreateInputBody
-	PRCreateSelectStrategy
+	// PRCreateForm is the huh form (title + body + strategy).
+	PRCreateForm PRCreateState = iota
+	// PRCreateConfirming shows the final review before creating.
 	PRCreateConfirming
+	// PRCreateResult shows the outcome.
 	PRCreateResult
 )
 
@@ -56,6 +56,17 @@ func (s MergeStrategy) APIValue() string {
 	return "merge"
 }
 
+// ValidatePRTitle rejects empty and overlong titles.
+func ValidatePRTitle(s string) error {
+	if strings.TrimSpace(s) == "" {
+		return fmt.Errorf("title is required")
+	}
+	if len([]rune(s)) > 120 {
+		return fmt.Errorf("keep the title under 120 chars")
+	}
+	return nil
+}
+
 // PRCreateResultInfo holds the outcome of a PR creation.
 type PRCreateResultInfo struct {
 	Success bool
@@ -64,49 +75,74 @@ type PRCreateResultInfo struct {
 	Error   string
 }
 
-// PRCreateModel is an interactive pull request creation dialog.
+// PRCreateModel is a huh-backed pull request creation dialog.
 type PRCreateModel struct {
-	Title      textinput.Model
-	Body       textarea.Model
+	form       *huh.Form
+	title      string
+	body       string
+	Strategy   MergeStrategy // selected strategy (synced on complete)
+	HeadBranch string        // source branch (pre-filled)
+	BaseBranch string        // target branch (pre-filled)
 	State      PRCreateState
-	Strategy   MergeStrategy
-	HeadBranch string // source branch (pre-filled)
-	BaseBranch string // target branch (pre-filled)
 	Result     PRCreateResultInfo
 	width      int
 	height     int
 	active     bool
+	needInit   bool
 }
 
 // NewPRCreateModel creates a new PR creation dialog.
 func NewPRCreateModel() PRCreateModel {
-	title := textinput.New()
-	title.Placeholder = "PR title (required)"
-	title.Focus()
-	title.CharLimit = 120
-	title.Width = 60
-	title.Prompt = "─ "
-	title.TextStyle = lipgloss.NewStyle().Foreground(styles.Text)
-	title.PlaceholderStyle = lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true)
+	m := PRCreateModel{State: PRCreateForm, active: true}
+	m.buildForm()
+	m.needInit = true
+	return m
+}
 
-	body := textarea.New()
-	body.Placeholder = "Optional description (Ctrl+D to finish)"
-	body.CharLimit = 0
-	body.SetWidth(60)
-	body.SetHeight(8)
-	body.ShowLineNumbers = false
-	body.Prompt = ""
-	body.FocusedStyle.Text = lipgloss.NewStyle().Foreground(styles.Text)
-	body.BlurredStyle.Text = lipgloss.NewStyle().Foreground(styles.Text)
-	body.FocusedStyle.Placeholder = lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true)
-	body.BlurredStyle.Placeholder = lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true)
+func (m *PRCreateModel) buildForm() {
+	strategyLabel := m.Strategy.String()
+	m.form = huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Title").
+				Description(fmt.Sprintf("Branch: %s → %s", m.HeadBranch, m.BaseBranch)).
+				Placeholder("PR title (required)").
+				CharLimit(120).
+				Value(&m.title).
+				Validate(ValidatePRTitle),
+			huh.NewText().
+				Title("Description").
+				Placeholder("Optional description").
+				CharLimit(4000).
+				Lines(5).
+				Value(&m.body),
+			huh.NewSelect[string]().
+				Title("Merge strategy").
+				Key("strategy").
+				Options(
+					huh.NewOption(MergeNormal.String(), MergeNormal.String()),
+					huh.NewOption(MergeSquash.String(), MergeSquash.String()),
+					huh.NewOption(MergeRebase.String(), MergeRebase.String()),
+				).
+				Value(&strategyLabel).
+				Description("How this PR will merge"),
+		),
+	).WithShowHelp(true)
+	if m.width > 0 {
+		m.form = m.form.WithWidth(m.width)
+	}
+	m.syncStrategy(strategyLabel)
+}
 
-	return PRCreateModel{
-		Title:    title,
-		Body:     body,
-		State:    PRCreateInputTitle,
-		Strategy: MergeNormal,
-		active:   true,
+// syncStrategy maps the select label back to the enum.
+func (m *PRCreateModel) syncStrategy(label string) {
+	switch label {
+	case MergeSquash.String():
+		m.Strategy = MergeSquash
+	case MergeRebase.String():
+		m.Strategy = MergeRebase
+	default:
+		m.Strategy = MergeNormal
 	}
 }
 
@@ -118,26 +154,25 @@ func (m *PRCreateModel) Active() bool {
 // Open activates the dialog with pre-filled branch info.
 func (m *PRCreateModel) Open(headBranch, baseBranch string) {
 	m.active = true
-	m.State = PRCreateInputTitle
+	m.State = PRCreateForm
 	m.HeadBranch = headBranch
 	m.BaseBranch = baseBranch
 	m.Strategy = MergeNormal
-	m.Title.SetValue("")
-	m.Body.SetValue("")
-	m.Title.Focus()
+	m.title = ""
+	m.body = ""
 	m.Result = PRCreateResultInfo{}
+	m.buildForm()
+	m.needInit = true
 }
 
 // Close deactivates the dialog.
 func (m *PRCreateModel) Close() {
 	m.active = false
-	m.Title.Blur()
-	m.Body.Blur()
 }
 
 // Init implements tea.Model.
 func (m PRCreateModel) Init() tea.Cmd {
-	return textinput.Blink
+	return nil
 }
 
 // Update handles key events for the PR creation dialog.
@@ -145,90 +180,54 @@ func (m *PRCreateModel) Update(msg tea.Msg) (*PRCreateModel, tea.Cmd) {
 	if !m.active {
 		return m, nil
 	}
+	if m.needInit {
+		m.needInit = false
+		if m.form != nil {
+			return m, m.form.Init()
+		}
+		return m, nil
+	}
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.Title.Width = msg.Width - 20
-		m.Body.SetWidth(msg.Width - 20)
+		if m.form != nil {
+			m.form = m.form.WithWidth(msg.Width - 4)
+		}
+		return m, nil
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "esc":
+		if msg.String() == "esc" {
 			m.Close()
 			return m, nil
-
-		case "ctrl+d":
-			if m.State == PRCreateInputBody {
-				m.State = PRCreateSelectStrategy
-				m.Title.Blur()
-				m.Body.Blur()
-				return m, nil
-			}
-
-		case "enter":
-			switch m.State {
-			case PRCreateInputTitle:
-				title := strings.TrimSpace(m.Title.Value())
-				if title == "" {
-					m.Result = PRCreateResultInfo{
-						Success: false,
-						Error:   "PR title cannot be empty",
-					}
-					m.State = PRCreateResult
-					return m, nil
-				}
-				m.State = PRCreateInputBody
-				m.Title.Blur()
-				m.Body.Focus()
-				return m, nil
-
-			case PRCreateSelectStrategy:
-				// Enter confirms the strategy selection
-				m.State = PRCreateConfirming
-				return m, nil
-			}
-
-		case "up", "left":
-			if m.State == PRCreateSelectStrategy {
-				if m.Strategy > MergeNormal {
-					m.Strategy--
-				}
-				return m, nil
-			}
-
-		case "down", "right":
-			if m.State == PRCreateSelectStrategy {
-				if m.Strategy < MergeRebase {
-					m.Strategy++
-				}
-				return m, nil
-			}
 		}
 	}
 
-	// Delegate to active input
-	var cmd tea.Cmd
-	switch m.State {
-	case PRCreateInputTitle:
-		updated, titleCmd := m.Title.Update(msg)
-		m.Title = updated
-		cmd = titleCmd
-	case PRCreateInputBody:
-		updated, bodyCmd := m.Body.Update(msg)
-		m.Body = updated
-		cmd = bodyCmd
+	if m.form == nil {
+		return m, nil
 	}
-
+	f, cmd := m.form.Update(msg)
+	if nf, ok := f.(*huh.Form); ok {
+		m.form = nf
+	}
+	if m.form.State == huh.StateCompleted {
+		m.syncStrategy(m.form.GetString("strategy"))
+		m.State = PRCreateConfirming
+		return m, nil
+	}
+	if m.form.State == huh.StateAborted {
+		m.Close()
+		return m, nil
+	}
 	return m, cmd
 }
 
 // GetRequest returns the PR request for the API call.
 func (m *PRCreateModel) GetRequest() github.PRRequest {
 	return github.PRRequest{
-		Title: strings.TrimSpace(m.Title.Value()),
-		Body:  strings.TrimSpace(m.Body.Value()),
+		Title: strings.TrimSpace(m.title),
+		Body:  strings.TrimSpace(m.body),
 		Head:  m.HeadBranch,
 		Base:  m.BaseBranch,
 		Draft: false,
@@ -246,98 +245,61 @@ func (m *PRCreateModel) View(width int) string {
 		return ""
 	}
 
-	return styles.DialogBoxStyle.Render(m.renderContent(width))
-}
-
-func (m *PRCreateModel) renderContent(width int) string {
 	var b strings.Builder
-
 	b.WriteString(styles.DialogTitleStyle.Render(" Create Pull Request"))
 	b.WriteString("\n\n")
-
 	switch m.State {
-	case PRCreateInputTitle:
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(fmt.Sprintf(" Branch: %s → %s", m.HeadBranch, m.BaseBranch)))
-		b.WriteString("\n\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(" Title (required):"))
-		b.WriteString("\n")
-		b.WriteString(m.Title.View())
-		b.WriteString("\n\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true).Render(" Press Enter to continue, Esc to cancel"))
-
-	case PRCreateInputBody:
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(fmt.Sprintf(" Branch: %s → %s", m.HeadBranch, m.BaseBranch)))
-		b.WriteString("\n\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(" Title:"))
-		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Text).Render("  " + m.Title.Value()))
-		b.WriteString("\n\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(" Description (optional):"))
-		b.WriteString("\n")
-		b.WriteString(m.Body.View())
-		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true).Render(" Press Ctrl+D to continue, Esc to cancel"))
-
-	case PRCreateSelectStrategy:
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(" Title:"))
-		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Text).Render("  " + m.Title.Value()))
-		b.WriteString("\n\n")
-		if body := strings.TrimSpace(m.Body.Value()); body != "" {
-			b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(" Description:"))
-			b.WriteString("\n")
-			b.WriteString(lipgloss.NewStyle().Foreground(styles.Text).Render("  " + body))
-			b.WriteString("\n\n")
+	case PRCreateForm:
+		if m.form != nil {
+			b.WriteString(m.form.View())
 		}
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(" Merge Strategy:"))
-		b.WriteString("\n")
-		for _, s := range []MergeStrategy{MergeNormal, MergeSquash, MergeRebase} {
-			mark := "  "
-			style := lipgloss.NewStyle().Foreground(styles.Subtext)
-			if s == m.Strategy {
-				mark = "❯ "
-				style = lipgloss.NewStyle().Foreground(styles.Blue).Bold(true)
-			}
-			b.WriteString(fmt.Sprintf("  %s%s\n", mark, style.Render(s.String())))
-		}
-		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true).Render(" ↑↓ to select, Enter to confirm, Esc to cancel"))
-
 	case PRCreateConfirming:
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(fmt.Sprintf(" Branch: %s → %s", m.HeadBranch, m.BaseBranch)))
-		b.WriteString("\n\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(" Title:"))
-		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Text).Render("  " + m.Title.Value()))
-		b.WriteString("\n\n")
-		if body := strings.TrimSpace(m.Body.Value()); body != "" {
-			b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(" Description:"))
-			b.WriteString("\n")
-			b.WriteString(lipgloss.NewStyle().Foreground(styles.Text).Render("  " + body))
-			b.WriteString("\n\n")
-		}
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(" Merge Strategy: "))
-		b.WriteString(styles.ListItemActiveStyle.Render(m.Strategy.String()))
-		b.WriteString("\n\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true).Render(" Press Enter to create PR, Esc to cancel"))
-
+		b.WriteString(m.renderConfirm())
 	case PRCreateResult:
-		if m.Result.Success {
-			b.WriteString(styles.StatusStagedStyle.Render(fmt.Sprintf(" ✓ PR #%d created", m.Result.Number)))
-			if m.Result.URL != "" {
-				b.WriteString("\n")
-				b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render("  " + m.Result.URL))
-			}
-		} else {
-			b.WriteString(styles.ErrorStyle.Render(" ✗ PR creation failed"))
-			if m.Result.Error != "" {
-				b.WriteString("\n")
-				b.WriteString(lipgloss.NewStyle().Foreground(styles.Red).Render("  " + m.Result.Error))
-			}
-		}
-		b.WriteString("\n\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true).Render(" Press Enter or Esc to close"))
+		b.WriteString(m.renderResult())
 	}
+	return styles.DialogBoxStyle.Render(b.String())
+}
 
+// renderConfirm shows the final review before creating.
+func (m *PRCreateModel) renderConfirm() string {
+	var b strings.Builder
+	b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(fmt.Sprintf(" Branch: %s → %s", m.HeadBranch, m.BaseBranch)))
+	b.WriteString("\n\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(" Title:"))
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(styles.Text).Render("  " + m.title))
+	b.WriteString("\n\n")
+	if body := strings.TrimSpace(m.body); body != "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(" Description:"))
+		b.WriteString("\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(styles.Text).Render("  " + body))
+		b.WriteString("\n\n")
+	}
+	b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(" Merge Strategy: "))
+	b.WriteString(styles.ListItemActiveStyle.Render(m.Strategy.String()))
+	b.WriteString("\n\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true).Render(" Press Enter to create PR, Esc to cancel"))
+	return b.String()
+}
+
+// renderResult shows the PR creation outcome.
+func (m *PRCreateModel) renderResult() string {
+	var b strings.Builder
+	if m.Result.Success {
+		b.WriteString(styles.StatusStagedStyle.Render(fmt.Sprintf(" ✓ PR #%d created", m.Result.Number)))
+		if m.Result.URL != "" {
+			b.WriteString("\n")
+			b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render("  " + m.Result.URL))
+		}
+	} else {
+		b.WriteString(styles.ErrorStyle.Render(" ✗ PR creation failed"))
+		if m.Result.Error != "" {
+			b.WriteString("\n")
+			b.WriteString(lipgloss.NewStyle().Foreground(styles.Red).Render("  " + m.Result.Error))
+		}
+	}
+	b.WriteString("\n\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true).Render(" Press Enter or Esc to close"))
 	return b.String()
 }
