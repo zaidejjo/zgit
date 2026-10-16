@@ -92,6 +92,23 @@ func (m *Model) executePaletteCommand(id string) (tea.Model, tea.Cmd) {
 		m.focusedPanel = (m.focusedPanel + 1) % panelCount
 	case "prev-panel":
 		m.focusedPanel = (m.focusedPanel - 1 + panelCount) % panelCount
+	case "dashboard":
+		m.fullScreenView = fsDashboard
+		if !m.dash.Loaded {
+			go m.fetchDashboard()
+		}
+	case "actions-view":
+		m.fullScreenView = fsActions
+		m.ensureGHDataLoaded()
+	case "notifications":
+		m.fullScreenView = fsNotes
+		m.ensureGHDataLoaded()
+	case "prs-view":
+		m.fullScreenView = fsPR
+		m.ensureGHDataLoaded()
+	case "issues-view":
+		m.fullScreenView = fsIssue
+		m.ensureGHDataLoaded()
 	case "help":
 		m.showHelp = true
 		m.helpView.Input = ""

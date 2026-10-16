@@ -82,6 +82,11 @@ func (m *PaletteModel) SetDefaultCommands() {
 		// Navigation
 		{ID: "next-panel", Label: "Next Panel", Description: "Cycle focus to next panel", Keys: "Tab"},
 		{ID: "prev-panel", Label: "Prev Panel", Description: "Cycle focus to previous panel", Keys: "S-Tab"},
+		{ID: "dashboard", Label: "Repositories", Description: "Open repository dashboard", Keys: "5"},
+		{ID: "actions-view", Label: "Actions", Description: "Open CI workflow runs", Keys: "6"},
+		{ID: "notifications", Label: "Notifications", Description: "Open GitHub inbox", Keys: "7"},
+		{ID: "prs-view", Label: "Pull Requests", Description: "Open pull request list", Keys: "3"},
+		{ID: "issues-view", Label: "Issues", Description: "Open issue list", Keys: "4"},
 		{ID: "help", Label: "Toggle Help", Description: "Show interactive keybindings help", Keys: "?"},
 		{ID: "refresh", Label: "Refresh State", Description: "Re-fetch all git state", Keys: "R"},
 

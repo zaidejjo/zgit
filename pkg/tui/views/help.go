@@ -64,9 +64,20 @@ func allSections() []helpSection {
 			},
 		},
 		{
+			title: "Views",
+			keys: []helpEntry{
+				{"1 / 2", "Focus Status / Log panels, Tab cycles"},
+				{"3", "Open Pull Requests view"},
+				{"4", "Open Issues view"},
+				{"5", "Open Repositories dashboard (enter switches repo)"},
+				{"6", "Open Actions view (enter drills into jobs)"},
+				{"7", "Open Notifications inbox (x marks read)"},
+				{"Tab", "Back to panels from any full-screen view"},
+			},
+		},
+		{
 			title: "Pull Requests (PR view)",
 			keys: []helpEntry{
-				{"3", "Open Pull Requests view"},
 				{"/", "Filter PR list (enter keeps, esc clears)"},
 				{"c / o", "Create new PR"},
 				{"m", "Merge selected PR"},
@@ -77,9 +88,38 @@ func allSections() []helpSection {
 		{
 			title: "Issues (full-screen)",
 			keys: []helpEntry{
-				{"4", "Open Issues view"},
 				{"/", "Filter issue list (enter keeps, esc clears)"},
-				{"Tab / Esc", "Back to panels"},
+				{"Tab", "Back to panels"},
+			},
+		},
+		{
+			title: "Repositories (dashboard)",
+			keys: []helpEntry{
+				{"/", "Filter repo list (enter keeps, esc clears)"},
+				{"enter", "Switch to selected repository"},
+				{"r", "Rescan repositories"},
+				{"Tab", "Back to panels"},
+			},
+		},
+		{
+			title: "Actions (full-screen)",
+			keys: []helpEntry{
+				{"/", "Filter run list (enter keeps, esc clears)"},
+				{"enter", "Drill into run jobs"},
+				{"backspace", "Back to run list"},
+				{"r", "Refresh runs"},
+				{"Tab", "Back to panels"},
+			},
+		},
+		{
+			title: "Notifications (full-screen)",
+			keys: []helpEntry{
+				{"/", "Filter inbox (enter keeps, esc clears)"},
+				{"x", "Mark thread read"},
+				{"X", "Mark all read"},
+				{"u", "Toggle unread / all"},
+				{"r", "Refresh inbox"},
+				{"Tab", "Back to panels"},
 			},
 		},
 		{
