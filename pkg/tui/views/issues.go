@@ -4,59 +4,37 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/core/models"
+	"github.com/zaidejjo/zgit/pkg/tui/components"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
 // IssueListModel holds state for the issue list view.
 type IssueListModel struct {
-	Issues    []*models.Issue
-	Cursor    int
-	Error     string
-	Height    int
-	Filter    string
-	Filtering bool
+	components.ZList[*models.Issue]
+	Error string
 }
 
 // NewIssueListModel creates a default issue list view model.
 func NewIssueListModel() IssueListModel {
-	return IssueListModel{}
+	m := IssueListModel{}
+	m.Height = 20
+	m.Match = func(issue *models.Issue, q string) bool {
+		hay := strings.ToLower(strings.Join([]string{
+			fmt.Sprintf("%d", issue.Number), issue.Title, issue.Author,
+		}, " "))
+		return strings.Contains(hay, q)
+	}
+	m.Render = issueRow
+	return m
 }
 
 // UpdateIssues refreshes the issue list data.
 func (m *IssueListModel) UpdateIssues(issues []*models.Issue) {
-	m.Issues = issues
+	m.Items = issues
 	m.Error = ""
 	m.ClampCursor()
-}
-
-// Filtered returns issues matching the current filter (case-insensitive
-// substring over number, title and author).
-func (m *IssueListModel) Filtered() []*models.Issue {
-	q := strings.ToLower(strings.TrimSpace(m.Filter))
-	if q == "" {
-		return m.Issues
-	}
-	out := make([]*models.Issue, 0, len(m.Issues))
-	for _, issue := range m.Issues {
-		hay := strings.ToLower(strings.Join([]string{
-			fmt.Sprintf("%d", issue.Number), issue.Title, issue.Author,
-		}, " "))
-		if strings.Contains(hay, q) {
-			out = append(out, issue)
-		}
-	}
-	return out
-}
-
-// ClampCursor keeps the cursor inside the filtered list.
-func (m *IssueListModel) ClampCursor() {
-	if m.Cursor >= len(m.Filtered()) {
-		m.Cursor = 0
-	}
-	if m.Cursor < 0 {
-		m.Cursor = 0
-	}
 }
 
 // View renders the issue list.
@@ -65,56 +43,44 @@ func (m *IssueListModel) View(width int) string {
 		return styles.ErrorStyle.Render("Error: " + m.Error)
 	}
 
-	if m.Issues == nil {
+	if m.Items == nil {
 		return styles.LoadingStyle.Render("Loading issues...")
 	}
 
-	if len(m.Issues) == 0 {
+	if len(m.Items) == 0 {
 		return styles.SubtitleStyle.Render("No issues found")
 	}
 
 	var b strings.Builder
 
-	m.ClampCursor()
-
-	title := fmt.Sprintf(" Issues (%d)", len(m.Issues))
+	title := fmt.Sprintf(" Issues (%d)", len(m.Items))
 	if strings.TrimSpace(m.Filter) != "" {
-		title = fmt.Sprintf(" Issues (%d/%d) filter: %s", len(m.Filtered()), len(m.Issues), m.Filter)
+		title = fmt.Sprintf(" Issues (%d/%d) filter: %s", len(m.Filtered()), len(m.Items), m.Filter)
 	}
 	b.WriteString(styles.SectionTitleStyle.Render(title))
 	b.WriteString("\n")
-	if m.Filtering {
-		b.WriteString(styles.FilterBarStyle.Render(" /" + m.Filter + "\u2588"))
-		b.WriteString("\n")
-	}
-
-	visible := m.Filtered()
-	if len(visible) == 0 && strings.TrimSpace(m.Filter) != "" {
+	b.WriteString(m.FilterBar())
+	if len(m.Filtered()) == 0 && strings.TrimSpace(m.Filter) != "" {
 		return b.String() + styles.SubtitleStyle.Render("No issues match filter")
 	}
 
-	for i, issue := range visible {
-		if i < m.Cursor-m.Height || i > m.Cursor+m.Height {
-			continue
-		}
+	return b.String() + m.ViewRows(width)
+}
 
-		stateMark := issueStateMark(issue.State)
-		timeAgo := formatTime(issue.CreatedAt)
-		labels := formatLabels(issue.Labels)
+// issueRow renders one issue row (no cursor affordance — ZList wraps it).
+func issueRow(issue *models.Issue, width int) string {
+	stateMark := issueStateMark(issue.State)
+	timeAgo := formatTime(issue.CreatedAt)
+	labels := formatLabels(issue.Labels)
 
-		title := fmt.Sprintf("#%d %s", issue.Number, truncateStr(issue.Title, width-22))
-		meta := fmt.Sprintf("  %s %s%s  %s  by %s",
-			stateMark, title, labels, timeAgo, issue.Author)
-
-		if i == m.Cursor {
-			b.WriteString(styles.ListItemActiveStyle.Render(meta))
-		} else {
-			b.WriteString(styles.ListItemStyle.Render(meta))
-		}
-		b.WriteString("\n")
+	title := fmt.Sprintf("#%d %s", issue.Number, truncateStr(issue.Title, width-22))
+	meta := fmt.Sprintf("  %s %s%s  %s  by %s",
+		stateMark, title, labels, timeAgo, issue.Author)
+	if lipgloss.Width(meta) > width {
+		title = fmt.Sprintf("#%d %s", issue.Number, truncateStr(issue.Title, width-30))
+		meta = fmt.Sprintf("  %s %s  %s", stateMark, title, timeAgo)
 	}
-
-	return b.String()
+	return meta
 }
 
 // issueStateMark returns a visual indicator for issue state.
