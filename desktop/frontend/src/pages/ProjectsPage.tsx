@@ -471,12 +471,13 @@ function ProjectZone(props: {
     <div
       ref={setNodeRef}
       className={cn(
-        "flex-1 min-w-0 rounded-xl border flex flex-col min-h-0 transition-colors overflow-hidden",
-        isOver ? "border-primary/60 bg-primary/5" : "border-border/50 bg-card/30",
+        "flex-1 min-w-0 rounded-xl border flex flex-col min-h-0 overflow-hidden isolate",
+        isOver ? "border-primary/60 bg-primary/5" : "border-border/50 bg-card",
       )}
     >
-      {/* Hero */}
-      <div className="px-4 pt-4 pb-3 border-b border-border/40 bg-gradient-to-b from-accent/40 to-transparent">
+      {/* Hero — flat matte, no gradient: gradients inside
+          rounded+overflow containers stripe on some compositors. */}
+      <div className="px-4 pt-4 pb-3 border-b border-border/40 bg-muted/20">
         <div className="flex items-center gap-2.5 min-w-0">
           <button
             onClick={() => setColorOpen((o) => !o)}
