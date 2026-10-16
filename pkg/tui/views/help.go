@@ -58,6 +58,13 @@ func allSections() []helpSection {
 			},
 		},
 		{
+			title: "Display",
+			keys: []helpEntry{
+				{"L", "Toggle light / dark theme"},
+				{"wheel", "Scroll focused list (zgit tui --mouse)"},
+			},
+		},
+		{
 			title: "Config",
 			keys: []helpEntry{
 				{"C-t", "Open config (GitHub token, AI settings)"},

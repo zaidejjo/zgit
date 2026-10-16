@@ -35,6 +35,9 @@ jobs:
       - name: gofmt check (list mode — never mutates)
         run: test -z "$(gofmt -l .)" || (echo "gofmt found unformatted files — run 'gofmt -w .'"; exit 1)
 
+      - name: TUI width law (never slice styled strings by byte/rune)
+        run: test -z "$(rg -n 'line\[1:\]|runes\[1:\]' pkg/tui/ -g '!zlist.go' || true)" || (echo "found byte/rune slicing of rendered lines in pkg/tui — use components.CursorLine"; exit 1)
+
   test:
     name: Test
     runs-on: ubuntu-latest
