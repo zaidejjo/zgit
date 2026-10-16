@@ -6,6 +6,7 @@ import (
 
 	gitpkg "github.com/zaidejjo/zgit/pkg/core/git"
 	"github.com/zaidejjo/zgit/pkg/core/models"
+	"github.com/zaidejjo/zgit/pkg/tui/shell"
 )
 
 func TestRenderHeader(t *testing.T) {
@@ -27,7 +28,7 @@ func TestRenderHeader(t *testing.T) {
 	}
 
 	// Fullscreen PR tab highlights.
-	m.fullScreenView = fsPR
+	m.fullScreenView = shell.PRs
 	out = m.renderHeader()
 	if !strings.Contains(out, "PRs") {
 		t.Errorf("header missing PRs tab")

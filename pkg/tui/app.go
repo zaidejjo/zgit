@@ -16,6 +16,7 @@ import (
 	"github.com/zaidejjo/zgit/pkg/core/github"
 	"github.com/zaidejjo/zgit/pkg/core/models"
 	"github.com/zaidejjo/zgit/pkg/tui/components"
+	"github.com/zaidejjo/zgit/pkg/tui/shell"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 	"github.com/zaidejjo/zgit/pkg/tui/views"
 )
@@ -32,16 +33,8 @@ const (
 	panelCount
 )
 
-// Full-screen view identifiers (override panel layout).
-// Values 3+ to avoid overlap with subscriber event IDs (0=status,1=log,2=branches).
-const (
-	fsNone      = -1 // normal panel layout
-	fsPR        = 3  // matches old ViewPR for subscriber compatibility
-	fsIssue     = 4  // matches old ViewIssue
-	fsDashboard = 5
-	fsActions   = 6
-	fsNotes     = 7
-)
+// Full-screen screens live in shell.ScreenID (see pkg/tui/shell/route.go).
+// Values 3+ avoid overlap with subscriber event IDs (0=status,1=log,2=branches).
 
 // Application modes (overlays and dialogs).
 const (
@@ -62,8 +55,8 @@ type Model struct {
 	msgs chan teaMsg
 
 	// State
-	focusedPanel    int // which panel has cursor focus (0-2)
-	fullScreenView  int // -1 = panels, fsPR, fsIssue
+	focusedPanel    int            // which panel has cursor focus (0-2)
+	fullScreenView  shell.ScreenID // Panels = panels, else fullscreen
 	showHelp        bool
 	mode            int // normal, diff, commit overlay
 	ready           bool
@@ -139,7 +132,7 @@ func NewModel(gitExec *gitpkg.NativeExec) *Model {
 		help:           help.New(),
 		mode:           modeNormal,
 		focusedPanel:   PanelStatus,
-		fullScreenView: fsNone,
+		fullScreenView: shell.Panels,
 	}
 
 	// Try to initialize GitHub client from config
@@ -292,51 +285,14 @@ func (m *Model) Init() tea.Cmd {
 // --- Layout calculations ---
 
 func (m *Model) calcLayout() {
-	statusBarH := 1
-	headerH := 1
-	m.contentHeight = m.height - statusBarH - headerH
-	if m.contentHeight < 4 {
-		m.contentHeight = 4
-	}
-
-	// Reserve sidebar width if active
-	m.sidebarWidth = 0
+	l := shell.Compute(m.width, m.height, m.aiData.Sidebar.Active())
+	m.contentHeight = l.ContentHeight
+	m.sidebarWidth = l.SidebarWidth
+	m.leftWidth = l.LeftWidth
+	m.rightWidth = l.RightWidth
 	if m.aiData.Sidebar.Active() {
-		m.sidebarWidth = 42 // matches Width(42) in sidebar View (includes border+padding)
 		m.aiData.Sidebar.Width = 42
 		m.aiData.Sidebar.Height = m.contentHeight
-	}
-
-	availW := m.width - m.sidebarWidth
-	if availW < 54 {
-		availW = 54 // minimum viable panel width
-		m.sidebarWidth = m.width - availW
-		if m.sidebarWidth < 0 {
-			m.sidebarWidth = 0
-		}
-	}
-
-	m.leftWidth = int(float64(availW)*0.4 + 0.5)
-	m.rightWidth = availW - m.leftWidth
-
-	// Minimum widths
-	if m.leftWidth < 24 {
-		m.leftWidth = 24
-		m.rightWidth = m.width - m.leftWidth
-	}
-	if m.rightWidth < 30 {
-		m.rightWidth = 30
-		m.leftWidth = m.width - m.rightWidth
-	}
-	if m.leftWidth < 24 {
-		m.leftWidth = 24
-		m.rightWidth = m.width - m.leftWidth
-	}
-	if m.leftWidth < 4 {
-		m.leftWidth = 4
-	}
-	if m.rightWidth < 4 {
-		m.rightWidth = 4
 	}
 
 	// Panel heights for right side (log top, branches bottom)
@@ -353,13 +309,11 @@ func (m *Model) calcLayout() {
 	if m.branches.Height < 1 {
 		m.branches.Height = 1
 	}
-	m.prs.Height = m.contentHeight - 4
-	if m.prs.Height < 1 {
-		m.prs.Height = 1
-	}
-	m.issues.Height = m.contentHeight - 4
-	if m.issues.Height < 1 {
-		m.issues.Height = 1
+	for _, h := range []*int{&m.prs.Height, &m.issues.Height, &m.dash.Height, &m.actions.Height, &m.notes.Height} {
+		*h = m.contentHeight - 4
+		if *h < 1 {
+			*h = 1
+		}
 	}
 }
 
@@ -496,24 +450,21 @@ func (m *Model) renderHeader() string {
 
 	var tabs []string
 	tabs = append(tabs, styles.HeaderLogoStyle.Render(" zgit "))
-	panelActive := m.fullScreenView == fsNone
+	panelActive := m.fullScreenView == shell.Panels
 	tabs = append(tabs, tab("Status", panelActive && m.focusedPanel == PanelStatus))
 	tabs = append(tabs, tab("Log", panelActive && m.focusedPanel == PanelLog))
 	tabs = append(tabs, tab("Branches", panelActive && m.focusedPanel == PanelBranch))
-	tabs = append(tabs, tab("3 PRs", m.fullScreenView == fsPR))
-	tabs = append(tabs, tab("4 Issues", m.fullScreenView == fsIssue))
-	// Compact labels on narrow terminals so the strip never wraps.
-	reposLabel, actionsLabel := "5 Repos", "6 Actions"
-	if m.width > 0 && m.width < 110 {
-		reposLabel, actionsLabel = "5R", "6A"
+	compact := m.width > 0 && m.width < 110
+	for _, t := range shell.Tabs {
+		label := t.Full()
+		if compact {
+			label = t.Short()
+		}
+		if t.ID == shell.Notes && m.notes.Loaded && m.notes.UnreadCount() > 0 {
+			label = fmt.Sprintf("%s (%d)", label, m.notes.UnreadCount())
+		}
+		tabs = append(tabs, tab(label, m.fullScreenView == t.ID))
 	}
-	tabs = append(tabs, tab(reposLabel, m.fullScreenView == fsDashboard))
-	tabs = append(tabs, tab(actionsLabel, m.fullScreenView == fsActions))
-	notesLabel := "7 Notes"
-	if m.notes.Loaded && m.notes.UnreadCount() > 0 {
-		notesLabel = fmt.Sprintf("7 Notes (%d)", m.notes.UnreadCount())
-	}
-	tabs = append(tabs, tab(notesLabel, m.fullScreenView == fsNotes))
 	left := lipgloss.JoinHorizontal(lipgloss.Center, tabs...)
 
 	var meta []string
@@ -548,15 +499,15 @@ func (m *Model) renderContent() string {
 
 	// Full-screen views (PRs, Issues)
 	switch m.fullScreenView {
-	case fsPR:
+	case shell.PRs:
 		return m.prs.View(m.width - 2)
-	case fsIssue:
+	case shell.Issues:
 		return m.issues.View(m.width - 2)
-	case fsDashboard:
+	case shell.Dashboard:
 		return m.dash.View(m.width - 2)
-	case fsActions:
+	case shell.Actions:
 		return m.actions.View(m.width - 2)
-	case fsNotes:
+	case shell.Notes:
 		return m.notes.View(m.width - 2)
 	}
 
@@ -670,6 +621,13 @@ func (m *Model) renderStatusBar() string {
 func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
+	// Full-screen screens route through the shell table (keys 3-7).
+	// Single lookup drives tabs, keys and palette dispatch.
+	if t := shell.ByKey(key); t != nil {
+		m.openScreen(t.ID)
+		return m, nil
+	}
+
 	// Global keys
 	switch key {
 	case "q", "ctrl+c":
@@ -698,17 +656,17 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Tab cycles focus: Status → Log → Branches → Status
 	case "tab":
-		if m.fullScreenView != fsNone {
+		if m.fullScreenView != shell.Panels {
 			// In full-screen view, Tab goes back to panels
-			m.fullScreenView = fsNone
+			m.fullScreenView = shell.Panels
 		} else {
 			m.focusedPanel = (m.focusedPanel + 1) % panelCount
 		}
 		return m, nil
 
 	case "shift+tab":
-		if m.fullScreenView != fsNone {
-			m.fullScreenView = fsNone
+		if m.fullScreenView != shell.Panels {
+			m.fullScreenView = shell.Panels
 		} else {
 			m.focusedPanel = (m.focusedPanel - 1 + panelCount) % panelCount
 		}
@@ -731,7 +689,7 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// AI: quick ask sidebar (Ctrl+G)
 	case "ctrl+g":
-		if m.mode == modeNormal && m.fullScreenView == fsNone {
+		if m.mode == modeNormal && m.fullScreenView == shell.Panels {
 			if m.aiData.Sidebar.Active() {
 				m.aiData.Sidebar.Close()
 			} else {
@@ -743,7 +701,7 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// AI: agent sidebar (Ctrl+E)
 	case "ctrl+e":
-		if m.mode == modeNormal && m.fullScreenView == fsNone {
+		if m.mode == modeNormal && m.fullScreenView == shell.Panels {
 			if m.aiData.Sidebar.Active() {
 				m.aiData.Sidebar.Close()
 			} else {
@@ -753,36 +711,14 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	// Direct panel focus + full-screen view switches
+	// Direct panel focus switches
 	case "1":
-		m.fullScreenView = fsNone
+		m.fullScreenView = shell.Panels
 		m.focusedPanel = PanelStatus
 		return m, nil
 	case "2":
-		m.fullScreenView = fsNone
+		m.fullScreenView = shell.Panels
 		m.focusedPanel = PanelLog
-		return m, nil
-	case "3":
-		m.fullScreenView = fsPR
-		m.ensureGHDataLoaded()
-		return m, nil
-	case "4":
-		m.fullScreenView = fsIssue
-		m.ensureGHDataLoaded()
-		return m, nil
-	case "5":
-		m.fullScreenView = fsDashboard
-		if !m.dash.Loaded {
-			go m.fetchDashboard()
-		}
-		return m, nil
-	case "6":
-		m.fullScreenView = fsActions
-		m.ensureGHDataLoaded()
-		return m, nil
-	case "7":
-		m.fullScreenView = fsNotes
-		m.ensureGHDataLoaded()
 		return m, nil
 	}
 
@@ -800,19 +736,19 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// If in full-screen view (PR/Issue), delegate to those handlers
-	if m.fullScreenView == fsPR {
+	if m.fullScreenView == shell.PRs {
 		return m.handlePRKeys(key)
 	}
-	if m.fullScreenView == fsIssue {
+	if m.fullScreenView == shell.Issues {
 		return m.handleIssueKeys(key)
 	}
-	if m.fullScreenView == fsDashboard {
+	if m.fullScreenView == shell.Dashboard {
 		return m.handleDashKeys(key)
 	}
-	if m.fullScreenView == fsActions {
+	if m.fullScreenView == shell.Actions {
 		return m.handleActionsKeys(key)
 	}
-	if m.fullScreenView == fsNotes {
+	if m.fullScreenView == shell.Notes {
 		return m.handleNotesKeys(key)
 	}
 
@@ -837,22 +773,36 @@ func (m *Model) ensureGHDataLoaded() {
 	}
 
 	switch m.fullScreenView {
-	case fsPR: // PRs
+	case shell.PRs: // PRs
 		if m.prs.PRs == nil {
 			go m.fetchPRs()
 		}
-	case fsIssue: // Issues
+	case shell.Issues: // Issues
 		if m.issues.Issues == nil {
 			go m.fetchIssues()
 		}
-	case fsActions: // Actions
+	case shell.Actions: // Actions
 		if m.actions.Runs == nil {
 			go m.fetchActions()
 		}
-	case fsNotes: // Notifications
+	case shell.Notes: // Notifications
 		if !m.notes.Loaded {
 			go m.fetchNotes()
 		}
+	}
+}
+
+// openScreen switches to a fullscreen screen and triggers its lazy load.
+// Single entry for keys, palette and tabs.
+func (m *Model) openScreen(id shell.ScreenID) {
+	m.fullScreenView = id
+	switch id {
+	case shell.Dashboard:
+		if !m.dash.Loaded {
+			go m.fetchDashboard()
+		}
+	default:
+		m.ensureGHDataLoaded()
 	}
 }
 
@@ -998,7 +948,7 @@ func (m *Model) switchRepo(path string) {
 	m.ghOwner, m.ghRepo, m.ghDetected = "", "", false
 	m.tryDetectRepo()
 	m.sub.Refresh()
-	m.fullScreenView = fsNone
+	m.fullScreenView = shell.Panels
 	m.focusedPanel = PanelStatus
 	go m.fetchDashboard()
 }
