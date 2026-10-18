@@ -192,9 +192,6 @@ func (m *PRCreateModel) Update(msg tea.Msg) (*PRCreateModel, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		if m.form != nil {
-			m.form = m.form.WithWidth(msg.Width - 4)
-		}
 		return m, nil
 
 	case tea.KeyMsg:
@@ -245,6 +242,11 @@ func (m *PRCreateModel) View(width int) string {
 		return ""
 	}
 
+	content, formW := dialogWidths(width)
+	if m.form != nil && m.State == PRCreateForm {
+		m.form = m.form.WithWidth(formW)
+	}
+
 	var b strings.Builder
 	b.WriteString(styles.DialogTitleStyle.Render(" Create Pull Request"))
 	b.WriteString("\n\n")
@@ -258,7 +260,7 @@ func (m *PRCreateModel) View(width int) string {
 	case PRCreateResult:
 		b.WriteString(m.renderResult())
 	}
-	return styles.DialogBoxStyle.Render(b.String())
+	return styles.DialogBoxStyle.Render(clampBlock(b.String(), content))
 }
 
 // renderConfirm shows the final review before creating.

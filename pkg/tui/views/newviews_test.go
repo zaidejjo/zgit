@@ -89,24 +89,6 @@ func TestNotesUnreadFirst(t *testing.T) {
 	}
 }
 
-func TestCursorLineStripsANSI(t *testing.T) {
-	styled := "\x1b[38;2;166;227;161m◆\x1b[0m 3fec75a msg"
-	got := cursorLine(styled)
-	if got != "❯ 3fec75a msg" {
-		t.Fatalf("cursorLine = %q", got)
-	}
-	if strings.Contains(got, "[") && strings.Contains(got, "38;2") {
-		t.Fatalf("ANSI leaked: %q", got)
-	}
-	if cursorLine("") != "❯" {
-		t.Fatalf("empty should be bare cursor")
-	}
-	// Multibyte first rune survives.
-	if got := cursorLine("◆ abc"); got != "❯ abc" {
-		t.Fatalf("multibyte = %q", got)
-	}
-}
-
 func TestBranchSelfTrackingShort(t *testing.T) {
 	m := NewBranchModel()
 	m.UpdateBranches([]*models.Branch{

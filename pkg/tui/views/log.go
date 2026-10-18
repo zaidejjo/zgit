@@ -112,24 +112,10 @@ func (m LogModel) View(width int) string {
 		}
 		msg := truncateStr(c.Message, msgMaxAdjusted)
 
-		// Build line: treeStr + " " + hash + badge + " " + msg
+		// Build line: treeStr + " " + hash + badge + " " + msg.
+		// RowLine caps it to the panel width (tree graphs grow lanes).
 		line := fmt.Sprintf("%s %s%s %s", treeStr, hash, badgeStr, msg)
-		lineWidth := lipgloss.Width(line)
-		if lineWidth > width {
-			// Overflow — trim msg further
-			overflow := lineWidth - width
-			msg = truncateStr(c.Message, msgMaxAdjusted-overflow)
-			if msgMaxAdjusted-overflow < 0 {
-				msg = ""
-			}
-			line = fmt.Sprintf("%s %s%s %s", treeStr, hash, badgeStr, msg)
-		}
-
-		if globalIdx == m.Cursor {
-			b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
-		} else {
-			b.WriteString(styles.ListItemStyle.Render(line))
-		}
+		b.WriteString(components.RowLine(line, width, globalIdx == m.Cursor))
 		b.WriteString("\n")
 	}
 
@@ -219,19 +205,12 @@ func formatTime(t time.Time) string {
 	}
 }
 
+// truncateStr shortens plain (unstyled) text to maxLen cells. Delegates to
+// the shared ANSI/wide-char aware implementation so there is exactly one
+// truncation rule in the TUI.
 func truncateStr(s string, maxLen int) string {
 	if maxLen <= 0 {
 		return ""
 	}
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
-	}
-	return string(runes[:maxLen-1]) + "…"
-}
-
-// ansiEscape + cursorLine live in components (single canonical copy);
-// this alias keeps existing views and tests compiling untouched.
-func cursorLine(line string) string {
-	return components.CursorLine(line)
+	return components.Truncate(s, maxLen)
 }

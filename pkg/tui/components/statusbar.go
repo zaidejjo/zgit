@@ -3,6 +3,7 @@ package components
 import (
 	"fmt"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
@@ -54,15 +55,10 @@ func (s StatusBar) View() string {
 		}
 	}
 
-	// Repository path (truncated on left if too long)
+	// Repository path (truncated on the left so the leaf stays visible)
 	repoPath := ""
 	if s.Data.RepoPath != "" {
-		repoShort := s.Data.RepoPath
-		maxPathLen := 40
-		if len(repoShort) > maxPathLen {
-			// Truncate from left to fit
-			repoShort = "…" + repoShort[len(repoShort)-maxPathLen+1:]
-		}
+		repoShort := TruncateLeft(s.Data.RepoPath, 40)
 		repoPath = styles.StatusBarInfoStyle.Render(" " + repoShort + " ")
 	}
 
@@ -92,10 +88,18 @@ func (s StatusBar) View() string {
 	if s.Data.GhDetected {
 		right += styles.StatusBarInfoStyle.Render(fmt.Sprintf(" %s/%s ", s.Data.GhOwner, s.Data.GhRepo))
 	}
-	right += styles.StatusBarInfoStyle.Render(" ?help qquit ")
-	right += styles.HintStyle.Render(" tab 1-4 /filter ^p ")
+	right += styles.StatusBarInfoStyle.Render(" ?help q:quit ")
+
+	base := left + " " + middle + " " + right
+	hints := styles.HintStyle.Render(" tab 0-9 /:filter L:theme ")
+	full := base
+	if lipgloss.Width(base)+lipgloss.Width(hints) <= s.Width {
+		full = base + hints
+	}
+	// Absolute guard: the bar is one line, always.
+	full = Truncate(full, s.Width)
 
 	return styles.StatusBarStyle.
 		Width(s.Width).
-		Render(left + " " + middle + " " + right)
+		Render(full)
 }

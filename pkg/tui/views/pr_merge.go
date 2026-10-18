@@ -115,7 +115,8 @@ func (m *PRMergeModel) View(width int) string {
 		return ""
 	}
 
-	return styles.DialogBoxStyle.Render(m.renderContent(width))
+	content, _ := dialogWidths(width)
+	return styles.DialogBoxStyle.Render(clampBlock(m.renderContent(width), content))
 }
 
 func (m *PRMergeModel) renderContent(width int) string {

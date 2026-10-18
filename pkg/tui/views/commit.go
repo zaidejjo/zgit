@@ -84,7 +84,8 @@ func (m *CommitModel) buildForm() {
 		),
 	).WithShowHelp(true)
 	if m.width > 0 {
-		m.form = m.form.WithWidth(m.width)
+		_, formW := dialogWidths(m.width)
+		m.form = m.form.WithWidth(formW)
 	}
 }
 
@@ -139,9 +140,6 @@ func (m *CommitModel) Update(msg tea.Msg) (*CommitModel, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		if m.form != nil {
-			m.form = m.form.WithWidth(msg.Width - 4)
-		}
 		return m, nil
 
 	case tea.KeyMsg:
@@ -176,21 +174,26 @@ func (m *CommitModel) View(width int) string {
 		return ""
 	}
 
+	// Size the form here rather than at construction/activation: the
+	// terminal may resize (or the dialog may open before the first
+	// WindowSizeMsg) and a stale width is what clipped the box.
+	content, formW := dialogWidths(width)
+	if m.form != nil && m.State == CommitForm {
+		m.form = m.form.WithWidth(formW)
+	}
+
 	var b strings.Builder
 	b.WriteString(styles.DialogTitleStyle.Render(" Commit Changes"))
 	b.WriteString("\n\n")
-	if m.State == CommitResult {
+	switch {
+	case m.State == CommitResult:
 		b.WriteString(m.renderResult())
-		return styles.DialogBoxStyle.Render(b.String())
-	}
-	if m.State == CommitConfirming {
+	case m.State == CommitConfirming:
 		b.WriteString(m.renderConfirm())
-		return styles.DialogBoxStyle.Render(b.String())
-	}
-	if m.form != nil {
+	case m.form != nil:
 		b.WriteString(m.form.View())
 	}
-	return styles.DialogBoxStyle.Render(b.String())
+	return styles.DialogBoxStyle.Render(clampBlock(b.String(), content))
 }
 
 // renderConfirm shows the final review before executing.

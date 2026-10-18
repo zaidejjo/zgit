@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/core/models"
+	"github.com/zaidejjo/zgit/pkg/tui/components"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
@@ -96,12 +97,7 @@ func (m StatusModel) View(width int) string {
 		for i, f := range staged {
 			line := fmt.Sprintf("  %s  %s", statusMark("staged"), formatFilePath(f.Path, width-6))
 			localIdx := stagedOffset + i
-			if localIdx == m.Cursor {
-				// Replace first space with ❯ prefix. First byte is always ASCII space (safe byte slice).
-				b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
-			} else {
-				b.WriteString(styles.ListItemStyle.Render(line))
-			}
+			b.WriteString(components.RowLine(line, width, localIdx == m.Cursor))
 			b.WriteString("\n")
 		}
 	}
@@ -113,11 +109,7 @@ func (m StatusModel) View(width int) string {
 		for i, f := range unstaged {
 			line := fmt.Sprintf("  %s  %s", statusMark("unstaged"), formatFilePath(f.Path, width-6))
 			localIdx := unstagedOffset + i
-			if localIdx == m.Cursor {
-				b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
-			} else {
-				b.WriteString(styles.ListItemStyle.Render(line))
-			}
+			b.WriteString(components.RowLine(line, width, localIdx == m.Cursor))
 			b.WriteString("\n")
 		}
 	}
@@ -129,11 +121,7 @@ func (m StatusModel) View(width int) string {
 		for i, f := range untracked {
 			line := fmt.Sprintf("  %s  %s", statusMark("untracked"), formatFilePath(f.Path, width-6))
 			localIdx := untrackedOffset + i
-			if localIdx == m.Cursor {
-				b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
-			} else {
-				b.WriteString(styles.ListItemStyle.Render(line))
-			}
+			b.WriteString(components.RowLine(line, width, localIdx == m.Cursor))
 			b.WriteString("\n")
 		}
 	}
@@ -211,12 +199,8 @@ func formatFilePath(path string, maxLen int) string {
 		if lipgloss.Width(path) <= maxLen {
 			return path
 		}
-		// Filename alone too wide — truncate rune-aware
-		runes := []rune(path)
-		if maxLen-1 > 0 {
-			return string(runes[:maxLen-1]) + "…"
-		}
-		return string(runes[:maxLen])
+		// Filename alone too wide — truncate width-aware
+		return components.Truncate(path, maxLen)
 	}
 
 	filename := path[lastSlash+1:]
@@ -273,9 +257,5 @@ func formatFilePath(path string, maxLen int) string {
 	}
 
 	// Priority 4: truncated filename — only when terminal is too narrow
-	runes := []rune(filename)
-	if maxLen-1 > 0 {
-		return string(runes[:maxLen-1]) + "…"
-	}
-	return string(runes[:maxLen])
+	return components.Truncate(filename, maxLen)
 }

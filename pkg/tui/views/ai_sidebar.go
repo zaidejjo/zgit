@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/zaidejjo/zgit/pkg/tui/components"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
@@ -318,6 +319,14 @@ func (m *AISidebarModel) View() string {
 	if contentH < 5 {
 		contentH = 5
 	}
+	// The panel occupies panelW columns total: 2 for the border and 1
+	// of padding on each side. Content is drawn inside the remaining
+	// innerW cells — getting this wrong is what makes a sidebar shove
+	// the whole layout off the right edge.
+	innerW := contentWidth(panelW)
+	if innerW < 6 {
+		innerW = 6
+	}
 
 	var b strings.Builder
 
@@ -344,7 +353,7 @@ func (m *AISidebarModel) View() string {
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().
 		Foreground(styles.Overlay0).
-		Render(strings.Repeat("─", panelW-2)))
+		Render(strings.Repeat("─", innerW)))
 	b.WriteString("\n")
 
 	// Conversation area
@@ -354,7 +363,7 @@ func (m *AISidebarModel) View() string {
 	}
 
 	// Show messages (most recent first, capped)
-	msgLines := m.renderMessages(panelW)
+	msgLines := m.renderMessages(innerW)
 	msgLines = m.truncateLines(msgLines, availH)
 
 	for _, line := range msgLines {
@@ -417,7 +426,7 @@ func (m *AISidebarModel) View() string {
 	// Separator
 	b.WriteString(lipgloss.NewStyle().
 		Foreground(styles.Overlay0).
-		Render(strings.Repeat("─", panelW-2)))
+		Render(strings.Repeat("─", innerW)))
 	b.WriteString("\n")
 
 	// Input area
@@ -427,23 +436,33 @@ func (m *AISidebarModel) View() string {
 		cursorChar = "█"
 	}
 	inputRow += m.Input[:m.Cursor] + cursorChar + m.Input[m.Cursor:]
-	if len(inputRow) > panelW-4 {
-		inputRow = "…" + inputRow[len(inputRow)-panelW+8:]
+	// Keep the tail (where the caret is) — rune-aware so a multi-byte
+	// character is never cut in half.
+	if runes := []rune(inputRow); len(runes) > innerW {
+		inputRow = "…" + string(runes[len(runes)-innerW+1:])
 	}
 	b.WriteString(inputRow)
 
 	// Bottom hint
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().
-		Foreground(styles.Selection).
+		Foreground(styles.Overlay0).
 		Render(fmt.Sprintf("  %s — Esc to close", m.helpHint())))
 
+	// Final guardrail: no sidebar row may exceed the inner width.
+	rows := strings.Split(b.String(), "\n")
+	for i, row := range rows {
+		rows[i] = components.Truncate(row, innerW)
+	}
+
+	// Style.Width counts the padding; the border is added outside it, so
+	// this renders exactly panelW columns.
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Mauve).
-		Width(panelW).
+		Width(styleWidth(panelW)).
 		Padding(0, 1).
-		Render(b.String())
+		Render(strings.Join(rows, "\n"))
 }
 
 func (m *AISidebarModel) helpHint() string {

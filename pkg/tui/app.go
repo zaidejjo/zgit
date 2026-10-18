@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 	"github.com/zaidejjo/zgit/pkg/core/config"
 	gitpkg "github.com/zaidejjo/zgit/pkg/core/git"
@@ -413,6 +414,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // --- View ---
 
 // View implements tea.Model.
+// clampFrame caps every rendered line to the terminal width. Last line
+// of defence: one cell of overflow makes a real terminal wrap the row,
+// which shears the whole layout sideways — this makes that impossible
+// no matter what a view draws.
+func (m *Model) clampFrame(s string) string {
+	if m.width <= 0 || s == "" {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		if lipgloss.Width(l) > m.width {
+			lines[i] = components.Truncate(l, m.width)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (m *Model) View() string {
 	if !m.ready {
 		return styles.LoadingStyle.Render("Loading...")
@@ -442,35 +460,36 @@ func (m *Model) View() string {
 		}
 		fullLayout = fullLayout + "\n" + strings.Join(padding, "\n")
 	}
+	fullLayout = m.clampFrame(fullLayout)
 
 	// Floating modal overlays — centered on top of everything, no layout shift
 	switch {
 	case m.mode == modeCommit:
 		overlay := m.commitDlg.View(m.width)
 		if overlay != "" {
-			return overlayCenter(fullLayout, overlay, m.width, m.height)
+			return m.clampFrame(overlayCenter(fullLayout, overlay, m.width, m.height))
 		}
 	case m.mode == modeConfig:
 		overlay := m.configDlg.View(m.width)
 		if overlay != "" {
-			return overlayCenter(fullLayout, overlay, m.width, m.height)
+			return m.clampFrame(overlayCenter(fullLayout, overlay, m.width, m.height))
 		}
 	case m.mode == modePRCreate:
 		overlay := m.prCreateDlg.View(m.width)
 		if overlay != "" {
-			return overlayCenter(fullLayout, overlay, m.width, m.height)
+			return m.clampFrame(overlayCenter(fullLayout, overlay, m.width, m.height))
 		}
 	case m.mode == modePRMerge:
 		overlay := m.prMergeDlg.View(m.width)
 		if overlay != "" {
-			return overlayCenter(fullLayout, overlay, m.width, m.height)
+			return m.clampFrame(overlayCenter(fullLayout, overlay, m.width, m.height))
 		}
 	}
 
 	if m.palette.Active() {
 		overlay := m.palette.View(m.width)
 		if overlay != "" {
-			return overlayCenter(fullLayout, overlay, m.width, m.height)
+			return m.clampFrame(overlayCenter(fullLayout, overlay, m.width, m.height))
 		}
 	}
 
@@ -480,74 +499,139 @@ func (m *Model) View() string {
 // renderHeader builds the Dale-style top tab bar:
 // [zgit] Status Log Branches │ 3 PRs  4 Issues │  @user  main  vX.Y.Z
 // The active view (focused panel or fullscreen) is highlighted.
+// tabCount reports the badge count for a screen tab, or 0 when the screen
+// has no data yet.
+func (m *Model) tabCount(id shell.ScreenID) int {
+	switch id {
+	case shell.PRs:
+		return len(m.prs.Items)
+	case shell.Issues:
+		return len(m.issues.Items)
+	case shell.Dashboard:
+		if m.dash.Loaded {
+			return len(m.dash.Items)
+		}
+	case shell.Actions:
+		return len(m.actions.Items)
+	case shell.Worktrees:
+		if m.worktrees.Loaded {
+			return len(m.worktrees.Items)
+		}
+	case shell.Stash:
+		if m.stash.Loaded {
+			return len(m.stash.Items)
+		}
+	case shell.Notes:
+		if m.notes.Loaded {
+			return m.notes.UnreadCount()
+		}
+	}
+	return 0
+}
+
+// renderHeader builds the Dale-style top tab bar:
+// [zgit] Status Log Branches │ 3 PRs 4 Issues │ @user main vX.Y.Z
+//
+// The strip is assembled by density, not by hope: on a narrow terminal
+// labels shorten, then counts go, then the right-hand meta, and finally
+// the tab padding — so the header always fits the terminal instead of
+// wrapping the whole layout.
+type headerDensity struct {
+	short  bool // abbreviated labels
+	counts bool // "PRs (3)" badges
+	meta   bool // user / branch / version on the right
+	tight  bool // padding-free tabs (very narrow terminals)
+}
+
 func (m *Model) renderHeader() string {
-	tab := func(label string, active bool) string {
-		if active {
-			return styles.ActiveTabStyle.Render(label)
-		}
-		return styles.InactiveTabStyle.Render(label)
+	width := m.width
+	if width <= 0 {
+		width = 120
 	}
 
-	var tabs []string
-	tabs = append(tabs, styles.HeaderLogoStyle.Render(" zgit "))
-	panelActive := m.fullScreenView == shell.Panels
-	tabs = append(tabs, tab("Status", panelActive && m.focusedPanel == PanelStatus))
-	tabs = append(tabs, tab("Log", panelActive && m.focusedPanel == PanelLog))
-	tabs = append(tabs, tab("Branches", panelActive && m.focusedPanel == PanelBranch))
-	compact := m.width > 0 && m.width < 110
-	for _, t := range shell.Tabs {
-		label := t.Full()
-		if compact {
-			label = t.Short()
-		}
-		if !compact {
-			switch t.ID {
-			case shell.PRs:
-				if m.prs.Items != nil {
-					label = fmt.Sprintf("%s (%d)", label, len(m.prs.Items))
-				}
-			case shell.Issues:
-				if m.issues.Items != nil {
-					label = fmt.Sprintf("%s (%d)", label, len(m.issues.Items))
-				}
-			case shell.Dashboard:
-				if m.dash.Loaded {
-					label = fmt.Sprintf("%s (%d)", label, len(m.dash.Items))
-				}
-			case shell.Actions:
-				if m.actions.Items != nil {
-					label = fmt.Sprintf("%s (%d)", label, len(m.actions.Items))
-				}
-			case shell.Worktrees:
-				if m.worktrees.Loaded {
-					label = fmt.Sprintf("%s (%d)", label, len(m.worktrees.Items))
-				}
-			case shell.Stash:
-				if m.stash.Loaded {
-					label = fmt.Sprintf("%s (%d)", label, len(m.stash.Items))
-				}
-			}
-		}
-		if t.ID == shell.Notes && m.notes.Loaded && m.notes.UnreadCount() > 0 {
-			label = fmt.Sprintf("%s (%d)", label, m.notes.UnreadCount())
-		}
-		tabs = append(tabs, tab(label, m.fullScreenView == t.ID))
-	}
-	left := lipgloss.JoinHorizontal(lipgloss.Center, tabs...)
-
-	var meta []string
-	if m.ghUser != "" {
-		meta = append(meta, styles.HeaderMetaStyle.Render("@"+m.ghUser))
-	}
 	branch := m.currentBranch()
-	if branch != "" {
-		meta = append(meta, styles.HeaderBranchStyle.Render(branch))
-	}
-	meta = append(meta, styles.HeaderMetaStyle.Render("v"+AppVersion))
-	right := lipgloss.JoinHorizontal(lipgloss.Center, meta...)
+	build := func(d headerDensity) (string, string) {
+		tab := func(label string, active bool) string {
+			st := styles.InactiveTabStyle
+			if active {
+				st = styles.ActiveTabStyle
+			}
+			if d.tight {
+				st = st.Padding(0)
+			}
+			return st.Render(label)
+		}
+		panel := func(long, short string, active bool) string {
+			if d.short {
+				return tab(short, active)
+			}
+			return tab(long, active)
+		}
+		panelActive := m.fullScreenView == shell.Panels
 
-	// Pad the middle so meta hugs the right edge; truncate tabs on narrow terms.
-	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
+		logo := styles.HeaderLogoStyle.Render(" zgit ")
+		if d.tight {
+			logo = styles.HeaderLogoStyle.Padding(0).Render("zgit")
+		}
+
+		tabs := []string{logo}
+		tabs = append(tabs,
+			panel("Status", "S", panelActive && m.focusedPanel == PanelStatus),
+			panel("Log", "L", panelActive && m.focusedPanel == PanelLog),
+			panel("Branches", "B", panelActive && m.focusedPanel == PanelBranch),
+		)
+		for _, t := range shell.Tabs {
+			label := t.Full()
+			if d.short {
+				label = t.Short()
+			}
+			if n := m.tabCount(t.ID); n > 0 && d.counts {
+				label = fmt.Sprintf("%s (%d)", label, n)
+			}
+			tabs = append(tabs, tab(label, m.fullScreenView == t.ID))
+		}
+		left := lipgloss.JoinHorizontal(lipgloss.Center, tabs...)
+		if !d.meta {
+			return left, ""
+		}
+
+		var meta []string
+		if m.ghUser != "" {
+			meta = append(meta, styles.HeaderMetaStyle.Render("@"+m.ghUser))
+		}
+		if branch != "" {
+			shown := branch
+			if d.short {
+				shown = components.Truncate(branch, 18)
+			}
+			meta = append(meta, styles.HeaderBranchStyle.Render(shown))
+		}
+		meta = append(meta, styles.HeaderMetaStyle.Render("v"+AppVersion))
+		right := lipgloss.JoinHorizontal(lipgloss.Center, meta...)
+		return left, right
+	}
+
+	// Densities in order of decreasing detail; the first that fits wins.
+	densities := []headerDensity{
+		{counts: true, meta: true},
+		{short: true, counts: true, meta: true},
+		{short: true, meta: true},
+		{short: true},
+		{short: true, tight: true},
+	}
+	left, right := "", ""
+	for _, d := range densities {
+		l, r := build(d)
+		left, right = l, r
+		if lipgloss.Width(l)+lipgloss.Width(r) <= width {
+			break
+		}
+	}
+
+	// Pad the gap so meta hugs the right edge. When even the leanest
+	// header is too wide (absurdly narrow terminal), the frame guard in
+	// View() clips it rather than letting the terminal wrap.
+	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
 		gap = 1
 	}
@@ -2640,39 +2724,20 @@ func overlayCenter(base, modal string, termWidth, termHeight int) string {
 	result := make([]string, len(baseLines))
 	for i, line := range baseLines {
 		if i >= startY && i < startY+modalH && i < len(baseLines) {
-			// Strip ANSI from base line so slicing never cuts escape codes
-			plain := stripANSI(line)
-			plainRunes := []rune(plain)
-
-			// Pad runes to termWidth so left/right slicing is safe (rune index = visual column for ASCII/narrow chars)
-			if len(plainRunes) < termWidth {
-				padded := make([]rune, termWidth)
-				for i := 0; i < termWidth; i++ {
-					if i < len(plainRunes) {
-						padded[i] = plainRunes[i]
-					} else {
-						padded[i] = ' '
-					}
-				}
-				plainRunes = padded
-			}
-
 			modalLine := modalLines[i-startY]
 			modalWidth := lipgloss.Width(modalLine)
 
-			// Left part (base content before modal) — rune-indexed to avoid multibyte slicing errors
-			left := string(plainRunes[:startX])
+			// The base line is styled; take its visible text and cut it by
+			// *cells* (ansi.Truncate/CutLeft are grapheme- and wide-char
+			// aware, unlike rune indices which shift the overlay whenever
+			// the background contains CJK or emoji).
+			plain := ansi.Strip(line)
+			left := ansi.Truncate(plain, startX, "")
+			right := components.CutLeft(plain, startX+modalWidth)
 
-			// Right part (base content after modal)
-			rightEnd := startX + modalWidth
-			if rightEnd < len(plainRunes) {
-				right := string(plainRunes[rightEnd:])
-				result[i] = left + modalLine + right
-			} else {
-				result[i] = left + modalLine
-			}
+			result[i] = left + modalLine + right
 
-			// Ensure result fills termWidth (modal may be narrower)
+			// Ensure the composited row still fills the terminal.
 			if w := lipgloss.Width(result[i]); w < termWidth {
 				result[i] += strings.Repeat(" ", termWidth-w)
 			}
@@ -2682,28 +2747,6 @@ func overlayCenter(base, modal string, termWidth, termHeight int) string {
 	}
 
 	return strings.Join(result, "\n")
-}
-
-// stripANSI removes ANSI escape sequences from a string.
-// ANSI sequences start with \x1b (ESC) followed by '[', parameters, and a letter (a-z, A-Z).
-func stripANSI(s string) string {
-	var out strings.Builder
-	inEscape := false
-	for _, r := range s {
-		if inEscape {
-			// ANSI escape sequence ends on any ASCII letter (a-z, A-Z), tilde, or @
-			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '~' || r == '@' {
-				inEscape = false
-			}
-			continue
-		}
-		if r == '\x1b' {
-			inEscape = true
-			continue
-		}
-		out.WriteRune(r)
-	}
-	return out.String()
 }
 
 // listenForMessages creates a command that polls the message channel.
