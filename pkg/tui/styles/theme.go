@@ -44,10 +44,10 @@ var (
 // Refresh rebuilds every style from the current tokens.
 // Call after SetLight/SetDark.
 func Refresh() {
-	// App-level
+	// App-level. No fixed width: the frame is sized per render from the
+	// terminal, a hardcoded 80 only ever fit an 80-column terminal.
 	AppStyle = lipgloss.NewStyle().
-		Padding(0, 1).
-		Width(80)
+		Padding(0, 1)
 
 	// Tabs
 	ActiveTabStyle = lipgloss.NewStyle().
@@ -84,7 +84,6 @@ func Refresh() {
 		Background(Surface).
 		Foreground(Subtext).
 		Padding(0, 1).
-		Width(80).
 		Height(1)
 	StatusBarBranchStyle = lipgloss.NewStyle().
 		Foreground(Teal).
@@ -134,10 +133,10 @@ func Refresh() {
 	// Diff
 	DiffAddStyle = lipgloss.NewStyle().
 		Foreground(Green).
-		Background(lipgloss.Color("#1a3a1a"))
+		Background(DiffAddBg)
 	DiffDelStyle = lipgloss.NewStyle().
 		Foreground(Red).
-		Background(lipgloss.Color("#3a1a1a"))
+		Background(DiffDelBg)
 	DiffHeaderStyle = lipgloss.NewStyle().
 		Foreground(Blue).
 		Bold(true)

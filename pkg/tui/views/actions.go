@@ -162,11 +162,7 @@ func (m *ActionsModel) jobsView(width int) string {
 	for i, j := range jobs {
 		globalIdx := m.Offset + i
 		line := fmt.Sprintf(" %s %s", jobMark(j), truncateStr(j.Name, width-6))
-		if globalIdx == m.Cursor {
-			b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
-		} else {
-			b.WriteString(styles.ListItemStyle.Render(line))
-		}
+		b.WriteString(components.RowLine(line, width, globalIdx == m.Cursor))
 		b.WriteString("\n")
 	}
 	return b.String()

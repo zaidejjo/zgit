@@ -280,13 +280,16 @@ func (m PaletteModel) View(width int) string {
 		return ""
 	}
 
-	dialogW := width - 8
-	if dialogW < 40 {
-		dialogW = 40
+	// The palette occupies boxW columns: its text area is contentW, the
+	// padding is counted inside Style.Width and the border on top.
+	boxW := width - dialogMargin
+	if boxW > 80 {
+		boxW = 80
 	}
-	if dialogW > 80 {
-		dialogW = 80
+	if boxW < 34 {
+		boxW = 34
 	}
+	contentW := contentWidth(boxW)
 
 	var b strings.Builder
 
@@ -323,12 +326,6 @@ func (m PaletteModel) View(width int) string {
 	}
 	if scrollOffset < len(results) {
 		results = results[scrollOffset:endIdx]
-	}
-
-	// Available width for content (dialog minus 4 for border + padding)
-	contentW := dialogW - 4
-	if contentW < 30 {
-		contentW = 30
 	}
 
 	for i, idx := range results {
@@ -398,14 +395,18 @@ func (m PaletteModel) View(width int) string {
 		b.WriteString("\n")
 	}
 
-	// Hint
-	b.WriteString(lipgloss.NewStyle().Foreground(styles.Overlay0).Render("  Type to filter  ↑↓=navigate  Enter=execute  Esc=close"))
+	// Hint (shortened when the box is narrow, so it never has to be cut)
+	hint := "  Type to filter  ↑↓=navigate  Enter=execute  Esc=close"
+	if lipgloss.Width(hint) > contentW {
+		hint = "  ↑↓=navigate  Enter=execute  Esc=close"
+	}
+	b.WriteString(lipgloss.NewStyle().Foreground(styles.Overlay0).Render(hint))
 
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Mauve).
-		Width(dialogW).
+		Width(styleWidth(boxW)).
 		Padding(0, 1).
 		Background(styles.Surface).
-		Render(b.String())
+		Render(clampBlock(b.String(), contentW))
 }

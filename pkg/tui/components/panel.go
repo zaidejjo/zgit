@@ -52,29 +52,16 @@ func (p Panel) View() string {
 		Foreground(borderColor).
 		Bold(p.Focused).
 		Render(titleStr)
+	titleLine = Truncate(titleLine, innerW)
 
-	// Body content — trim each line to inner width
+	// Body content — every line is hard-capped to the inner width so a
+	// long path/branch/message can never widen the panel (which would
+	// wrap the whole layout).
 	lines := strings.Split(p.Content, "\n")
 
-	var bodyLines []string
+	bodyLines := make([]string, 0, len(lines))
 	for _, line := range lines {
-		trimmed := line
-		// Use visual width (lipgloss.Width) not byte length (len).
-		// len() overcounts because:
-		//   - Multi-byte Unicode (● = 3 bytes, 1 visual col)
-		//   - lipgloss ANSI codes (only present in TUI context)
-		// → byte check falsely triggers truncation on fitting lines.
-		// → byte-slicing breaks ANSI sequences and multi-byte chars.
-		//
-		// Visual width always ≤ innerW because views calculate content
-		// to fit.  This check is a safety net — should never trigger.
-		if lipgloss.Width(trimmed) > innerW {
-			// Instead of byte-level truncation (corrupts ANSI/Unicode)
-			// or Style.Width (wraps lines with newlines), we leave
-			// overflow lines intact.  This is vanishingly rare since
-			// views already bound content width.
-		}
-		bodyLines = append(bodyLines, trimmed)
+		bodyLines = append(bodyLines, Truncate(line, innerW))
 	}
 
 	// If Height is set, pad or truncate content to exact height
@@ -102,10 +89,12 @@ func (p Panel) View() string {
 
 	content := titleLine + "\n" + strings.Join(bodyLines, "\n")
 
-	// Apply border
+	// Apply border. Width(innerW) makes the *content* innerW wide; the
+	// border is drawn outside it, so the panel occupies exactly p.Width
+	// columns — matching the width callers reserve for it.
 	return lipgloss.NewStyle().
 		Border(p.BorderType).
 		BorderForeground(borderColor).
-		Width(p.Width).
+		Width(innerW).
 		Render(content)
 }

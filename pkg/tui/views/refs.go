@@ -108,7 +108,9 @@ func (m *RefsModel) sectionTitle(name string, n int, focused bool) string {
 }
 
 func tagRow(tag string, width int) string {
-	return fmt.Sprintf("  %s %s", styles.SubtitleStyle.Render("◆"), truncateStr(tag, width-6))
+	return components.Truncate(
+		fmt.Sprintf("  %s %s", styles.SubtitleStyle.Render("◆"), truncateStr(tag, width-6)),
+		width)
 }
 
 func remoteRow(r *models.Remote, width int) string {
@@ -119,5 +121,5 @@ func remoteRow(r *models.Remote, width int) string {
 		line = fmt.Sprintf("  %s %s",
 			styles.StatusStagedStyle.Render("●"), truncateStr(r.Name, width-6))
 	}
-	return line
+	return components.Truncate(line, width)
 }

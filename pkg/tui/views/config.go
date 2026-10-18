@@ -514,33 +514,40 @@ func (m *ConfigModel) View(width int) string {
 	}
 
 	var b strings.Builder
-	dialogW := width - 8
-	if dialogW < 30 {
-		dialogW = 30
+
+	// Total box width target; content inside is 4 cells narrower because
+	// lipgloss draws the border and padding outside Style.Width.
+	boxW := width - dialogMargin
+	if boxW > 76 {
+		boxW = 76
 	}
-	if dialogW > 72 {
-		dialogW = 72
+	if boxW < 34 {
+		boxW = 34
 	}
+	contentW := contentWidth(boxW)
 
 	title := m.dialogTitle()
 
 	switch m.State {
 	case ConfigInput, ConfigSelect:
+		if m.form != nil {
+			m.form = m.form.WithWidth(contentW - formFieldFrame)
+		}
 		b.WriteString(lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(styles.Mauve).
-			Width(dialogW).
+			Width(styleWidth(boxW)).
 			Padding(0, 1).
 			Background(styles.Surface).
-			Render(strings.Join([]string{
+			Render(clampBlock(strings.Join([]string{
 				lipgloss.NewStyle().Bold(true).Foreground(styles.Mauve).Render(title),
 				"",
 				m.formView(),
-			}, "\n")))
+			}, "\n"), contentW)))
 	case ConfigLoading:
-		m.renderLoading(&b, dialogW, title)
+		m.renderLoading(&b, boxW, title)
 	case ConfigResult:
-		m.renderResult(&b, dialogW, title)
+		m.renderResult(&b, boxW, title)
 	}
 
 	return lipgloss.NewStyle().
@@ -586,21 +593,21 @@ func (m *ConfigModel) dialogTitle() string {
 	return prefix + " Config"
 }
 
-func (m *ConfigModel) renderLoading(b *strings.Builder, dialogW int, title string) {
+func (m *ConfigModel) renderLoading(b *strings.Builder, boxW int, title string) {
 	b.WriteString(lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Mauve).
-		Width(dialogW).
+		Width(styleWidth(boxW)).
 		Padding(0, 1).
 		Background(styles.Surface).
-		Render(strings.Join([]string{
+		Render(clampBlock(strings.Join([]string{
 			lipgloss.NewStyle().Bold(true).Foreground(styles.Mauve).Render(title),
 			"",
 			styles.LoadingStyle.Render("Saving..."),
-		}, "\n")))
+		}, "\n"), contentWidth(boxW))))
 }
 
-func (m *ConfigModel) renderResult(b *strings.Builder, dialogW int, title string) {
+func (m *ConfigModel) renderResult(b *strings.Builder, boxW int, title string) {
 	result := m.Result
 	if m.Success {
 		result = styles.StatusStagedStyle.Render("✓ " + m.Result)
@@ -616,16 +623,16 @@ func (m *ConfigModel) renderResult(b *strings.Builder, dialogW int, title string
 	b.WriteString(lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.Mauve).
-		Width(dialogW).
+		Width(styleWidth(boxW)).
 		Padding(0, 1).
 		Background(styles.Surface).
-		Render(strings.Join([]string{
+		Render(clampBlock(strings.Join([]string{
 			lipgloss.NewStyle().Bold(true).Foreground(styles.Mauve).Render(title),
 			"",
 			result,
 			"",
 			lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true).Render(hint),
-		}, "\n")))
+		}, "\n"), contentWidth(boxW))))
 }
 
 // FieldLabel returns a human-readable label for the config field.

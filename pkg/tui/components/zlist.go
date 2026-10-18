@@ -1,26 +1,143 @@
 package components
 
 import (
-	"regexp"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
-// ansiEscape matches SGR/control sequences for width-safe reuse.
-var ansiEscape = regexp.MustCompile("\x1b\\[[0-9;]*[a-zA-Z]")
+// Truncate hard-caps a rendered line to width cells, ANSI- and
+// wide-char aware. Final guardrail: no row may ever wrap the panel.
+func Truncate(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	return ansi.Truncate(s, width, "…")
+}
 
-// CursorLine rebuilds a rendered line for the selected row: ANSI is
-// stripped first (never slice styled strings by byte/rune — that
-// decapitates escapes into visible "[38;2;…" garbage), the first
-// visible rune becomes ❯, and the caller wraps it in the active style.
+// CursorLine retargets the first visible grapheme of a rendered line to ❯
+// without touching the rest: ANSI- and grapheme-aware, so escapes and wide
+// characters survive (never slice styled strings by byte/rune — that
+// decapitates escapes into visible "[38;2;…" garbage).
+//
+// The whole first grapheme is replaced, never a single cell: cutting one
+// cell out of a 2-cell character would leave it in place and *grow* the
+// row by a cell, which wraps the panel.
 func CursorLine(line string) string {
-	plain := ansiEscape.ReplaceAllString(line, "")
-	runes := []rune(plain)
-	if len(runes) == 0 {
+	if ansi.StringWidth(line) <= 1 {
 		return "❯"
 	}
-	return "❯" + string(runes[1:])
+
+	// Walk to the first grapheme that occupies cells. Leading escape
+	// sequences carry none, but they set the colour of the text after
+	// them, so they are kept in front of the cursor.
+	var (
+		state   byte
+		offset  int
+		leading strings.Builder
+	)
+	cw := 0
+	for offset < len(line) {
+		unit, w, n, newState := ansi.DecodeSequence(line[offset:], state, nil)
+		if n <= 0 {
+			break
+		}
+		state = newState
+		offset += n
+		if w == 0 {
+			leading.WriteString(unit)
+			continue
+		}
+		cw = w
+		break
+	}
+	if cw <= 0 {
+		return "❯"
+	}
+	if cw >= ansi.StringWidth(line) {
+		// The first grapheme is the whole line: the cursor alone fits.
+		return leading.String() + "❯"
+	}
+	return leading.String() + "❯" + line[offset:]
+}
+
+// CutLeft drops the first cells cells of a rendered line and returns the
+// rest, keeping escape sequences and never splitting a grapheme: a wide
+// character straddling the cut is dropped whole, so the result can be one
+// cell narrower than asked for, never wider.
+//
+// ansi.TruncateLeft cannot express this. It refuses to cut *into* a
+// grapheme, so asking it to drop one cell in front of a 2-cell character
+// hands the string straight back — a caller looping until the tail fits
+// would never finish.
+func CutLeft(s string, cells int) string {
+	if cells <= 0 {
+		return s
+	}
+	var (
+		state   byte
+		offset  int
+		dropped int
+		leading strings.Builder
+	)
+	for offset < len(s) && dropped < cells {
+		unit, w, n, newState := ansi.DecodeSequence(s[offset:], state, nil)
+		if n <= 0 {
+			break
+		}
+		state = newState
+		if w == 0 {
+			// Zero-width units cost no cells, so they ride along with the
+			// tail and keep its styling.
+			leading.WriteString(unit)
+			offset += n
+			continue
+		}
+		offset += n
+		dropped += w
+	}
+	if offset >= len(s) {
+		return ""
+	}
+	return leading.String() + s[offset:]
+}
+
+// TruncateLeft keeps the tail of a line and prefixes an ellipsis, so the
+// end of a long path (the part that identifies it) stays on screen.
+func TruncateLeft(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	w := ansi.StringWidth(s)
+	if w <= width {
+		return s
+	}
+	// One cell of the budget goes to the ellipsis.
+	return "…" + CutLeft(s, w-width+1)
+}
+
+// RowLine renders one list row as exactly width cells. It reserves the
+// frame its style adds (padding/margin/border), hard-caps the text to
+// what is left, then draws the cursor when selected. Every row goes
+// through here, so a row can never grow wider than its panel and make
+// the terminal wrap the whole layout.
+func RowLine(line string, width int, selected bool) string {
+	st := styles.ListItemStyle
+	if selected {
+		st = styles.ListItemActiveStyle
+	}
+	inner := width - st.GetHorizontalFrameSize()
+	if inner < 1 {
+		inner = 1
+	}
+	body := Truncate(line, inner)
+	if selected {
+		// A wide first grapheme can make the cursor swap return one cell
+		// more than it consumed, so cap again: exactly is the contract.
+		body = Truncate(CursorLine(body), inner)
+	}
+	return st.Render(body)
 }
 
 // ZList is the single filterable, scrollable list for every screen.
@@ -182,11 +299,7 @@ func (l *ZList[T]) ViewRows(width int) string {
 		if l.Render != nil {
 			line = l.Render(item, width)
 		}
-		if l.Offset+i == l.Cursor {
-			b.WriteString(styles.ListItemActiveStyle.Render(CursorLine(line)))
-		} else {
-			b.WriteString(styles.ListItemStyle.Render(line))
-		}
+		b.WriteString(RowLine(line, width, l.Offset+i == l.Cursor))
 		b.WriteString("\n")
 	}
 	return b.String()

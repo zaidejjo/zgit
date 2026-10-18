@@ -34,6 +34,11 @@ var (
 	ActivePanelBorderColor   = Accent
 	InactivePanelBorderColor = Overlay0
 
+	// Diff line backgrounds. Tokens, not literals: a dark green would be
+	// unreadable the moment the light palette is active.
+	DiffAddBg = lipgloss.Color("#1a3a1a")
+	DiffDelBg = lipgloss.Color("#3a1a1a")
+
 	// Dark reports whether the dark palette is active.
 	Dark = true
 )
@@ -60,6 +65,8 @@ func SetLight() {
 	Info = Blue
 	Accent = Mauve
 	Selection = lipgloss.Color("#acb0be")
+	DiffAddBg = "#d7f0d7"
+	DiffDelBg = "#f7d7dc"
 	ActivePanelBorderColor = Accent
 	InactivePanelBorderColor = Overlay0
 	Dark = false
@@ -87,6 +94,8 @@ func SetDark() {
 	Info = Blue
 	Accent = Mauve
 	Selection = lipgloss.Color("#45475a")
+	DiffAddBg = "#1a3a1a"
+	DiffDelBg = "#3a1a1a"
 	ActivePanelBorderColor = Accent
 	InactivePanelBorderColor = Overlay0
 	Dark = true

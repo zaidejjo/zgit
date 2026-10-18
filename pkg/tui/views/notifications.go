@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/core/models"
 	"github.com/zaidejjo/zgit/pkg/tui/components"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
@@ -166,15 +165,7 @@ func (m *NotesModel) View(width int) string {
 		line := fmt.Sprintf(" %s %s %s  %s%s",
 			dot, noteTypeMark(it.Type), truncateStr(it.Title, 44),
 			styles.SubtitleStyle.Render(truncateStr(it.RepoName, 26)), styles.SubtitleStyle.Render(reason))
-		if lipgloss.Width(line) > width {
-			line = fmt.Sprintf(" %s %s %s", dot, noteTypeMark(it.Type), truncateStr(it.Title, width-8))
-		}
-
-		if globalIdx == m.Cursor {
-			b.WriteString(styles.ListItemActiveStyle.Render(cursorLine(line)))
-		} else {
-			b.WriteString(styles.ListItemStyle.Render(line))
-		}
+		b.WriteString(components.RowLine(line, width, globalIdx == m.Cursor))
 		b.WriteString("\n")
 	}
 
