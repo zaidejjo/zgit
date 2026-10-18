@@ -39,6 +39,31 @@ var (
 	ErrorStyle            lipgloss.Style
 	DialogBoxStyle        lipgloss.Style
 	DialogTitleStyle      lipgloss.Style
+
+	// Cockpit chrome
+	PaneBarStyle        lipgloss.Style
+	PaneBarFocusStyle   lipgloss.Style
+	PaneTitleStyle      lipgloss.Style
+	PaneTitleFocusStyle lipgloss.Style
+	RuleStyle           lipgloss.Style
+	RuleFocusStyle      lipgloss.Style
+	MetaStyle           lipgloss.Style
+	FaintStyle          lipgloss.Style
+
+	// Header strip
+	HeaderTabStyle       lipgloss.Style
+	HeaderTabActiveStyle lipgloss.Style
+	HeaderTabBadgeStyle  lipgloss.Style
+	HeaderRuleStyle      lipgloss.Style
+
+	// Footer
+	HintKeyStyle   lipgloss.Style
+	HintDescStyle  lipgloss.Style
+	HintSepStyle   lipgloss.Style
+	StatusBarText  lipgloss.Style
+	StatusBarMuted lipgloss.Style
+	SegmentAccent  lipgloss.Style
+	SegmentNeutral lipgloss.Style
 )
 
 // Refresh rebuilds every style from the current tokens.
@@ -73,6 +98,31 @@ func Refresh() {
 		Padding(0, 1).
 		Foreground(Teal).
 		Bold(true)
+	// Tab strip: only the active screen carries a fill, so the eye lands
+	// on it instead of on a row of equal-weight blocks. The hotkey is a
+	// dim prefix, not part of the label.
+	HeaderTabStyle = lipgloss.NewStyle().
+		Padding(0, 1).
+		Foreground(Subtext)
+	HeaderTabActiveStyle = lipgloss.NewStyle().
+		Padding(0, 1).
+		Background(Accent).
+		Foreground(Base).
+		Bold(true)
+	HeaderTabBadgeStyle = lipgloss.NewStyle().
+		Foreground(Peach)
+	HeaderRuleStyle = lipgloss.NewStyle().
+		Foreground(Rule)
+
+	// Cockpit pane chrome
+	PaneBarStyle = lipgloss.NewStyle().Foreground(Rule)
+	PaneBarFocusStyle = lipgloss.NewStyle().Foreground(Accent)
+	PaneTitleStyle = lipgloss.NewStyle().Foreground(PaneTitle).Bold(true)
+	PaneTitleFocusStyle = lipgloss.NewStyle().Foreground(PaneTitleFocus).Bold(true)
+	RuleStyle = lipgloss.NewStyle().Foreground(Rule)
+	RuleFocusStyle = lipgloss.NewStyle().Foreground(Accent)
+	MetaStyle = lipgloss.NewStyle().Foreground(Overlay0)
+	FaintStyle = lipgloss.NewStyle().Foreground(Rule)
 
 	// Content areas
 	ContentStyle = lipgloss.NewStyle().
@@ -90,8 +140,27 @@ func Refresh() {
 		Bold(true)
 	StatusBarInfoStyle = lipgloss.NewStyle().
 		Foreground(Subtext)
+	StatusBarText = lipgloss.NewStyle().
+		Foreground(Text).
+		Bold(true)
+	StatusBarMuted = lipgloss.NewStyle().
+		Foreground(Overlay0)
 	HintStyle = lipgloss.NewStyle().
 		Foreground(Overlay0)
+	HintKeyStyle = lipgloss.NewStyle().
+		Foreground(Subtext).
+		Bold(true)
+	HintDescStyle = lipgloss.NewStyle().
+		Foreground(Overlay0)
+	HintSepStyle = lipgloss.NewStyle().
+		Foreground(Rule)
+	SegmentAccent = lipgloss.NewStyle().
+		Background(Accent).
+		Foreground(Base).
+		Bold(true)
+	SegmentNeutral = lipgloss.NewStyle().
+		Background(ChipBg).
+		Foreground(Text)
 
 	// Lists
 	ListItemStyle = lipgloss.NewStyle().

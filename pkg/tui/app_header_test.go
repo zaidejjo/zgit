@@ -32,13 +32,20 @@ func TestRenderHeaderWide(t *testing.T) {
 	m := newHeaderModel(t, 200, "octo")
 
 	out := m.renderHeader()
-	for _, want := range []string{"zgit", "Status", "Log", "Branches", "PRs", "Issues", "@octo", "dev", "v9.9.9-test"} {
+	// The header carries navigation and identity. Repository state
+	// (branch, divergence, file counts) lives in the status bar, so it
+	// is deliberately absent here — printing it twice wasted a third of
+	// the strip.
+	for _, want := range []string{"zgit", "Status", "Log", "Branches", "PRs", "Issues", "@octo", "v9.9.9-test"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("header missing %q in %q", want, out)
 		}
 	}
-	if w := lipgloss.Width(out); w > 200 {
-		t.Errorf("header is %d cells wide, limit 200", w)
+	if strings.Contains(out, "dev") {
+		t.Errorf("header should not duplicate the branch (that is the status bar's job): %q", out)
+	}
+	if w := lipgloss.Width(out); w != 200 {
+		t.Errorf("header is %d cells wide, want exactly 200", w)
 	}
 
 	// Fullscreen PR tab highlights.
