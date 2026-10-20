@@ -97,11 +97,15 @@ func TestBranchSelfTrackingShort(t *testing.T) {
 		{Name: "other", Upstream: "fork/other", Ahead: 1, LatestMsg: "change"},
 	})
 	out := m.View(100)
-	if strings.Contains(out, "[origin/dev]") || strings.Contains(out, "[origin/feat/x]") {
+	if strings.Contains(out, "origin/dev") || strings.Contains(out, "origin/feat/x") {
 		t.Fatalf("self-tracking upstream should collapse:\n%s", out)
 	}
-	if !strings.Contains(out, "[fork/other") {
+	if !strings.Contains(out, "fork/other") {
 		t.Fatalf("foreign upstream should stay:\n%s", out)
+	}
+	// The branch name owns a fixed column, so the messages line up.
+	if strings.Count(out, "Merge PR #61") != 1 || strings.Count(out, "wip") != 1 {
+		t.Fatalf("messages missing:\n%s", out)
 	}
 }
 

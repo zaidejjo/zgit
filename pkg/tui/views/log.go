@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/core/models"
 	"github.com/zaidejjo/zgit/pkg/tui/components"
+	"github.com/zaidejjo/zgit/pkg/tui/glyphs"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
@@ -80,41 +81,8 @@ func (m LogModel) View(width int) string {
 		if treePrefix != nil && i < len(treePrefix) {
 			treeStr = treePrefix[i]
 		}
-		treeWidth := lipgloss.Width(treeStr)
 
-		// Short hash (7 chars)
-		hash := c.Hash
-		if len(hash) > 7 {
-			hash = hash[:7]
-		}
-
-		// Available width for message: width - tree - space - hash(7) - space
-		msgMax := width - treeWidth - 1 - 7 - 1
-		if msgMax < 1 {
-			msgMax = 1
-		}
-
-		// Parse branch/tag refs for badges
-		var badgeStr string
-		if c.RefNames != "" {
-			badgeStr = renderRefBadges(c.RefNames)
-		}
-		badgeWidth := lipgloss.Width(badgeStr)
-		if badgeStr != "" {
-			badgeStr = " " + badgeStr
-			badgeWidth++ // leading space
-		}
-
-		// Adjust msg for badge space
-		msgMaxAdjusted := msgMax - badgeWidth
-		if msgMaxAdjusted < 0 {
-			msgMaxAdjusted = 0
-		}
-		msg := truncateStr(c.Message, msgMaxAdjusted)
-
-		// Build line: treeStr + " " + hash + badge + " " + msg.
-		// RowLine caps it to the panel width (tree graphs grow lanes).
-		line := fmt.Sprintf("%s %s%s %s", treeStr, hash, badgeStr, msg)
+		line := commitRow(c, treeStr, width)
 		b.WriteString(components.RowLine(line, width, globalIdx == m.Cursor))
 		b.WriteString("\n")
 	}
@@ -122,43 +90,142 @@ func (m LogModel) View(width int) string {
 	return b.String()
 }
 
-// renderRefBadges parses RefNames (e.g. "HEAD -> main, origin/main")
-// and returns compact colored badges like "[main] [origin/main]".
-// Filters out HEAD and remote tracking refs for brevity.
-func renderRefBadges(refNames string) string {
+// Commit rows are a fixed grid:
+//
+//	<graph> <hash> <age> <subject…> <refs>
+//
+// Only the subject is bright. The hash and the age are reference data you
+// read once, refs answer "where am I", and the subject is what you scan
+// for — the old layout bolded every ref and left the message the dimmest
+// thing on the row, which is exactly backwards.
+const (
+	commitHashWidth = 7
+	commitAgeWidth  = 4
+	// commitMinSubject is the narrowest subject worth showing; below it
+	// the row drops its ref chips rather than shredding the message.
+	commitMinSubject = 16
+)
+
+// commitRow lays out one commit row, without the cursor affordance.
+func commitRow(c *models.Commit, tree string, width int) string {
+	hash := c.Hash
+	if len(hash) > commitHashWidth {
+		hash = hash[:commitHashWidth]
+	}
+
+	// A one-cell gutter keeps every row aligned and gives the cursor
+	// somewhere to land that is not part of the content.
+	const gutter = " "
+	graphW := lipgloss.Width(tree)
+	fixed := lipgloss.Width(gutter) + graphW + 1 + commitHashWidth + 1 + commitAgeWidth + 1
+
+	age := ""
+	if c.Timestamp.IsZero() {
+		fixed -= commitAgeWidth + 1 // nothing to say: reclaim the column
+	} else {
+		age = formatTimeCompact(c.Timestamp)
+	}
+
+	refs := refChips(c.RefNames)
+	refsW := 0
+	if refs != "" {
+		refsW = lipgloss.Width(refs)
+		if budget := (width - fixed) / 2; refsW > budget {
+			if budget < 6 {
+				refs, refsW = "", 0
+			} else {
+				refs = components.Truncate(refs, budget)
+				refsW = lipgloss.Width(refs)
+			}
+		}
+		if refs != "" {
+			refsW++ // the space in front of the chips
+		}
+	}
+
+	subjectW := width - fixed - refsW
+	if subjectW < commitMinSubject && refsW > 0 {
+		refs, subjectW = "", width-fixed
+	}
+	if subjectW < 1 {
+		subjectW = 1
+	}
+
+	var b strings.Builder
+	b.WriteString(gutter)
+	b.WriteString(tree)
+	b.WriteString(" ")
+	b.WriteString(styles.LogHashStyle.Render(hash))
+	b.WriteString(" ")
+	if age != "" {
+		b.WriteString(styles.MetaStyle.Render(padCells(age, commitAgeWidth)))
+		b.WriteString(" ")
+	}
+	b.WriteString(padCells(truncateStr(c.Message, subjectW), subjectW))
+	if refs != "" {
+		b.WriteString(" ")
+		b.WriteString(refs)
+	}
+	return b.String()
+}
+
+// padCells pads plain text with spaces to exactly width cells.
+func padCells(s string, width int) string {
+	w := lipgloss.Width(s)
+	if w >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-w)
+}
+
+// refChips renders a commit's decorations as one chip per ref, so a
+// branch and a tag are distinguishable at a glance: local branches take
+// the branch hue, tags take the tag hue, remotes stay quiet.
+func refChips(refNames string) string {
 	if refNames == "" {
 		return ""
 	}
-	var badges []string
+	g := glyphs.Current()
+	var chips []string
 	for _, part := range strings.Split(refNames, ", ") {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
 		}
-		// Skip HEAD pointer
+		// Skip the HEAD pointer itself.
 		if part == "HEAD" {
 			continue
 		}
-		// Take the right side after " -> " (branch that HEAD points to)
+		// Take the right side after " -> ": the branch HEAD points to.
 		if idx := strings.LastIndex(part, " -> "); idx >= 0 {
 			part = part[idx+4:]
 		}
 		if part == "" {
 			continue
 		}
-		// Style the badge
-		color := styles.Teal
-		if strings.HasPrefix(part, "origin/") {
-			color = styles.Subtext
-			part = part[len("origin/"):]
+		switch {
+		case strings.HasPrefix(part, "tag: "):
+			tag := strings.TrimPrefix(part, "tag: ")
+			chips = append(chips, components.StateChip(strings.TrimSpace(g.Tag+" "+tag), styles.Peach))
+		case strings.Contains(part, "/"):
+			// Remote-tracking ref: real information, but never the
+			// headline. Dim, and labelled with its remote.
+			chips = append(chips, components.StateChip(part, styles.Subtext))
+		default:
+			chips = append(chips, components.StateChip(part, styles.Teal))
 		}
-		badge := lipgloss.NewStyle().
-			Foreground(color).
-			Bold(true).
-			Render(part)
-		badges = append(badges, badge)
 	}
-	return strings.Join(badges, " ")
+	if len(chips) == 0 {
+		return ""
+	}
+	// Three chips are as much as a row can carry before the refs become
+	// louder than the commit itself.
+	const maxChips = 3
+	if len(chips) > maxChips {
+		extra := len(chips) - maxChips
+		chips = append(chips[:maxChips], styles.MetaStyle.Render(fmt.Sprintf("+%d", extra)))
+	}
+	return strings.Join(chips, " ")
 }
 
 func (m *LogModel) ensureCursorVisible() {

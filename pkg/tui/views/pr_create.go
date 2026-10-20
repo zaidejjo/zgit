@@ -279,7 +279,7 @@ func (m *PRCreateModel) renderConfirm() string {
 		b.WriteString("\n\n")
 	}
 	b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Render(" Merge Strategy: "))
-	b.WriteString(styles.ListItemActiveStyle.Render(m.Strategy.String()))
+	b.WriteString(styles.EmphasisStyle.Render(m.Strategy.String()))
 	b.WriteString("\n\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(styles.Subtext).Italic(true).Render(" Press Enter to create PR, Esc to cancel"))
 	return b.String()

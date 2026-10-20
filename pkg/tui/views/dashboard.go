@@ -110,7 +110,7 @@ func dashRow(e DashEntry, width int) string {
 	}
 	openTag := ""
 	if e.Current {
-		openTag = styles.ListItemActiveStyle.Render(" ‹open›")
+		openTag = styles.EmphasisStyle.Render(" ‹open›")
 	}
 
 	detail := e.Branch

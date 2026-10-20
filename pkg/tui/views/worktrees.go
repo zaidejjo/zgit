@@ -72,7 +72,7 @@ func worktreeRow(w *models.Worktree, width int) string {
 	}
 	name := w.Path
 	if w.IsMain {
-		name += styles.ListItemActiveStyle.Render(" ‹main›")
+		name += styles.EmphasisStyle.Render(" ‹main›")
 	}
 	detail := w.Branch
 	if detail == "" {

@@ -95,7 +95,7 @@ func (m *NotesModel) Selected() *models.Notification {
 func noteTypeMark(t string) string {
 	switch t {
 	case "PullRequest":
-		return styles.ListItemActiveStyle.Render("◈")
+		return styles.EmphasisStyle.Render("◈")
 	case "Issue":
 		return styles.StatusStagedStyle.Render("●")
 	case "CheckSuite":
@@ -156,7 +156,7 @@ func (m *NotesModel) View(width int) string {
 
 		dot := " "
 		if it.Unread {
-			dot = styles.ListItemActiveStyle.Render("●")
+			dot = styles.EmphasisStyle.Render("●")
 		}
 		reason := it.Reason
 		if reason != "" {
