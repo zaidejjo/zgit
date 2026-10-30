@@ -199,7 +199,7 @@ func TestWorktreeFiltered(t *testing.T) {
 	if got := m.Filtered(); len(got) != 1 || got[0].Branch != "feat/x" {
 		t.Fatalf("filtered = %+v", got)
 	}
-	if out := m.View(100); !strings.Contains(out, "Worktrees (1/2)") {
+	if out := m.View(100); !strings.Contains(out, "WORKTREES") || !strings.Contains(out, "1/2 · feat") {
 		t.Fatalf("title missing:\n%s", out)
 	}
 }

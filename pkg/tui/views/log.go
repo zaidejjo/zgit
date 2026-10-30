@@ -126,26 +126,15 @@ func commitRow(c *models.Commit, tree string, width int) string {
 		age = formatTimeCompact(c.Timestamp)
 	}
 
-	refs := refChips(c.RefNames)
+	refs := refChips(c.RefNames, refBudget(width-fixed))
 	refsW := 0
 	if refs != "" {
-		refsW = lipgloss.Width(refs)
-		if budget := (width - fixed) / 2; refsW > budget {
-			if budget < 6 {
-				refs, refsW = "", 0
-			} else {
-				refs = components.Truncate(refs, budget)
-				refsW = lipgloss.Width(refs)
-			}
-		}
-		if refs != "" {
-			refsW++ // the space in front of the chips
-		}
+		refsW = lipgloss.Width(refs) + 1 // the space in front of the chips
 	}
 
 	subjectW := width - fixed - refsW
 	if subjectW < commitMinSubject && refsW > 0 {
-		refs, subjectW = "", width-fixed
+		refs, refsW, subjectW = "", 0, width-fixed
 	}
 	if subjectW < 1 {
 		subjectW = 1
@@ -178,15 +167,34 @@ func padCells(s string, width int) string {
 	return s + strings.Repeat(" ", width-w)
 }
 
-// refChips renders a commit's decorations as one chip per ref, so a
-// branch and a tag are distinguishable at a glance: local branches take
-// the branch hue, tags take the tag hue, remotes stay quiet.
-func refChips(refNames string) string {
-	if refNames == "" {
+// refBudget is how many cells the ref column may take: at most half of
+// the space left after the fixed columns, so the subject always keeps the
+// other half.
+func refBudget(remaining int) int {
+	if remaining < 12 {
+		return 0
+	}
+	return remaining / 2
+}
+
+// refChips renders a commit's decorations as whole chips within budget,
+// so a branch and a tag are distinguishable at a glance and a chip is
+// never cut in half: a half-drawn chip looks like a rendering bug.
+func refChips(refNames string, budget int) string {
+	if refNames == "" || budget < 6 {
 		return ""
 	}
 	g := glyphs.Current()
+
+	// Per-chip cap: one long branch name must not eat the whole column.
+	cap := 26
+	if budget < 2*cap {
+		cap = budget - 2
+	}
+
 	var chips []string
+	used := 0
+	overflow := 0
 	for _, part := range strings.Split(refNames, ", ") {
 		part = strings.TrimSpace(part)
 		if part == "" {
@@ -203,29 +211,43 @@ func refChips(refNames string) string {
 		if part == "" {
 			continue
 		}
+
+		var chip string
 		switch {
-		case strings.HasPrefix(part, "tag: "):
-			tag := strings.TrimPrefix(part, "tag: ")
-			chips = append(chips, components.StateChip(strings.TrimSpace(g.Tag+" "+tag), styles.Peach))
+		case strings.HasPrefix(part, "tag:"):
+			tag := strings.TrimSpace(strings.TrimPrefix(part, "tag:"))
+			chip = components.StateChip(components.Truncate(g.Tag+" "+tag, cap), styles.Peach)
 		case strings.Contains(part, "/"):
-			// Remote-tracking ref: real information, but never the
-			// headline. Dim, and labelled with its remote.
-			chips = append(chips, components.StateChip(part, styles.Subtext))
+			// A remote-tracking ref: real information, never the headline.
+			chip = components.StateChip(components.Truncate(part, cap), styles.Subtext)
 		default:
-			chips = append(chips, components.StateChip(part, styles.Teal))
+			chip = components.StateChip(components.Truncate(part, cap), styles.Teal)
 		}
+
+		w := lipgloss.Width(chip)
+		if used+w > budget {
+			// Count the rest so the row can say "+3" instead of hiding it.
+			overflow++
+			continue
+		}
+		if len(chips) > 0 {
+			used++ // the space between chips
+		}
+		used += w
+		chips = append(chips, chip)
 	}
+
 	if len(chips) == 0 {
 		return ""
 	}
-	// Three chips are as much as a row can carry before the refs become
-	// louder than the commit itself.
-	const maxChips = 3
-	if len(chips) > maxChips {
-		extra := len(chips) - maxChips
-		chips = append(chips[:maxChips], styles.MetaStyle.Render(fmt.Sprintf("+%d", extra)))
+	out := strings.Join(chips, " ")
+	if overflow > 0 {
+		more := styles.MetaStyle.Render(fmt.Sprintf("+%d", overflow))
+		if used+1+lipgloss.Width(more) <= budget {
+			out += " " + more
+		}
 	}
-	return strings.Join(chips, " ")
+	return out
 }
 
 func (m *LogModel) ensureCursorVisible() {

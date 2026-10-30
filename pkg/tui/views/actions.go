@@ -100,6 +100,12 @@ func jobMark(j *models.Job) string {
 
 // View renders runs or, when drilled in, one run's jobs.
 func (m *ActionsModel) View(width int) string {
+	body := m.body(width)
+	return screenChrome("Actions", screenMeta(len(m.Filtered()), len(m.Items), m.Filter), body, width)
+}
+
+// body renders everything under the screen chrome.
+func (m *ActionsModel) body(width int) string {
 	if m.Error != "" {
 		return styles.ErrorStyle.Render("Error: " + m.Error)
 	}
@@ -115,12 +121,6 @@ func (m *ActionsModel) View(width int) string {
 	}
 
 	var b strings.Builder
-	title := fmt.Sprintf(" Actions (%d)", len(m.Items))
-	if strings.TrimSpace(m.Filter) != "" {
-		title = fmt.Sprintf(" Actions (%d/%d) filter: %s", len(m.Filtered()), len(m.Items), m.Filter)
-	}
-	b.WriteString(styles.SectionTitleStyle.Render(title))
-	b.WriteString("\n")
 	b.WriteString(m.FilterBar())
 	if len(m.Filtered()) == 0 && strings.TrimSpace(m.Filter) != "" {
 		return b.String() + styles.SubtitleStyle.Render("No runs match filter")

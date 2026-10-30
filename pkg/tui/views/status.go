@@ -167,9 +167,18 @@ func branchLine(s *models.Status, width int) string {
 
 	line := " " + strings.Join(parts, " ")
 	if lipgloss.Width(line) > width {
-		// Not even the chips fit: fall back to the branch alone, and
-		// truncate it rather than overrunning the pane.
-		line = " " + components.StateChip(components.Truncate(s.Branch, max(1, width-3)), styles.Teal)
+		// Not even the chips fit: keep the branch and its divergence,
+		// truncating the name rather than dropping the state.
+		track := trackingArrow(s.Ahead, s.Behind)
+		trackW := 0
+		if track != "" {
+			trackW = lipgloss.Width(track) + 5 // chip padding + space
+		}
+		name := components.Truncate(s.Branch, max(1, width-3-trackW))
+		line = " " + components.StateChip(name, styles.Teal)
+		if track != "" && lipgloss.Width(line)+1+lipgloss.Width(track)+2 <= width {
+			line += " " + components.StateChip(track, styles.Blue)
+		}
 	}
 	return components.Truncate(line, width)
 }
@@ -224,7 +233,7 @@ func fileRow(f models.FileStatus, code string, width int) string {
 		if max := (width - fixed) / 3; dirW > max {
 			dirW = max
 		}
-		dir = components.TruncateLeft(dir, dirW)
+		dir = truncateDirPath(dir, dirW)
 		dirW = lipgloss.Width(dir)
 		nameW = width - fixed - dirW - 1
 	}
@@ -245,6 +254,43 @@ func splitPath(path string) (name, dir string) {
 		return path[i+1:], path[:i+1]
 	}
 	return path, ""
+}
+
+// truncateDirPath shortens a directory to its identifying tail, cutting
+// at path boundaries so the result reads as a path ("…/api/v1/") rather
+// than as a word with the front chewed off ("…irectory/structure/").
+func truncateDirPath(dir string, width int) string {
+	if lipgloss.Width(dir) <= width {
+		return dir
+	}
+	if width < 5 {
+		return components.TruncateLeft(dir, width)
+	}
+	tail := ""
+	for _, seg := range reverseSegments(strings.Trim(dir, "/")) {
+		cand := seg + "/"
+		if tail != "" {
+			cand += tail
+		}
+		if lipgloss.Width("…/"+cand) > width {
+			break
+		}
+		tail = cand
+	}
+	if tail == "" {
+		return components.TruncateLeft(dir, width)
+	}
+	return "…/" + tail
+}
+
+// reverseSegments splits a slash path and yields the segments from the
+// last to the first.
+func reverseSegments(p string) []string {
+	segs := strings.Split(p, "/")
+	for i, j := 0, len(segs)-1; i < j; i, j = i+1, j-1 {
+		segs[i], segs[j] = segs[j], segs[i]
+	}
+	return segs
 }
 
 // statusCodeColor maps a porcelain status letter to its hue.

@@ -74,9 +74,9 @@ func (s StatusBar) View() string {
 
 	left := s.leftSegments(inner)
 
-	// Hints keep at most half the bar, so the repository state is never
+	// Hints keep at most 40% of the bar, so the repository state is never
 	// squeezed out by the legend.
-	hints := FitHints(s.Hints, inner/2)
+	hints := FitHints(s.Hints, inner*2/5)
 	hintsW := ansi.StringWidth(hints)
 
 	// Drop left segments from the tail until the hints fit beside them.

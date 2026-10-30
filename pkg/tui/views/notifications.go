@@ -6,6 +6,7 @@ import (
 
 	"github.com/zaidejjo/zgit/pkg/core/models"
 	"github.com/zaidejjo/zgit/pkg/tui/components"
+	"github.com/zaidejjo/zgit/pkg/tui/glyphs"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
@@ -93,24 +94,36 @@ func (m *NotesModel) Selected() *models.Notification {
 }
 
 func noteTypeMark(t string) string {
+	g := glyphs.Current()
 	switch t {
 	case "PullRequest":
-		return styles.EmphasisStyle.Render("◈")
+		return styles.EmphasisStyle.Render(g.Merge)
 	case "Issue":
-		return styles.StatusStagedStyle.Render("●")
+		return styles.StatusStagedStyle.Render(g.Info)
 	case "CheckSuite":
-		return styles.StatusUnstagedStyle.Render("◉")
+		return styles.StatusUnstagedStyle.Render(g.Check)
 	case "Commit":
-		return styles.HeaderBranchStyle.Render("⬢")
+		return styles.HeaderBranchStyle.Render(g.Commit)
 	case "Release":
-		return styles.StatusUnstagedStyle.Render("✦")
+		return styles.StatusUnstagedStyle.Render(g.Tag)
 	default:
-		return styles.SubtitleStyle.Render("○")
+		return styles.SubtitleStyle.Render(g.Dot)
 	}
 }
 
 // View renders the inbox, unread first.
 func (m *NotesModel) View(width int) string {
+	body := m.body(width)
+	mode := "Unread"
+	if m.ShowAll {
+		mode = "All"
+	}
+	meta := mode + " " + screenMeta(len(m.Filtered()), len(m.Items), m.Filter)
+	return screenChrome("Notifications", meta, body, width)
+}
+
+// body renders everything under the screen chrome.
+func (m *NotesModel) body(width int) string {
 	if m.Error != "" {
 		return styles.ErrorStyle.Render("Error: " + m.Error)
 	}
@@ -125,16 +138,6 @@ func (m *NotesModel) View(width int) string {
 	}
 
 	var b strings.Builder
-	mode := "Unread"
-	if m.ShowAll {
-		mode = "All"
-	}
-	title := fmt.Sprintf(" Notifications [%s] (%d)", mode, len(m.Items))
-	if strings.TrimSpace(m.Filter) != "" {
-		title = fmt.Sprintf(" Notifications (%d/%d) filter: %s", len(m.Filtered()), len(m.Items), m.Filter)
-	}
-	b.WriteString(styles.SectionTitleStyle.Render(title))
-	b.WriteString("\n")
 	b.WriteString(m.FilterBar())
 
 	m.EnsureVisible()
@@ -156,7 +159,7 @@ func (m *NotesModel) View(width int) string {
 
 		dot := " "
 		if it.Unread {
-			dot = styles.EmphasisStyle.Render("●")
+			dot = styles.EmphasisStyle.Render(glyphs.Current().Dot)
 		}
 		reason := it.Reason
 		if reason != "" {

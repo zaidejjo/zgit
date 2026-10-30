@@ -44,7 +44,6 @@ func RenderTreeGraph(commits []*models.Commit) []string {
 	colOfHash := make(map[string]int)
 
 	rows := make([]string, len(commits))
-	var lbs []branchLabel
 
 	for i, c := range commits {
 		// Step 1: find which column this commit occupies
@@ -126,22 +125,9 @@ func RenderTreeGraph(commits []*models.Commit) []string {
 			colOfHash = rebuildColMap(cols)
 		}
 
-		// Collect branch labels
-		if c.RefNames != "" {
-			lbs = append(lbs, branchLabel{
-				text:  c.RefNames,
-				color: treeColors[colIdx%len(treeColors)],
-			})
-		}
-	}
-
-	// Merge labels into rows as annotations
-	lblIdx := 0
-	for i, c := range commits {
-		if c.RefNames != "" && lblIdx < len(lbs) {
-			rows[i] += " " + branchLabelStyle(lbs[lblIdx])
-			lblIdx++
-		}
+		// Refs are drawn as chips by the log row, not appended to the
+		// graph: embedding them here made the graph consume the whole
+		// row, so the hash, age and subject were pushed out of view.
 	}
 
 	return rows
@@ -167,16 +153,4 @@ func rebuildColMap(cols []treeCol) map[string]int {
 		m[col.hash] = i
 	}
 	return m
-}
-
-type branchLabel struct {
-	text  string
-	color lipgloss.Color
-}
-
-func branchLabelStyle(l branchLabel) string {
-	return lipgloss.NewStyle().
-		Foreground(l.color).
-		Bold(true).
-		Render(l.text)
 }

@@ -45,6 +45,12 @@ func (m *PRListModel) SelectedPR() *models.PullRequestSummary {
 
 // View renders the PR list with state badges and branch info.
 func (m *PRListModel) View(width int) string {
+	body := m.body(width)
+	return screenChrome("Pull Requests", screenMeta(len(m.Filtered()), len(m.Items), m.Filter), body, width)
+}
+
+// body renders everything under the screen chrome.
+func (m *PRListModel) body(width int) string {
 	if m.Error != "" {
 		return styles.ErrorStyle.Render("Error: " + m.Error)
 	}
@@ -58,13 +64,6 @@ func (m *PRListModel) View(width int) string {
 	}
 
 	var b strings.Builder
-
-	title := fmt.Sprintf(" Pull Requests (%d)", len(m.Items))
-	if strings.TrimSpace(m.Filter) != "" {
-		title = fmt.Sprintf(" Pull Requests (%d/%d) filter: %s", len(m.Filtered()), len(m.Items), m.Filter)
-	}
-	b.WriteString(styles.SectionTitleStyle.Render(title))
-	b.WriteString("\n")
 	b.WriteString(m.FilterBar())
 	filtered := m.Filtered()
 	if len(filtered) == 0 && strings.TrimSpace(m.Filter) != "" {

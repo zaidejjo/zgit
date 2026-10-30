@@ -497,52 +497,25 @@ func (m *Model) View() string {
 	return fullLayout
 }
 
-// renderHeader builds the Dale-style top tab bar:
-// [zgit] Status Log Branches │ 3 PRs  4 Issues │  @user  main  vX.Y.Z
-// The active view (focused panel or fullscreen) is highlighted.
-// tabCount reports the badge count for a screen tab, or 0 when the screen
-// has no data yet.
-func (m *Model) tabCount(id shell.ScreenID) int {
-	switch id {
-	case shell.PRs:
-		return len(m.prs.Items)
-	case shell.Issues:
-		return len(m.issues.Items)
-	case shell.Dashboard:
-		if m.dash.Loaded {
-			return len(m.dash.Items)
-		}
-	case shell.Actions:
-		return len(m.actions.Items)
-	case shell.Worktrees:
-		if m.worktrees.Loaded {
-			return len(m.worktrees.Items)
-		}
-	case shell.Stash:
-		if m.stash.Loaded {
-			return len(m.stash.Items)
-		}
-	case shell.Notes:
-		if m.notes.Loaded {
-			return m.notes.UnreadCount()
-		}
-	}
-	return 0
-}
+// renderHeader builds the top tab bar:
+// [zgit] Status Log Branches │ 3 PRs 4 Issues │ @user vX.Y.Z
 
-// renderHeader builds the Dale-style top tab bar:
-// [zgit] Status Log Branches │ 3 PRs 4 Issues │ @user main vX.Y.Z
+// renderHeader builds the top tab bar:
+// [zgit] Status Log Branches │ 3 PRs 4 Issues │ @user vX.Y.Z
 //
 // The strip is assembled by density, not by hope: on a narrow terminal
-// labels shorten, then counts go, then the right-hand meta, and finally
-// the tab padding — so the header always fits the terminal instead of
-// wrapping the whole layout.
+// the right-hand meta goes first, then labels shorten, then the hotkeys,
+// and finally the tab padding — so the header always fits the terminal
+// instead of wrapping the whole layout.
+//
+// Tabs carry no count badges: a number next to a one-digit hotkey reads
+// as a second hotkey ("PRs 4"), and every count is already stated by the
+// screen it belongs to.
 type headerDensity struct {
-	short  bool // abbreviated labels
-	counts bool // count badges after the label
-	meta   bool // @user / version on the right
-	tight  bool // padding-free tabs (very narrow terminals)
-	keys   bool // hotkeys in front of the labels
+	short bool // abbreviated labels
+	meta  bool // @user / version on the right
+	tight bool // padding-free tabs (very narrow terminals)
+	keys  bool // hotkeys in front of the labels
 }
 
 func (m *Model) renderHeader() string {
@@ -556,7 +529,7 @@ func (m *Model) renderHeader() string {
 	build := func(d headerDensity) (string, string) {
 		// A tab is a hotkey and a label. The key is dim: it is reference
 		// material you learn once, while the label is what you read.
-		tab := func(key, label string, count int, active bool) string {
+		tab := func(key, label string, active bool) string {
 			keyStyle, labelStyle := styles.MetaStyle, styles.HeaderTabStyle
 			if active {
 				keyStyle, labelStyle = lipgloss.NewStyle().Foreground(styles.Base), styles.HeaderTabActiveStyle
@@ -567,27 +540,19 @@ func (m *Model) renderHeader() string {
 			}
 			out := st.Render(label)
 			if key != "" {
-				padded := d.padKey(key, keyStyle)
-				out = padded + out
-			}
-			if count > 0 && d.counts {
-				badge := styles.HeaderTabBadgeStyle
-				if active {
-					badge = lipgloss.NewStyle().Foreground(styles.Base)
-				}
-				out += " " + badge.Render(fmt.Sprintf("%d", count))
+				out = d.padKey(key, keyStyle) + out
 			}
 			return out
 		}
 
 		panel := func(label, short string, active bool) string {
 			if d.short {
-				return tab("", short, 0, active)
+				return tab("", short, active)
 			}
-			return tab("", label, 0, active)
+			return tab("", label, active)
 		}
 
-		logo := styles.HeaderLogoStyle.Render(" zgit ")
+		logo := styles.HeaderLogoStyle.PaddingLeft(0).Render("zgit")
 		if d.tight {
 			logo = styles.HeaderLogoStyle.Padding(0).Render("zgit")
 		}
@@ -612,7 +577,7 @@ func (m *Model) renderHeader() string {
 			if d.short {
 				label = shortLabel(t.Label)
 			}
-			b.WriteString(tab(key, label, m.tabCount(t.ID), m.fullScreenView == t.ID))
+			b.WriteString(tab(key, label, m.fullScreenView == t.ID))
 		}
 		left := b.String()
 
@@ -629,11 +594,13 @@ func (m *Model) renderHeader() string {
 	}
 
 	// Densities in order of decreasing detail; the first that fits wins.
+	// Hotkeys outrank the meta on the right: they are how a keyboard
+	// tool is discovered, while the meta repeats itself on every screen.
 	densities := []headerDensity{
-		{counts: true, meta: true, keys: true},
-		{counts: true, meta: true},
-		{meta: true},
-		{short: true, counts: true, meta: true},
+		{meta: true, keys: true},
+		{keys: true},
+		{short: true, meta: true, keys: true},
+		{short: true, keys: true},
 		{short: true, meta: true},
 		{short: true},
 		{short: true, tight: true},
@@ -2880,7 +2847,7 @@ func Run(gitExec *gitpkg.NativeExec) error {
 // for list scrolling.
 func RunWithMouse(gitExec *gitpkg.NativeExec, mouse bool) error {
 	m := NewModel(gitExec)
-	m.applyTheme()
+	m.applyAppearance()
 
 	opts := []tea.ProgramOption{tea.WithAltScreen()}
 	if mouse {
@@ -2892,6 +2859,57 @@ func RunWithMouse(gitExec *gitpkg.NativeExec, mouse bool) error {
 		return err
 	}
 	return nil
+}
+
+// applyAppearance resolves everything that is a property of the terminal
+// rather than of the repository: the palette and the symbol set.
+func (m *Model) applyAppearance() {
+	m.applyTheme()
+	m.applyGlyphs()
+}
+
+// applyGlyphs selects the symbol set from config, with the environment as
+// the override of last resort. Auto resolves conservatively (see
+// glyphs.Detect): a missing icon is a smaller failure than a box drawn in
+// the middle of the UI.
+func (m *Model) applyGlyphs() {
+	want := ""
+	if cfg, err := config.New(); err == nil {
+		// tui.glyphs is the TUI's own key, next to tui.theme; the
+		// appearance preference is accepted as a fallback so both files
+		// people already have work.
+		want = cfg.GetString("tui.glyphs")
+		if want == "" {
+			want = cfg.GetUserPreferences().Appearance.Glyphs
+		}
+	}
+	if mode, ok := glyphs.Parse(want); ok {
+		glyphs.Use(mode)
+		return
+	}
+	glyphs.Use(glyphs.Auto)
+}
+
+// cycleGlyphs walks nerd → unicode → ascii and back, persisting the
+// choice: a terminal that renders boxes is one palette command away from
+// a readable UI, without editing a config file by hand.
+func (m *Model) cycleGlyphs() tea.Cmd {
+	var next glyphs.Mode
+	switch glyphs.Current().Mode {
+	case glyphs.Nerd:
+		next = glyphs.Unicode
+	case glyphs.Unicode:
+		next = glyphs.ASCII
+	default:
+		next = glyphs.Nerd
+	}
+	glyphs.Use(next)
+
+	if cfg, err := config.New(); err == nil {
+		cfg.Set("tui.glyphs", string(next))
+		_ = cfg.Save()
+	}
+	return m.pushToast("Glyphs: "+string(next), components.ToneInfo)
 }
 
 // applyTheme selects light/dark from config (tui.theme) or terminal

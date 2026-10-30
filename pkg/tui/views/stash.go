@@ -42,6 +42,12 @@ func (m *StashModel) UpdateStash(items []*models.Stash) {
 
 // View renders the stash list.
 func (m *StashModel) View(width int) string {
+	body := m.body(width)
+	return screenChrome("Stash", screenMeta(len(m.Filtered()), len(m.Items), m.Filter), body, width)
+}
+
+// body renders everything under the screen chrome.
+func (m *StashModel) body(width int) string {
 	if m.Error != "" {
 		return styles.ErrorStyle.Render("Error: " + m.Error)
 	}
@@ -53,12 +59,6 @@ func (m *StashModel) View(width int) string {
 	}
 
 	var b strings.Builder
-	title := fmt.Sprintf(" Stash (%d)", len(m.Items))
-	if strings.TrimSpace(m.Filter) != "" {
-		title = fmt.Sprintf(" Stash (%d/%d) filter: %s", len(m.Filtered()), len(m.Items), m.Filter)
-	}
-	b.WriteString(styles.SectionTitleStyle.Render(title))
-	b.WriteString("\n")
 	b.WriteString(m.FilterBar())
 	if len(m.Filtered()) == 0 && strings.TrimSpace(m.Filter) != "" {
 		return b.String() + styles.SubtitleStyle.Render("No stashes match filter")
