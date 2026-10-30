@@ -202,19 +202,17 @@ func TestViewNeverWrapsWithSidebar(t *testing.T) {
 	}
 }
 
-// TestPanelOccupiesExactWidth pins the container contract: a panel of
-// width W renders exactly W columns (border included). Off-by-two here is
-// what made every layout two cells too wide.
-func TestPanelOccupiesExactWidth(t *testing.T) {
-	for _, width := range []int{12, 30, 80, 120} {
-		// Content deliberately too wide for the panel.
-		content := strings.Repeat("x", 400) + "\n" + strings.Repeat("日本語", 50)
-		p := components.NewPanel("Log", width, true)
-		p.Height = 8
-		p.Content = content
-		for i, line := range strings.Split(p.View(), "\n") {
+// TestPaneLayoutOccupiesExactWidth pins the container contract at the
+// layout level: the panel screen's panes together occupy exactly the
+// terminal width, whatever the width.
+func TestPaneLayoutOccupiesExactWidth(t *testing.T) {
+	for _, width := range []int{80, 100, 120, 160} {
+		m := frameTestModel(t, width, 40)
+		m.calcLayout()
+		raw := m.renderContent()
+		for i, line := range strings.Split(raw, "\n") {
 			if w := lipgloss.Width(line); w != width {
-				t.Fatalf("panel width %d: line %d is %d cells: %q", width, i, w, line)
+				t.Fatalf("width %d: content line %d is %d cells: %q", width, i, w, line)
 			}
 		}
 	}

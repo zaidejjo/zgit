@@ -101,7 +101,7 @@ func TestZListSelectAndRows(t *testing.T) {
 	if rows != 3 {
 		t.Fatalf("windowed rows = %d, want 3", rows)
 	}
-	if !strings.Contains(out, "❯dev") {
+	if !strings.Contains(out, cursorGlyph()+"dev") {
 		t.Fatalf("cursor row missing:\n%s", out)
 	}
 }
@@ -156,20 +156,25 @@ func TestTruncateWidth(t *testing.T) {
 }
 
 func TestCursorLine(t *testing.T) {
+	mark := cursorGlyph()
 	styled := "\x1b[38;2;166;227;161m◆\x1b[0m 3fec75a msg"
 	got := CursorLine(styled)
-	if plain := stripANSI(got); plain != "❯ 3fec75a msg" {
+	if plain := stripANSI(got); plain != mark+" 3fec75a msg" {
 		t.Fatalf("plain = %q", plain)
 	}
 	// Styling is preserved (that is the point of the ANSI-aware swap).
 	if !strings.Contains(got, "\x1b[38;2;166;227;161m") {
 		t.Fatalf("color dropped: %q", got)
 	}
-	if CursorLine("") != "❯" || CursorLine("x") != "❯" {
+	if stripANSI(CursorLine("")) != mark || stripANSI(CursorLine("x")) != mark {
 		t.Fatalf("short lines need a bare cursor")
 	}
-	if plain := stripANSI(CursorLine("◆ abc")); plain != "❯ abc" {
+	if plain := stripANSI(CursorLine("◆ abc")); plain != mark+" abc" {
 		t.Fatalf("multibyte = %q", plain)
+	}
+	// The cursor must cost exactly one cell, whatever the glyph set.
+	if w := lipgloss.Width(CursorLine("◆ abc")); w != lipgloss.Width("◆ abc") {
+		t.Fatalf("cursor changed the row width: %d != %d", w, lipgloss.Width("◆ abc"))
 	}
 }
 
@@ -318,13 +323,13 @@ func TestCursorLineKeepsLeadingEscapes(t *testing.T) {
 		if strings.HasPrefix(line, esc) && !strings.Contains(got, esc) {
 			t.Fatalf("CursorLine(%q) dropped styling: %q", line, got)
 		}
-		if plain := stripANSI(got); !strings.HasPrefix(plain, "❯") {
+		if plain := stripANSI(got); !strings.HasPrefix(plain, cursorGlyph()) {
 			t.Fatalf("CursorLine(%q) = %q, want cursor first", line, plain)
 		}
 	}
 	// A one-cell line is *entirely* the cursor, so the styling it carried
 	// is gone with the replaced text — the cursor lands in the row style.
-	if plain := stripANSI(CursorLine(esc + "x")); plain != "❯" {
+	if plain := stripANSI(CursorLine(esc + "x")); plain != cursorGlyph() {
 		t.Fatalf("one-cell line = %q, want a bare cursor", plain)
 	}
 }

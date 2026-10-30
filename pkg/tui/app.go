@@ -20,6 +20,7 @@ import (
 	"github.com/zaidejjo/zgit/pkg/core/github"
 	"github.com/zaidejjo/zgit/pkg/core/models"
 	"github.com/zaidejjo/zgit/pkg/tui/components"
+	"github.com/zaidejjo/zgit/pkg/tui/glyphs"
 	"github.com/zaidejjo/zgit/pkg/tui/shell"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 	"github.com/zaidejjo/zgit/pkg/tui/views"
@@ -313,17 +314,17 @@ func (m *Model) calcLayout() {
 		m.aiData.Sidebar.Height = m.contentHeight
 	}
 
-	// Panel heights for right side (log top, branches bottom)
-	// Each panel loses 2 for border + 1 for title = 3 lines of overhead
+	// Panel heights for right side (log top, branches bottom).
+	// A pane spends 2 rows on chrome: the title row and its rule.
 	logPanelH := int(float64(m.contentHeight)*0.55 + 0.5)
 	branchPanelH := m.contentHeight - logPanelH
 
-	// Set view scroll heights (inner height minus title line)
-	m.log.Height = logPanelH - 3
+	// Set view scroll heights (inner height minus pane chrome).
+	m.log.Height = logPanelH - 2
 	if m.log.Height < 1 {
 		m.log.Height = 1
 	}
-	m.branches.Height = branchPanelH - 3
+	m.branches.Height = branchPanelH - 2
 	if m.branches.Height < 1 {
 		m.branches.Height = 1
 	}
@@ -496,51 +497,25 @@ func (m *Model) View() string {
 	return fullLayout
 }
 
-// renderHeader builds the Dale-style top tab bar:
-// [zgit] Status Log Branches │ 3 PRs  4 Issues │  @user  main  vX.Y.Z
-// The active view (focused panel or fullscreen) is highlighted.
-// tabCount reports the badge count for a screen tab, or 0 when the screen
-// has no data yet.
-func (m *Model) tabCount(id shell.ScreenID) int {
-	switch id {
-	case shell.PRs:
-		return len(m.prs.Items)
-	case shell.Issues:
-		return len(m.issues.Items)
-	case shell.Dashboard:
-		if m.dash.Loaded {
-			return len(m.dash.Items)
-		}
-	case shell.Actions:
-		return len(m.actions.Items)
-	case shell.Worktrees:
-		if m.worktrees.Loaded {
-			return len(m.worktrees.Items)
-		}
-	case shell.Stash:
-		if m.stash.Loaded {
-			return len(m.stash.Items)
-		}
-	case shell.Notes:
-		if m.notes.Loaded {
-			return m.notes.UnreadCount()
-		}
-	}
-	return 0
-}
+// renderHeader builds the top tab bar:
+// [zgit] Status Log Branches │ 3 PRs 4 Issues │ @user vX.Y.Z
 
-// renderHeader builds the Dale-style top tab bar:
-// [zgit] Status Log Branches │ 3 PRs 4 Issues │ @user main vX.Y.Z
+// renderHeader builds the top tab bar:
+// [zgit] Status Log Branches │ 3 PRs 4 Issues │ @user vX.Y.Z
 //
 // The strip is assembled by density, not by hope: on a narrow terminal
-// labels shorten, then counts go, then the right-hand meta, and finally
-// the tab padding — so the header always fits the terminal instead of
-// wrapping the whole layout.
+// the right-hand meta goes first, then labels shorten, then the hotkeys,
+// and finally the tab padding — so the header always fits the terminal
+// instead of wrapping the whole layout.
+//
+// Tabs carry no count badges: a number next to a one-digit hotkey reads
+// as a second hotkey ("PRs 4"), and every count is already stated by the
+// screen it belongs to.
 type headerDensity struct {
-	short  bool // abbreviated labels
-	counts bool // "PRs (3)" badges
-	meta   bool // user / branch / version on the right
-	tight  bool // padding-free tabs (very narrow terminals)
+	short bool // abbreviated labels
+	meta  bool // @user / version on the right
+	tight bool // padding-free tabs (very narrow terminals)
+	keys  bool // hotkeys in front of the labels
 }
 
 func (m *Model) renderHeader() string {
@@ -549,75 +524,87 @@ func (m *Model) renderHeader() string {
 		width = 120
 	}
 
-	branch := m.currentBranch()
+	g := glyphs.Current()
+
 	build := func(d headerDensity) (string, string) {
-		tab := func(label string, active bool) string {
-			st := styles.InactiveTabStyle
+		// A tab is a hotkey and a label. The key is dim: it is reference
+		// material you learn once, while the label is what you read.
+		tab := func(key, label string, active bool) string {
+			keyStyle, labelStyle := styles.MetaStyle, styles.HeaderTabStyle
 			if active {
-				st = styles.ActiveTabStyle
+				keyStyle, labelStyle = lipgloss.NewStyle().Foreground(styles.Base), styles.HeaderTabActiveStyle
 			}
+			st := labelStyle
 			if d.tight {
 				st = st.Padding(0)
 			}
-			return st.Render(label)
-		}
-		panel := func(long, short string, active bool) string {
-			if d.short {
-				return tab(short, active)
+			out := st.Render(label)
+			if key != "" {
+				out = d.padKey(key, keyStyle) + out
 			}
-			return tab(long, active)
+			return out
 		}
-		panelActive := m.fullScreenView == shell.Panels
 
-		logo := styles.HeaderLogoStyle.Render(" zgit ")
+		panel := func(label, short string, active bool) string {
+			if d.short {
+				return tab("", short, active)
+			}
+			return tab("", label, active)
+		}
+
+		logo := styles.HeaderLogoStyle.PaddingLeft(0).Render("zgit")
 		if d.tight {
 			logo = styles.HeaderLogoStyle.Padding(0).Render("zgit")
 		}
 
-		tabs := []string{logo}
-		tabs = append(tabs,
-			panel("Status", "S", panelActive && m.focusedPanel == PanelStatus),
-			panel("Log", "L", panelActive && m.focusedPanel == PanelLog),
-			panel("Branches", "B", panelActive && m.focusedPanel == PanelBranch),
-		)
+		// Two groups: the unfiltered panels you always have, then the
+		// screens you switch to. The rule between them is the only
+		// separator in the strip.
+		panelActive := m.fullScreenView == shell.Panels
+		var b strings.Builder
+		b.WriteString(logo)
+		b.WriteString(" ")
+		b.WriteString(panel("Status", "St", panelActive && m.focusedPanel == PanelStatus))
+		b.WriteString(panel("Log", "Lo", panelActive && m.focusedPanel == PanelLog))
+		b.WriteString(panel("Branches", "Br", panelActive && m.focusedPanel == PanelBranch))
+		b.WriteString(" " + styles.HeaderRuleStyle.Render(g.VRule) + " ")
+
 		for _, t := range shell.Tabs {
-			label := t.Full()
+			key, label := "", t.Label
+			if d.keys && !d.tight {
+				key = t.Key
+			}
 			if d.short {
-				label = t.Short()
+				label = shortLabel(t.Label)
 			}
-			if n := m.tabCount(t.ID); n > 0 && d.counts {
-				label = fmt.Sprintf("%s (%d)", label, n)
-			}
-			tabs = append(tabs, tab(label, m.fullScreenView == t.ID))
+			b.WriteString(tab(key, label, m.fullScreenView == t.ID))
 		}
-		left := lipgloss.JoinHorizontal(lipgloss.Center, tabs...)
+		left := b.String()
+
 		if !d.meta {
 			return left, ""
 		}
-
 		var meta []string
 		if m.ghUser != "" {
-			meta = append(meta, styles.HeaderMetaStyle.Render("@"+m.ghUser))
+			meta = append(meta, styles.MetaStyle.Render("@"+m.ghUser))
 		}
-		if branch != "" {
-			shown := branch
-			if d.short {
-				shown = components.Truncate(branch, 18)
-			}
-			meta = append(meta, styles.HeaderBranchStyle.Render(shown))
-		}
-		meta = append(meta, styles.HeaderMetaStyle.Render("v"+AppVersion))
-		right := lipgloss.JoinHorizontal(lipgloss.Center, meta...)
+		meta = append(meta, styles.FaintStyle.Render(versionLabel()))
+		right := strings.Join(meta, "  ")
 		return left, right
 	}
 
 	// Densities in order of decreasing detail; the first that fits wins.
+	// Hotkeys outrank the meta on the right: they are how a keyboard
+	// tool is discovered, while the meta repeats itself on every screen.
 	densities := []headerDensity{
-		{counts: true, meta: true},
-		{short: true, counts: true, meta: true},
+		{meta: true, keys: true},
+		{keys: true},
+		{short: true, meta: true, keys: true},
+		{short: true, keys: true},
 		{short: true, meta: true},
 		{short: true},
 		{short: true, tight: true},
+		{tight: true},
 	}
 	left, right := "", ""
 	for _, d := range densities {
@@ -628,14 +615,48 @@ func (m *Model) renderHeader() string {
 		}
 	}
 
-	// Pad the gap so meta hugs the right edge. When even the leanest
-	// header is too wide (absurdly narrow terminal), the frame guard in
-	// View() clips it rather than letting the terminal wrap.
+	// Pad the gap so meta hugs the right edge. A negative gap means even
+	// the leanest header is too wide (absurdly narrow terminal): the
+	// frame guard in View() clips it rather than letting the terminal
+	// wrap.
 	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 1 {
-		gap = 1
+	if gap < 0 {
+		gap = 0
 	}
 	return left + strings.Repeat(" ", gap) + right
+}
+
+// padKey renders a tab hotkey as dim reference material.
+func (d headerDensity) padKey(key string, keyStyle lipgloss.Style) string {
+	if d.tight {
+		return keyStyle.Render(key)
+	}
+	return keyStyle.Render(key + " ")
+}
+
+// shortLabel abbreviates a screen name to its first three runes, so the
+// strip degrades to something predictable instead of jumping from
+// "Worktrees" to "W".
+func shortLabel(label string) string {
+	r := []rune(label)
+	if len(r) <= 3 {
+		return label
+	}
+	return string(r[:3])
+}
+
+// versionLabel formats the build version for the header: "dev" stays
+// "dev" (the old code prefixed a bare "v" and printed "vdev"), anything
+// looking like a version gets its "v".
+func versionLabel() string {
+	v := strings.TrimSpace(AppVersion)
+	if v == "" {
+		return "dev"
+	}
+	if v[0] >= '0' && v[0] <= '9' {
+		return "v" + v
+	}
+	return v
 }
 
 // renderContent returns either the panel layout or a full-screen view.
@@ -675,43 +696,37 @@ func (m *Model) renderContent() string {
 
 // renderPanels builds the horizontal split layout.
 func (m *Model) renderPanels() string {
-	leftInnerW := m.leftWidth - 2 // minus panel border
-	rightInnerW := m.rightWidth - 2
-
 	// Compute panel heights
 	logPanelH := int(float64(m.contentHeight)*0.55 + 0.5)
 	branchPanelH := m.contentHeight - logPanelH
-	// Status panel fills full height of left column
-	statusPanelH := m.contentHeight
 
-	// Render view content into inner widths
-	statusContent := m.status.View(leftInnerW)
-	logContent := m.log.View(rightInnerW)
-	branchContent := m.branches.View(rightInnerW)
+	// Render view content at the pane's full width: a pane has no
+	// border, so the content owns every column of it.
+	statusPane := components.NewPane("Status", m.leftWidth, m.focusedPanel == PanelStatus)
+	statusPane.Height = m.contentHeight
+	statusPane.Meta = m.statusMeta()
+	statusPane.Body = m.status.View(m.leftWidth)
 
-	// Build panels with fixed heights
-	statusPanel := components.NewPanel("Status", m.leftWidth, m.focusedPanel == PanelStatus)
-	statusPanel.Height = statusPanelH
-	statusPanel.Content = statusContent
+	logPane := components.NewPane("Log", m.rightWidth, m.focusedPanel == PanelLog)
+	logPane.Height = logPanelH
+	logPane.Meta = m.logMeta()
+	logPane.Body = m.log.View(m.rightWidth)
 
-	logPanel := components.NewPanel("Log", m.rightWidth, m.focusedPanel == PanelLog)
-	logPanel.Height = logPanelH
-	logPanel.Content = logContent
-
-	branchPanel := components.NewPanel("Branches", m.rightWidth, m.focusedPanel == PanelBranch)
-	branchPanel.Height = branchPanelH
-	branchPanel.Content = branchContent
+	branchPane := components.NewPane("Branches", m.rightWidth, m.focusedPanel == PanelBranch)
+	branchPane.Height = branchPanelH
+	branchPane.Meta = m.branchMeta()
+	branchPane.Body = m.branches.View(m.rightWidth)
 
 	// Assemble: left column full-height, right column split vertically
 	rightCol := lipgloss.JoinVertical(
 		lipgloss.Top,
-		logPanel.View(),
-		branchPanel.View(),
+		logPane.View(),
+		branchPane.View(),
 	)
 
 	mainContent := lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		statusPanel.View(),
+		statusPane.View(),
 		rightCol,
 	)
 
@@ -741,7 +756,70 @@ func (m *Model) renderPanels() string {
 	return mainContent
 }
 
-// renderStatusBar builds the bottom bar.
+// statusMeta is the Status pane's right-hand detail: what the working
+// tree holds, at a glance.
+func (m *Model) statusMeta() string {
+	st := m.status.Status
+	if st == nil {
+		return ""
+	}
+	total := st.StagedCount + st.UnstagedCount + len(st.UntrackedFiles())
+	switch {
+	case total == 0 && st.Ahead == 0 && st.Behind == 0:
+		return "clean"
+	case total == 0:
+		return "clean " + trackingArrow(st.Ahead, st.Behind)
+	case total == 1:
+		return "1 change"
+	default:
+		return fmt.Sprintf("%d changes", total)
+	}
+}
+
+// logMeta is the Log pane's right-hand detail.
+func (m *Model) logMeta() string {
+	n := len(m.log.Commits)
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return "1 commit"
+	default:
+		return fmt.Sprintf("%d commits", n)
+	}
+}
+
+// branchMeta is the Branches pane's right-hand detail.
+func (m *Model) branchMeta() string {
+	n := len(m.branches.Items)
+	if n == 0 {
+		return ""
+	}
+	if m.branches.Filter != "" {
+		return fmt.Sprintf("%d/%d branches", len(m.branches.Filtered()), n)
+	}
+	if n == 1 {
+		return "1 branch"
+	}
+	return fmt.Sprintf("%d branches", n)
+}
+
+// trackingArrow renders "↑2 ↓1" for a branch's divergence, or "".
+func trackingArrow(ahead, behind int) string {
+	g := glyphs.Current()
+	switch {
+	case ahead > 0 && behind > 0:
+		return fmt.Sprintf("%s%d %s%d", g.Up, ahead, g.Down, behind)
+	case ahead > 0:
+		return fmt.Sprintf("%s%d", g.Up, ahead)
+	case behind > 0:
+		return fmt.Sprintf("%s%d", g.Down, behind)
+	}
+	return ""
+}
+
+// renderStatusBar builds the bottom bar: repository state plus the key
+// legend.
 func (m *Model) renderStatusBar() string {
 	if !m.ready {
 		return ""
@@ -2769,7 +2847,7 @@ func Run(gitExec *gitpkg.NativeExec) error {
 // for list scrolling.
 func RunWithMouse(gitExec *gitpkg.NativeExec, mouse bool) error {
 	m := NewModel(gitExec)
-	m.applyTheme()
+	m.applyAppearance()
 
 	opts := []tea.ProgramOption{tea.WithAltScreen()}
 	if mouse {
@@ -2781,6 +2859,57 @@ func RunWithMouse(gitExec *gitpkg.NativeExec, mouse bool) error {
 		return err
 	}
 	return nil
+}
+
+// applyAppearance resolves everything that is a property of the terminal
+// rather than of the repository: the palette and the symbol set.
+func (m *Model) applyAppearance() {
+	m.applyTheme()
+	m.applyGlyphs()
+}
+
+// applyGlyphs selects the symbol set from config, with the environment as
+// the override of last resort. Auto resolves conservatively (see
+// glyphs.Detect): a missing icon is a smaller failure than a box drawn in
+// the middle of the UI.
+func (m *Model) applyGlyphs() {
+	want := ""
+	if cfg, err := config.New(); err == nil {
+		// tui.glyphs is the TUI's own key, next to tui.theme; the
+		// appearance preference is accepted as a fallback so both files
+		// people already have work.
+		want = cfg.GetString("tui.glyphs")
+		if want == "" {
+			want = cfg.GetUserPreferences().Appearance.Glyphs
+		}
+	}
+	if mode, ok := glyphs.Parse(want); ok {
+		glyphs.Use(mode)
+		return
+	}
+	glyphs.Use(glyphs.Auto)
+}
+
+// cycleGlyphs walks nerd → unicode → ascii and back, persisting the
+// choice: a terminal that renders boxes is one palette command away from
+// a readable UI, without editing a config file by hand.
+func (m *Model) cycleGlyphs() tea.Cmd {
+	var next glyphs.Mode
+	switch glyphs.Current().Mode {
+	case glyphs.Nerd:
+		next = glyphs.Unicode
+	case glyphs.Unicode:
+		next = glyphs.ASCII
+	default:
+		next = glyphs.Nerd
+	}
+	glyphs.Use(next)
+
+	if cfg, err := config.New(); err == nil {
+		cfg.Set("tui.glyphs", string(next))
+		_ = cfg.Save()
+	}
+	return m.pushToast("Glyphs: "+string(next), components.ToneInfo)
 }
 
 // applyTheme selects light/dark from config (tui.theme) or terminal

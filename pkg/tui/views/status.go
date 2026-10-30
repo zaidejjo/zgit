@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/core/models"
 	"github.com/zaidejjo/zgit/pkg/tui/components"
+	"github.com/zaidejjo/zgit/pkg/tui/glyphs"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
@@ -86,176 +87,264 @@ func (m StatusModel) View(width int) string {
 
 	var b strings.Builder
 
-	// Branch header
-	b.WriteString(renderBranchHeader(m.Status))
+	b.WriteString(branchLine(m.Status, width))
 	b.WriteString("\n")
 
-	// Staged files
-	if m.ShowStaged && len(staged) > 0 {
-		b.WriteString(sectionTitle(fmt.Sprintf("Staged (%d)", len(staged))))
+	// Files are a table, not a paragraph: a fixed code column, a bright
+	// filename, and the directory right-aligned so the eye can scan the
+	// paths instead of re-anchoring on every row.
+	section := func(label string, tone lipgloss.Color, files []models.FileStatus, offset int, code func(models.FileStatus) string) {
+		if len(files) == 0 {
+			return
+		}
+		b.WriteString(sectionLabel(label, len(files), tone, width))
 		b.WriteString("\n")
-		for i, f := range staged {
-			line := fmt.Sprintf("  %s  %s", statusMark("staged"), formatFilePath(f.Path, width-6))
-			localIdx := stagedOffset + i
-			b.WriteString(components.RowLine(line, width, localIdx == m.Cursor))
+		for i, f := range files {
+			line := fileRow(f, code(f), width)
+			b.WriteString(components.RowLine(line, width, offset+i == m.Cursor))
 			b.WriteString("\n")
 		}
 	}
 
-	// Unstaged files
-	if m.ShowUnstaged && len(unstaged) > 0 {
-		b.WriteString(sectionTitle(fmt.Sprintf("Unstaged (%d)", len(unstaged))))
-		b.WriteString("\n")
-		for i, f := range unstaged {
-			line := fmt.Sprintf("  %s  %s", statusMark("unstaged"), formatFilePath(f.Path, width-6))
-			localIdx := unstagedOffset + i
-			b.WriteString(components.RowLine(line, width, localIdx == m.Cursor))
-			b.WriteString("\n")
-		}
+	if m.ShowStaged {
+		section("Staged", styles.TrackAdd, staged, stagedOffset, func(f models.FileStatus) string {
+			return f.Staged.String()
+		})
 	}
-
-	// Untracked files
-	if m.ShowUntracked && len(untracked) > 0 {
-		b.WriteString(sectionTitle(fmt.Sprintf("Untracked (%d)", len(untracked))))
-		b.WriteString("\n")
-		for i, f := range untracked {
-			line := fmt.Sprintf("  %s  %s", statusMark("untracked"), formatFilePath(f.Path, width-6))
-			localIdx := untrackedOffset + i
-			b.WriteString(components.RowLine(line, width, localIdx == m.Cursor))
-			b.WriteString("\n")
-		}
+	if m.ShowUnstaged {
+		section("Unstaged", styles.Warning, unstaged, unstagedOffset, func(f models.FileStatus) string {
+			return f.Unstaged.String()
+		})
+	}
+	if m.ShowUntracked {
+		section("Untracked", styles.Subtext, untracked, untrackedOffset, func(f models.FileStatus) string {
+			return "?"
+		})
 	}
 
 	if m.Status.IsClean {
-		b.WriteString(styles.SubtitleStyle.Render("\n  Clean working tree\n"))
+		b.WriteString(cleanState(width))
 	}
 
 	return b.String()
 }
 
-func renderBranchHeader(s *models.Status) string {
-	parts := []string{styles.StatusBarBranchStyle.Render(s.Branch)}
+// branchLine states where you are: branch, divergence, upstream. The old
+// header concatenated the branch and the upstream with no separator
+// ("devorigin/dev"); chips cannot collide like that.
+func branchLine(s *models.Status, width int) string {
+	g := glyphs.Current()
+	parts := []string{components.AccentChip(s.Branch)}
+
+	if track := trackingArrow(s.Ahead, s.Behind); track != "" {
+		parts = append(parts, components.StateChip(track, styles.Blue))
+	}
 	if s.Upstream != "" {
-		track := ""
-		if s.Ahead > 0 || s.Behind > 0 {
-			track = fmt.Sprintf(" [")
-			if s.Ahead > 0 {
-				track += fmt.Sprintf("+%d", s.Ahead)
-			}
-			if s.Ahead > 0 && s.Behind > 0 {
-				track += " "
-			}
-			if s.Behind > 0 {
-				track += fmt.Sprintf("-%d", s.Behind)
-			}
-			track += "]"
+		up := s.Upstream
+		if up == "origin/"+s.Branch {
+			// Self-tracking: the arrows already said it.
+			up = ""
 		}
-		parts = append(parts, styles.SubtitleStyle.Render(s.Upstream+track))
+		if up != "" {
+			parts = append(parts, styles.MetaStyle.Render(g.Right+" "+up))
+		}
 	}
-	return lipgloss.JoinHorizontal(lipgloss.Left, parts...)
-}
-
-func sectionTitle(title string) string {
-	return styles.SectionTitleStyle.Render(title)
-}
-
-func statusMark(kind string) string {
-	switch kind {
-	case "staged":
-		return styles.StatusStagedStyle.Render("●")
-	case "unstaged":
-		return styles.StatusUnstagedStyle.Render("●")
-	case "untracked":
-		return styles.StatusUntrackedStyle.Render("○")
-	case "deleted":
-		return styles.StatusDeletedStyle.Render("✕")
-	default:
-		return " "
+	if s.IsMerging {
+		parts = append(parts, components.StateChip("merging", styles.Warning))
 	}
-}
-
-// formatFilePath renders path as "filename.ext (dir/path/)" fitting maxLen.
-// Priority order:
-//  1. filename (dir/)       — full format
-//  2. filename (…/right/)   — dir truncated with "…/" prefix + trailing /
-//  3. filename              — dir dropped entirely
-//  4. filename…             — filename truncated (only if terminal is too narrow)
-func formatFilePath(path string, maxLen int) string {
-	if maxLen <= 0 {
-		return ""
+	if s.IsRebasing {
+		parts = append(parts, components.StateChip("rebasing", styles.Warning))
+	}
+	if s.IsCherryPick {
+		parts = append(parts, components.StateChip("cherry-pick", styles.Warning))
+	}
+	if s.IsReverting {
+		parts = append(parts, components.StateChip("reverting", styles.Warning))
+	}
+	if s.IsBisecting {
+		parts = append(parts, components.StateChip("bisecting", styles.Warning))
 	}
 
-	// Find last slash -> filename / dir
-	lastSlash := -1
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' {
-			lastSlash = i
+	line := " " + strings.Join(parts, " ")
+	if lipgloss.Width(line) > width {
+		// Not even the chips fit: keep the branch and its divergence,
+		// truncating the name rather than dropping the state.
+		track := trackingArrow(s.Ahead, s.Behind)
+		trackW := 0
+		if track != "" {
+			trackW = lipgloss.Width(track) + 5 // chip padding + space
+		}
+		name := components.Truncate(s.Branch, max(1, width-3-trackW))
+		line = " " + components.StateChip(name, styles.Teal)
+		if track != "" && lipgloss.Width(line)+1+lipgloss.Width(track)+2 <= width {
+			line += " " + components.StateChip(track, styles.Blue)
+		}
+	}
+	return components.Truncate(line, width)
+}
+
+// max returns the larger of two ints.
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// sectionLabel is the section heading: a quiet name and a loud count, so
+// the numbers are the first thing a glance picks up.
+func sectionLabel(label string, n int, tone lipgloss.Color, width int) string {
+	g := glyphs.Current()
+	mark := styles.PaneBarStyle.Render(g.Bar)
+	text := styles.SectionLabelStyle.Render(strings.ToUpper(label))
+	count := lipgloss.NewStyle().Foreground(tone).Bold(true).Render(fmt.Sprintf("%d", n))
+	line := fmt.Sprintf(" %s %s %s", mark, text, count)
+	if lipgloss.Width(line) > width {
+		line = fmt.Sprintf(" %s %d", text, n)
+	}
+	return components.Truncate(line, width)
+}
+
+// fileRow lays out one working-tree row:
+//
+//	<code> <filename> … <directory/>
+//
+// The code column is the git status letter, not a decorative dot: M for
+// modified, A for added, D for deleted, R for renamed.
+func fileRow(f models.FileStatus, code string, width int) string {
+	if code == "" {
+		code = " "
+	}
+	code = string([]rune(code)[0])
+	codeCell := lipgloss.NewStyle().Foreground(statusCodeColor(code)).Bold(true).Render(padCells(code, 1))
+
+	path := f.Path
+	if f.OldPath != "" {
+		path = f.OldPath + " → " + f.Path
+	}
+	name, dir := splitPath(path)
+
+	// gutter(1) + code(1) + space(1)
+	const fixed = 3
+	nameW := width - fixed
+	dirW := 0
+	if dir != "" && width >= 48 {
+		dirW = lipgloss.Width(dir)
+		if max := (width - fixed) / 3; dirW > max {
+			dirW = max
+		}
+		dir = truncateDirPath(dir, dirW)
+		dirW = lipgloss.Width(dir)
+		nameW = width - fixed - dirW - 1
+	}
+	if nameW < 1 {
+		nameW = 1
+	}
+
+	line := " " + codeCell + " " + padCells(styles.StatusFileNameStyle.Render(components.Truncate(name, nameW)), nameW)
+	if dirW > 0 {
+		line += " " + styles.MetaStyle.Render(padCells(dir, dirW))
+	}
+	return line
+}
+
+// splitPath separates a path into its file name and its directory.
+func splitPath(path string) (name, dir string) {
+	if i := strings.LastIndex(path, "/"); i >= 0 {
+		return path[i+1:], path[:i+1]
+	}
+	return path, ""
+}
+
+// truncateDirPath shortens a directory to its identifying tail, cutting
+// at path boundaries so the result reads as a path ("…/api/v1/") rather
+// than as a word with the front chewed off ("…irectory/structure/").
+func truncateDirPath(dir string, width int) string {
+	if lipgloss.Width(dir) <= width {
+		return dir
+	}
+	if width < 5 {
+		return components.TruncateLeft(dir, width)
+	}
+	tail := ""
+	for _, seg := range reverseSegments(strings.Trim(dir, "/")) {
+		cand := seg + "/"
+		if tail != "" {
+			cand += tail
+		}
+		if lipgloss.Width("…/"+cand) > width {
 			break
 		}
+		tail = cand
 	}
-
-	// No dir — just filename
-	if lastSlash < 0 {
-		if lipgloss.Width(path) <= maxLen {
-			return path
-		}
-		// Filename alone too wide — truncate width-aware
-		return components.Truncate(path, maxLen)
+	if tail == "" {
+		return components.TruncateLeft(dir, width)
 	}
+	return "…/" + tail
+}
 
-	filename := path[lastSlash+1:]
-	fnWidth := lipgloss.Width(filename)
-	dir := path[:lastSlash]
-
-	// Helper: truncate dir with "…/" prefix + trailing / inside (parens).
-	// budget = total chars available for truncated dir including overhead.
-	// Overhead: "…/" = 2, trailing "/" = 1 → 3 chars.
-	// keep = budget - 3 = chars from right of dir to preserve.
-	truncateDir := func(budget int) string {
-		if budget < 4 { // "…/X/" minimum: 2+1+1 = 4
-			return ""
-		}
-		dirRunes := []rune(dir)
-		keep := budget - 3 // -3 for "…/" prefix + trailing /
-		if keep < 1 {
-			return ""
-		}
-		if len(dirRunes) <= keep {
-			return "…/" + dir + "/"
-		}
-		return "…/" + string(dirRunes[len(dirRunes)-keep:]) + "/"
+// reverseSegments splits a slash path and yields the segments from the
+// last to the first.
+func reverseSegments(p string) []string {
+	segs := strings.Split(p, "/")
+	for i, j := 0, len(segs)-1; i < j; i, j = i+1, j-1 {
+		segs[i], segs[j] = segs[j], segs[i]
 	}
+	return segs
+}
 
-	// Priority 1: full format "filename (dir/)"
-	// overhead: " (" + "/)" = 2 + 2 = 4
-	if fnWidth+4+lipgloss.Width(dir) <= maxLen {
-		return fmt.Sprintf("%s (%s/)", filename, dir)
+// statusCodeColor maps a porcelain status letter to its hue.
+func statusCodeColor(code string) lipgloss.Color {
+	switch code {
+	case "M":
+		return styles.Warning
+	case "A":
+		return styles.TrackAdd
+	case "D":
+		return styles.TrackDel
+	case "R":
+		return styles.Info
+	case "C":
+		return styles.Teal
+	case "U":
+		return styles.Danger
+	default:
+		return styles.Overlay0
 	}
-	// Priority 1b: "filename (dir)" — try without trailing slash
-	// overhead: " (" + ")" = 2 + 1 = 3
-	if fnWidth+3+lipgloss.Width(dir) <= maxLen {
-		return fmt.Sprintf("%s (%s)", filename, dir)
-	}
+}
 
-	// Priority 2: "filename (…/right/)"
-	// 3 chars overhead: " (" + ")" = space + parens
-	// truncated dir format: "…/X/" = 2 (…/) + keep + 1 (/) = 3 + keep
-	dirBudget := maxLen - fnWidth - 3
-	if dirBudget >= 4 {
-		truncDir := truncateDir(dirBudget)
-		if truncDir != "" {
-			formatted := fmt.Sprintf("%s (%s)", filename, truncDir)
-			if lipgloss.Width(formatted) <= maxLen {
-				return formatted
-			}
-		}
-	}
+// cleanState is the empty state: a clean tree is good news, so it is
+// stated as a result rather than a top-left line of grey text with three
+// hundred pixels of dead space under it.
+func cleanState(width int) string {
+	g := glyphs.Current()
+	msg := lipgloss.NewStyle().Foreground(styles.TrackAdd).Bold(true).Render(g.Check + " working tree clean")
+	hint := styles.MetaStyle.Render("nothing to commit")
+	return centered(msg, width) + "\n" + centered(hint, width) + "\n"
+}
 
-	// Priority 3: filename only
-	if fnWidth <= maxLen {
-		return filename
+// centered pads a rendered string with spaces so it sits in the middle of
+// width cells.
+func centered(s string, width int) string {
+	w := lipgloss.Width(s)
+	if w >= width {
+		return components.Truncate(s, width)
 	}
+	left := (width - w) / 2
+	return strings.Repeat(" ", left) + s
+}
 
-	// Priority 4: truncated filename — only when terminal is too narrow
-	return components.Truncate(filename, maxLen)
+// trackingArrow renders a branch's divergence as "↑2↓1", or "" when the
+// branch is level with its upstream.
+func trackingArrow(ahead, behind int) string {
+	g := glyphs.Current()
+	switch {
+	case ahead > 0 && behind > 0:
+		return fmt.Sprintf("%s%d %s%d", g.Up, ahead, g.Down, behind)
+	case ahead > 0:
+		return fmt.Sprintf("%s%d", g.Up, ahead)
+	case behind > 0:
+		return fmt.Sprintf("%s%d", g.Down, behind)
+	}
+	return ""
 }

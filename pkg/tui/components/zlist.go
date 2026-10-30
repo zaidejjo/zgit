@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/zaidejjo/zgit/pkg/tui/glyphs"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
@@ -16,17 +17,18 @@ func Truncate(s string, width int) string {
 	return ansi.Truncate(s, width, "…")
 }
 
-// CursorLine retargets the first visible grapheme of a rendered line to ❯
-// without touching the rest: ANSI- and grapheme-aware, so escapes and wide
-// characters survive (never slice styled strings by byte/rune — that
-// decapitates escapes into visible "[38;2;…" garbage).
+// CursorLine retargets the first visible grapheme of a rendered line to
+// the cursor bar without touching the rest: ANSI- and grapheme-aware, so
+// escapes and wide characters survive (never slice styled strings by
+// byte/rune — that decapitates escapes into visible "[38;2;…" garbage).
 //
 // The whole first grapheme is replaced, never a single cell: cutting one
 // cell out of a 2-cell character would leave it in place and *grow* the
 // row by a cell, which wraps the panel.
 func CursorLine(line string) string {
+	cursor := styles.CursorBarStyle.Render(cursorGlyph())
 	if ansi.StringWidth(line) <= 1 {
-		return "❯"
+		return cursor
 	}
 
 	// Walk to the first grapheme that occupies cells. Leading escape
@@ -53,13 +55,21 @@ func CursorLine(line string) string {
 		break
 	}
 	if cw <= 0 {
-		return "❯"
+		return cursor
 	}
 	if cw >= ansi.StringWidth(line) {
 		// The first grapheme is the whole line: the cursor alone fits.
-		return leading.String() + "❯"
+		return leading.String() + cursor
 	}
-	return leading.String() + "❯" + line[offset:]
+	return leading.String() + cursor + line[offset:]
+}
+
+// cursorGlyph is the marker drawn in front of the selected row.
+func cursorGlyph() string {
+	if g := glyphs.Current().Bar; g != "" {
+		return g
+	}
+	return "❯"
 }
 
 // CutLeft drops the first cells cells of a rendered line and returns the
@@ -137,7 +147,18 @@ func RowLine(line string, width int, selected bool) string {
 		// more than it consumed, so cap again: exactly is the contract.
 		body = Truncate(CursorLine(body), inner)
 	}
-	return st.Render(body)
+	// Pad inside the style, so a row background (the cursor) spans the
+	// whole row instead of stopping at the last character.
+	return st.Render(padCells(body, inner))
+}
+
+// padCells pads a rendered line with plain spaces to exactly width cells.
+func padCells(s string, width int) string {
+	w := ansi.StringWidth(s)
+	if w >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-w)
 }
 
 // ZList is the single filterable, scrollable list for every screen.

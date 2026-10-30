@@ -34,6 +34,8 @@ type AppearanceConfig struct {
 	Theme       string `mapstructure:"theme"`
 	AccentColor string `mapstructure:"accent_color"`
 	Brightness  int    `mapstructure:"brightness"`
+	// Glyphs selects the TUI symbol set: auto, nerd, unicode or ascii.
+	Glyphs string `mapstructure:"glyphs"`
 }
 
 // ProviderConfig stores per-provider AI settings.
@@ -103,6 +105,7 @@ func New() (*Manager, error) {
 	v.SetDefault("user_preferences.appearance.theme", "dark")
 	v.SetDefault("user_preferences.appearance.accent_color", "")
 	v.SetDefault("user_preferences.appearance.brightness", 50)
+	v.SetDefault("user_preferences.appearance.glyphs", "auto")
 	v.SetDefault("user_preferences.keybindings", map[string]interface{}{
 		"command_palette": "Ctrl+K",
 		"toggle_ai_panel": "Ctrl+Shift+A",
@@ -304,6 +307,7 @@ func (m *Manager) GetUserPreferences() UserPreferences {
 			Theme:       m.v.GetString("user_preferences.appearance.theme"),
 			AccentColor: m.v.GetString("user_preferences.appearance.accent_color"),
 			Brightness:  m.v.GetInt("user_preferences.appearance.brightness"),
+			Glyphs:      m.v.GetString("user_preferences.appearance.glyphs"),
 		},
 		Keybindings: m.v.GetStringMapString("user_preferences.keybindings"),
 	}
@@ -314,6 +318,9 @@ func (m *Manager) SetUserPreferences(prefs UserPreferences) error {
 	m.v.Set("user_preferences.appearance.theme", prefs.Appearance.Theme)
 	m.v.Set("user_preferences.appearance.accent_color", prefs.Appearance.AccentColor)
 	m.v.Set("user_preferences.appearance.brightness", prefs.Appearance.Brightness)
+	if prefs.Appearance.Glyphs != "" {
+		m.v.Set("user_preferences.appearance.glyphs", prefs.Appearance.Glyphs)
+	}
 	m.v.Set("user_preferences.keybindings", prefs.Keybindings)
 	return m.Save()
 }

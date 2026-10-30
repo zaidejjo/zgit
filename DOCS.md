@@ -121,17 +121,42 @@ PRs, Issues, Actions, Remotes, Tags, AI chat. `Ctrl+K` opens the command palette
 
 ## Configuration
 
-Config file: `~/.config/zgit/config.yaml`
+Config file: `~/.config/zgit/config.toml` (a legacy `config.yaml` is migrated
+once and kept as `config.yaml.bak`).
 
-```yaml
-ai:
-  default_provider: openrouter
-  providers:
-    openrouter:
-      api_key: ${OPENROUTER_API_KEY}
-      model: openai/gpt-4o
+```toml
+[ai]
+provider = "openrouter"
+
+[ai.providers.openrouter]
+api_key = "${OPENROUTER_API_KEY}"
+model = "openai/gpt-4o"
+
+[tui]
+theme = "dark"    # dark | light
+glyphs = "auto"   # auto | nerd | unicode | ascii
 ```
 
-Set the AI provider in the desktop app under Settings, or ask the AI assistant
-to walk you through it. GitHub access needs a personal access token
-(Settings → profile, or `zgit auth`).
+### Terminal UI
+
+The TUI is a keyboard-first cockpit: panes are separated by rules rather than
+boxes, rows are aligned tables (graph, hash, age, subject, refs), and the
+status bar is a prioritised list that drops the least useful segment first.
+
+| Key | Action |
+|-----|--------|
+| `tab` / `shift+tab` | cycle panes |
+| `0`–`9` | open screen (Refs, Stash, Worktrees, Notes, Actions, Repos, Issues, PRs) |
+| `/` | filter the focused list |
+| `L` | toggle light/dark |
+| `Ctrl+K` | command palette |
+| `?` | full keymap |
+
+### Icons
+
+`glyphs = "auto"` picks a symbol set per terminal: Nerd Font icons only where
+the terminal ships a symbol fallback (Ghostty, WezTerm) or where `NERD_FONT` is
+set, and safe Unicode everywhere else — a missing icon beats a box drawn in the
+middle of the UI. Override it with `glyphs = "nerd" | "unicode" | "ascii"`, the
+`ZGIT_TUI_GLYPHS` environment variable, or the **Cycle Icon Set** palette
+command (the choice is persisted).

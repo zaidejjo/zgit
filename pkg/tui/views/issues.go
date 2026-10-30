@@ -39,6 +39,12 @@ func (m *IssueListModel) UpdateIssues(issues []*models.Issue) {
 
 // View renders the issue list.
 func (m *IssueListModel) View(width int) string {
+	body := m.body(width)
+	return screenChrome("Issues", screenMeta(len(m.Filtered()), len(m.Items), m.Filter), body, width)
+}
+
+// body renders everything under the screen chrome.
+func (m *IssueListModel) body(width int) string {
 	if m.Error != "" {
 		return styles.ErrorStyle.Render("Error: " + m.Error)
 	}
@@ -52,13 +58,6 @@ func (m *IssueListModel) View(width int) string {
 	}
 
 	var b strings.Builder
-
-	title := fmt.Sprintf(" Issues (%d)", len(m.Items))
-	if strings.TrimSpace(m.Filter) != "" {
-		title = fmt.Sprintf(" Issues (%d/%d) filter: %s", len(m.Filtered()), len(m.Items), m.Filter)
-	}
-	b.WriteString(styles.SectionTitleStyle.Render(title))
-	b.WriteString("\n")
 	b.WriteString(m.FilterBar())
 	if len(m.Filtered()) == 0 && strings.TrimSpace(m.Filter) != "" {
 		return b.String() + styles.SubtitleStyle.Render("No issues match filter")

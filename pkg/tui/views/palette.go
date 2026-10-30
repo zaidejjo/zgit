@@ -85,7 +85,9 @@ func (m *PaletteModel) SetDefaultCommands() {
 		{ID: "ai-ask", Label: "AI Ask Sidebar", Description: "Open AI Q&A sidebar", Keys: "C-g"},
 		{ID: "ai-agent", Label: "AI Agent Sidebar", Description: "Open AI Agent with git commands", Keys: "C-e"},
 
-		// Config
+		// Appearance
+		{ID: "toggle-theme", Label: "Toggle Theme", Description: "Switch between light and dark palettes", Keys: "L"},
+		{ID: "toggle-icons", Label: "Cycle Icon Set", Description: "Nerd Font icons → safe Unicode → ASCII"},
 		{ID: "open-config", Label: "Open Config", Description: "Configure GitHub token / AI settings", Keys: "C-t"},
 
 		// Navigation

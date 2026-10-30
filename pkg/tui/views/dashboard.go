@@ -66,6 +66,12 @@ func (m *DashModel) Selected() *DashEntry {
 
 // View renders the dashboard list.
 func (m *DashModel) View(width int) string {
+	body := m.body(width)
+	return screenChrome("Repositories", screenMeta(len(m.Filtered()), len(m.Items), m.Filter), body, width)
+}
+
+// body renders everything under the screen chrome.
+func (m *DashModel) body(width int) string {
 	if m.Error != "" {
 		return styles.ErrorStyle.Render("Error: " + m.Error)
 	}
@@ -77,12 +83,6 @@ func (m *DashModel) View(width int) string {
 	}
 
 	var b strings.Builder
-	title := fmt.Sprintf(" Repositories (%d)", len(m.Items))
-	if strings.TrimSpace(m.Filter) != "" {
-		title = fmt.Sprintf(" Repositories (%d/%d) filter: %s", len(m.Filtered()), len(m.Items), m.Filter)
-	}
-	b.WriteString(styles.SectionTitleStyle.Render(title))
-	b.WriteString("\n")
 	b.WriteString(m.FilterBar())
 	if len(m.Filtered()) == 0 && strings.TrimSpace(m.Filter) != "" {
 		return b.String() + styles.SubtitleStyle.Render("No repositories match filter")
@@ -110,7 +110,7 @@ func dashRow(e DashEntry, width int) string {
 	}
 	openTag := ""
 	if e.Current {
-		openTag = styles.ListItemActiveStyle.Render(" ‹open›")
+		openTag = styles.EmphasisStyle.Render(" ‹open›")
 	}
 
 	detail := e.Branch

@@ -40,6 +40,12 @@ func (m *WorktreeModel) UpdateWorktrees(items []*models.Worktree) {
 
 // View renders the worktree list.
 func (m *WorktreeModel) View(width int) string {
+	body := m.body(width)
+	return screenChrome("Worktrees", screenMeta(len(m.Filtered()), len(m.Items), m.Filter), body, width)
+}
+
+// body renders everything under the screen chrome.
+func (m *WorktreeModel) body(width int) string {
 	if m.Error != "" {
 		return styles.ErrorStyle.Render("Error: " + m.Error)
 	}
@@ -51,12 +57,6 @@ func (m *WorktreeModel) View(width int) string {
 	}
 
 	var b strings.Builder
-	title := fmt.Sprintf(" Worktrees (%d)", len(m.Items))
-	if strings.TrimSpace(m.Filter) != "" {
-		title = fmt.Sprintf(" Worktrees (%d/%d) filter: %s", len(m.Filtered()), len(m.Items), m.Filter)
-	}
-	b.WriteString(styles.SectionTitleStyle.Render(title))
-	b.WriteString("\n")
 	b.WriteString(m.FilterBar())
 	if len(m.Filtered()) == 0 && strings.TrimSpace(m.Filter) != "" {
 		return b.String() + styles.SubtitleStyle.Render("No worktrees match filter")
@@ -72,7 +72,7 @@ func worktreeRow(w *models.Worktree, width int) string {
 	}
 	name := w.Path
 	if w.IsMain {
-		name += styles.ListItemActiveStyle.Render(" ‹main›")
+		name += styles.EmphasisStyle.Render(" ‹main›")
 	}
 	detail := w.Branch
 	if detail == "" {

@@ -22,9 +22,13 @@ var (
 	HintStyle             lipgloss.Style
 	ListItemStyle         lipgloss.Style
 	ListItemSelectedStyle lipgloss.Style
+	EmphasisStyle         lipgloss.Style
 	FilterBarStyle        lipgloss.Style
 	ListItemActiveStyle   lipgloss.Style
 	SectionTitleStyle     lipgloss.Style
+	SectionLabelStyle     lipgloss.Style
+	SubtextStyle          lipgloss.Style
+	StatusFileNameStyle   lipgloss.Style
 	SubtitleStyle         lipgloss.Style
 	StatusStagedStyle     lipgloss.Style
 	StatusUnstagedStyle   lipgloss.Style
@@ -39,6 +43,33 @@ var (
 	ErrorStyle            lipgloss.Style
 	DialogBoxStyle        lipgloss.Style
 	DialogTitleStyle      lipgloss.Style
+
+	// Cockpit chrome
+	PaneBarStyle        lipgloss.Style
+	PaneBarFocusStyle   lipgloss.Style
+	PaneTitleStyle      lipgloss.Style
+	PaneTitleFocusStyle lipgloss.Style
+	RuleStyle           lipgloss.Style
+	RuleFocusStyle      lipgloss.Style
+	MetaStyle           lipgloss.Style
+	FaintStyle          lipgloss.Style
+	LogHashStyle        lipgloss.Style
+	CursorBarStyle      lipgloss.Style
+
+	// Header strip
+	HeaderTabStyle       lipgloss.Style
+	HeaderTabActiveStyle lipgloss.Style
+	HeaderTabBadgeStyle  lipgloss.Style
+	HeaderRuleStyle      lipgloss.Style
+
+	// Footer
+	HintKeyStyle   lipgloss.Style
+	HintDescStyle  lipgloss.Style
+	HintSepStyle   lipgloss.Style
+	StatusBarText  lipgloss.Style
+	StatusBarMuted lipgloss.Style
+	SegmentAccent  lipgloss.Style
+	SegmentNeutral lipgloss.Style
 )
 
 // Refresh rebuilds every style from the current tokens.
@@ -73,6 +104,37 @@ func Refresh() {
 		Padding(0, 1).
 		Foreground(Teal).
 		Bold(true)
+	// Tab strip: only the active screen carries a fill, so the eye lands
+	// on it instead of on a row of equal-weight blocks. The hotkey is a
+	// dim prefix, not part of the label.
+	HeaderTabStyle = lipgloss.NewStyle().
+		Padding(0, 1).
+		Foreground(Subtext)
+	HeaderTabActiveStyle = lipgloss.NewStyle().
+		Padding(0, 1).
+		Background(Accent).
+		Foreground(Base).
+		Bold(true)
+	HeaderTabBadgeStyle = lipgloss.NewStyle().
+		Foreground(Peach)
+	HeaderRuleStyle = lipgloss.NewStyle().
+		Foreground(Rule)
+
+	// Cockpit pane chrome
+	PaneBarStyle = lipgloss.NewStyle().Foreground(Rule)
+	PaneBarFocusStyle = lipgloss.NewStyle().Foreground(Accent)
+	PaneTitleStyle = lipgloss.NewStyle().Foreground(PaneTitle).Bold(true)
+	PaneTitleFocusStyle = lipgloss.NewStyle().Foreground(PaneTitleFocus).Bold(true)
+	RuleStyle = lipgloss.NewStyle().Foreground(Rule)
+	RuleFocusStyle = lipgloss.NewStyle().Foreground(Accent)
+	MetaStyle = lipgloss.NewStyle().Foreground(Overlay0)
+	FaintStyle = lipgloss.NewStyle().Foreground(Rule)
+	// The hash is a fixed-width reference column: present enough to copy
+	// from, quiet enough that the subject stays the headline.
+	LogHashStyle = lipgloss.NewStyle().Foreground(Overlay0)
+	// The cursor is a bar, not an arrow: it reads as a gutter marker at
+	// speed and never competes with the content next to it.
+	CursorBarStyle = lipgloss.NewStyle().Foreground(Accent).Bold(true)
 
 	// Content areas
 	ContentStyle = lipgloss.NewStyle().
@@ -90,8 +152,27 @@ func Refresh() {
 		Bold(true)
 	StatusBarInfoStyle = lipgloss.NewStyle().
 		Foreground(Subtext)
+	StatusBarText = lipgloss.NewStyle().
+		Foreground(Text).
+		Bold(true)
+	StatusBarMuted = lipgloss.NewStyle().
+		Foreground(Overlay0)
 	HintStyle = lipgloss.NewStyle().
 		Foreground(Overlay0)
+	HintKeyStyle = lipgloss.NewStyle().
+		Foreground(Subtext).
+		Bold(true)
+	HintDescStyle = lipgloss.NewStyle().
+		Foreground(Overlay0)
+	HintSepStyle = lipgloss.NewStyle().
+		Foreground(Rule)
+	SegmentAccent = lipgloss.NewStyle().
+		Background(Accent).
+		Foreground(Base).
+		Bold(true)
+	SegmentNeutral = lipgloss.NewStyle().
+		Background(ChipBg).
+		Foreground(Text)
 
 	// Lists
 	ListItemStyle = lipgloss.NewStyle().
@@ -104,7 +185,14 @@ func Refresh() {
 		Foreground(Yellow)
 
 	ListItemActiveStyle = lipgloss.NewStyle().
-		Foreground(Blue).
+		Foreground(Text).
+		Background(Selection)
+	// EmphasisStyle is inline emphasis inside a rendered line (a marker,
+	// a strategy name). Distinct from the row cursor: one is a highlight,
+	// the other is a background, and mixing them made the selection
+	// invisible.
+	EmphasisStyle = lipgloss.NewStyle().
+		Foreground(Accent).
 		Bold(true)
 
 	// Headers
@@ -129,6 +217,11 @@ func Refresh() {
 	StatusDeletedStyle = lipgloss.NewStyle().
 		Foreground(Red).
 		Strikethrough(true)
+
+	// Section headings and rows: a heading is quiet, its count is not.
+	SectionLabelStyle = lipgloss.NewStyle().Foreground(Overlay0).Bold(true)
+	SubtextStyle = lipgloss.NewStyle().Foreground(Subtext)
+	StatusFileNameStyle = lipgloss.NewStyle().Foreground(Text)
 
 	// Diff
 	DiffAddStyle = lipgloss.NewStyle().

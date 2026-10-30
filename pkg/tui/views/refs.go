@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/zaidejjo/zgit/pkg/core/models"
 	"github.com/zaidejjo/zgit/pkg/tui/components"
+	"github.com/zaidejjo/zgit/pkg/tui/glyphs"
 	"github.com/zaidejjo/zgit/pkg/tui/styles"
 )
 
@@ -63,8 +64,15 @@ func (m *RefsModel) Toggle() {
 	}
 }
 
-// View renders tags then remotes with a focus marker.
+// View renders tags then remotes under one screen chrome; each half keeps
+// its own section label so the focus toggle stays readable.
 func (m *RefsModel) View(width int) string {
+	body := m.body(width)
+	meta := fmt.Sprintf("%d tags · %d remotes", len(m.Tags.Items), len(m.Remotes.Items))
+	return screenChrome("Refs", meta, body, width)
+}
+
+func (m *RefsModel) body(width int) string {
 	if m.Error != "" {
 		return styles.ErrorStyle.Render("Error: " + m.Error)
 	}
@@ -99,27 +107,29 @@ func (m *RefsModel) View(width int) string {
 	return b.String()
 }
 
+// sectionTitle is a section label with its count, the way the status pane
+// labels STAGED and UNSTAGED: uppercase, quiet, count attached.
 func (m *RefsModel) sectionTitle(name string, n int, focused bool) string {
-	label := fmt.Sprintf(" %s (%d)", name, n)
+	st := styles.SectionLabelStyle
 	if focused {
-		return styles.SectionTitleStyle.Render(label + " ‹t›")
+		st = styles.PaneTitleFocusStyle
 	}
-	return styles.SubtitleStyle.Render(label)
+	return " " + st.Render(strings.ToUpper(name)) + " " + styles.MetaStyle.Render(fmt.Sprintf("%d", n))
 }
 
 func tagRow(tag string, width int) string {
 	return components.Truncate(
-		fmt.Sprintf("  %s %s", styles.SubtitleStyle.Render("◆"), truncateStr(tag, width-6)),
+		fmt.Sprintf("  %s %s", styles.SubtitleStyle.Render(glyphs.Current().Tag), truncateStr(tag, width-6)),
 		width)
 }
 
 func remoteRow(r *models.Remote, width int) string {
 	line := fmt.Sprintf("  %s %s  %s",
-		styles.StatusStagedStyle.Render("●"),
+		styles.StatusStagedStyle.Render(glyphs.Current().Dot),
 		truncateStr(r.Name, 24), styles.SubtitleStyle.Render(truncateStr(r.URL, 50)))
 	if lipgloss.Width(line) > width {
 		line = fmt.Sprintf("  %s %s",
-			styles.StatusStagedStyle.Render("●"), truncateStr(r.Name, width-6))
+			styles.StatusStagedStyle.Render(glyphs.Current().Dot), truncateStr(r.Name, width-6))
 	}
 	return components.Truncate(line, width)
 }
