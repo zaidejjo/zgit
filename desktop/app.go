@@ -1056,7 +1056,56 @@ func (a *App) FetchProviderModels(provider, apiKey string) ([]string, error) {
 		}
 	}
 
-	return ai.FetchProviderModels(provider, apiKey)
+	models, err := ai.FetchProviderModels(provider, apiKey)
+	if err != nil {
+		return nil, err
+	}
+	// Cache the result for offline use
+	if err := a.cacheProviderModels(provider, models); err != nil {
+		log.Printf("zgit: cache provider models %s: %v", provider, err)
+	}
+	return models, nil
+}
+
+// GetCachedProviderModels returns cached provider models if fresh,
+// otherwise fetches from the provider API and caches the result.
+func (a *App) GetCachedProviderModels(provider string) ([]string, error) {
+	scope := "ai_models:" + provider
+	key := "models"
+	ttl := ai.ProviderModelCacheTTL
+
+	// Try cache first
+	data, ok := a.engine.Store.GetCacheEntry(scope, key, ttl)
+	if ok {
+		var cached []string
+		if err := json.Unmarshal(data, &cached); err == nil && len(cached) > 0 {
+			return cached, nil
+		}
+	}
+
+	// Cache miss — fetch live
+	models, err := ai.FetchProviderModels(provider, "")
+	if err != nil {
+		return nil, err
+	}
+
+	// Store in cache
+	if err := a.cacheProviderModels(provider, models); err != nil {
+		log.Printf("zgit: cache provider models %s: %v", provider, err)
+	}
+
+	return models, nil
+}
+
+// cacheProviderModels stores the model list in the SQLite cache.
+func (a *App) cacheProviderModels(provider string, models []string) error {
+	scope := "ai_models:" + provider
+	key := "models"
+	data, err := json.Marshal(models)
+	if err != nil {
+		return err
+	}
+	return a.engine.Store.SetCacheEntry(scope, key, data)
 }
 
 // GenerateCommitMessage reads the staged diff and returns an AI-generated conventional commit message.
