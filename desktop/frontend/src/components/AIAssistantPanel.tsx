@@ -92,13 +92,15 @@ export default function AIAssistantPanel() {
         setInput("What commands are available?");
         break;
       case "/context":
-        setInput("Show me the current repository context");
+        // Set prompt for AI to fetch repository context (system prompt instructs tool call)
+        setInput("Show me the current repository context — branch, status, recent log, and any merge conflicts");
         break;
       case "/clear":
         resetAgentSession();
         return;
       case "/review":
-        setInput("Review the current branch changes");
+        // Set prompt for AI to review current branch changes (system prompt instructs generate_pr_review tool)
+        setInput("Review the current branch changes for code review — look for issues, suggestions, and conventional commit formatting");
         break;
       default:
         break;
