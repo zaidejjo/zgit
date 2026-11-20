@@ -1371,6 +1371,93 @@ Return ONLY the PR title and description. No extra commentary.`
 	return msg, nil
 }
 
+// AIGetRepoContext returns a formatted snapshot of the current repository state
+// for use by AI slash commands and the agent.
+func (a *App) AIGetRepoContext() (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 30*time.Second)
+	defer cancel()
+
+	var sb strings.Builder
+
+	// Branch
+	branch, err := a.engine.Git.CurrentBranch(ctx)
+	if err == nil {
+		sb.WriteString("Branch: " + branch + "\n")
+	}
+
+	// Status
+	status, err := a.engine.Git.Status(ctx)
+	if err == nil {
+		sb.WriteString(fmt.Sprintf("Status: %d staged, %d unstaged, %d untracked\n",
+			status.StagedCount, status.UnstagedCount, status.UntrackedCount))
+		sb.WriteString(fmt.Sprintf("Clean: %v, Merging: %v, Rebasing: %v\n",
+			status.IsClean, status.IsMerging, status.IsRebasing))
+	}
+
+	// Recent log (last 10)
+	log, err := a.engine.Git.Log(ctx, git.LogOptions{Count: 10})
+	if err == nil {
+		sb.WriteString("\nRecent commits:\n")
+		for _, c := range log {
+			sb.WriteString(fmt.Sprintf("  %s %s\n", c.Hash[:7], c.Message))
+		}
+	}
+
+	// Unstaged diffs (truncated)
+	diff, err := a.engine.Git.Diff(ctx, git.DiffOptions{Unified: true})
+	if err == nil && len(diff.Files) > 0 {
+		sb.WriteString("\nUnstaged changes:\n")
+		summary := ai.SummarizeDiff(diff)
+		sb.WriteString(summary.Summary)
+	}
+
+	// Conflict files
+	conflicts, err := a.engine.Git.ConflictFiles(ctx)
+	if err == nil && len(conflicts) > 0 {
+		sb.WriteString("\nMerge conflicts:\n")
+		for _, cf := range conflicts {
+			sb.WriteString(fmt.Sprintf("  %s (%d blocks)\n", cf.Path, cf.BlockCount))
+		}
+	}
+
+	return sb.String(), nil
+}
+
+// AIReviewPR returns the diff between source and target branches for code review.
+func (a *App) AIReviewPR(source, target string) (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 60*time.Second)
+	defer cancel()
+
+	if source == "" {
+		return "", fmt.Errorf("source branch is required")
+	}
+	if target == "" {
+		target = "main"
+	}
+
+	diff, err := a.engine.Git.Diff(ctx, git.DiffOptions{
+		A:       target,
+		B:       source,
+		Unified: true,
+	})
+	if err != nil {
+		return "", fmt.Errorf("get branch diff: %w", err)
+	}
+	if diff == nil || len(diff.Files) == 0 {
+		return "No differences between " + target + " and " + source, nil
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Diff between %s (base) and %s (source):\n", target, source))
+	sb.WriteString(fmt.Sprintf("Total: %d files, +%d / -%d lines\n\n",
+		len(diff.Files), diff.TotalAdds, diff.TotalDeletes))
+
+	summary := ai.SummarizeDiff(diff)
+	sb.WriteString(summary.Summary)
+
+	return sb.String(), nil
+}
+
 // aiConfig extracts AI provider config from the engine settings.
 func (a *App) aiConfig() ai.Config {
 	cfg := a.engine.Config

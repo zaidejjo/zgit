@@ -17,11 +17,12 @@ export default function AIAssistantPanel() {
   const {
     aiPanelOpen, toggleAIPanel,
     aiSessionActive, aiMessages, aiProposals, aiThinking, aiError,
-    aiMode, aiFullscreen,
+    aiMode, aiFullscreen, currentBranch,
     sendAgentMessage, sendAskMessage, askChatCancel,
     approveProposal, rejectProposal, resetAgentSession,
     toggleAIFullscreen,
     fetchAIConfig,
+    aiGetRepoContext, aiReviewPR,
   } = useAppStore();
 
   const [input, setInput] = useState("");
@@ -85,31 +86,47 @@ export default function AIAssistantPanel() {
     }
   };
 
-  const handleSlashCommand = (cmd: string) => {
+  const handleSlashCommand = async (cmd: string) => {
     setShowSlashHints(false);
     switch (cmd) {
-      case "/help":
-        setInput("What commands are available?");
+      case "/help": {
+        setInput("Available commands: /context (repo state), /review (branch diff review), /clear (reset session), /help (this list)");
+        setTimeout(() => {
+          const msg = input;
+          if (msg.trim()) handleSend();
+        }, 50);
         break;
-      case "/context":
-        // Set prompt for AI to fetch repository context (system prompt instructs tool call)
-        setInput("Show me the current repository context — branch, status, recent log, and any merge conflicts");
+      }
+      case "/context": {
+        // Directly fetch repo context from backend
+        const context = await aiGetRepoContext();
+        if (context) {
+          setInput(context);
+          setTimeout(() => {
+            const msg = input;
+            if (msg.trim()) handleSend();
+          }, 50);
+        }
         break;
+      }
       case "/clear":
         resetAgentSession();
         return;
-      case "/review":
-        // Set prompt for AI to review current branch changes (system prompt instructs generate_pr_review tool)
-        setInput("Review the current branch changes for code review — look for issues, suggestions, and conventional commit formatting");
+      case "/review": {
+        // Review diff between current branch and default branch
+        const review = await aiReviewPR(currentBranch || "HEAD", "main");
+        if (review) {
+          setInput("Review changes between main and " + (currentBranch || "HEAD") + ":\n\n" + review);
+          setTimeout(() => {
+            const msg = input;
+            if (msg.trim()) handleSend();
+          }, 50);
+        }
         break;
+      }
       default:
         break;
     }
-    // Auto-send
-    setTimeout(() => {
-      const msg = input;
-      if (msg.trim()) handleSend();
-    }, 50);
   };
 
   // Filter out system messages for display count

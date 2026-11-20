@@ -917,6 +917,8 @@ interface AppState {
   testProviderConnection: (provider: string) => Promise<{ ok: boolean; latencyMs: number; error?: string }>;
   generateCommitMessage: () => Promise<string | null>;
   generateCommitMessageWithContext: () => Promise<string | null>;
+  aiGetRepoContext: () => Promise<string | null>;
+  aiReviewPR: (source: string, target: string) => Promise<string | null>;
   generatePRDescription: (head: string, base?: string) => Promise<string | null>;
   generatePRMetadata: (base: string, head: string) => Promise<string | null>;
 
@@ -2865,6 +2867,36 @@ export const useAppStore = create<AppState>((set, get) => ({
       return message;
     } catch (e: any) {
       set({ error: e.message || "Failed to generate commit message" });
+      set({ aiGenerating: false });
+      return null;
+    }
+  },
+
+  aiGetRepoContext: async () => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      set({ aiGenerating: true });
+      const context: string = await backend.AIGetRepoContext();
+      set({ aiGenerating: false });
+      return context;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to get repo context" });
+      set({ aiGenerating: false });
+      return null;
+    }
+  },
+
+  aiReviewPR: async (source, target) => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      set({ aiGenerating: true });
+      const review: string = await backend.AIReviewPR(source, target);
+      set({ aiGenerating: false });
+      return review;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to get PR review" });
       set({ aiGenerating: false });
       return null;
     }
