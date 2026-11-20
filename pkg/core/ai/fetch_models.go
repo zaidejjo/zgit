@@ -221,3 +221,69 @@ func fetchModelsJSON(url, apiKey, bearerPrefix string, parse func([]byte) ([]str
 
 	return parse(body)
 }
+
+// FetchModelMetadata queries models.dev for supplemental model metadata.
+// Returns nil if models.dev is unavailable or the model is not found.
+// This is a supplemental source — DefaultModelInfo is the primary source.
+func FetchModelMetadata(modelID string) (*ModelInfo, error) {
+	url := "https://models.dev/api/models/" + modelID
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("models.dev returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+
+	var raw struct {
+		ID             string `json:"id"`
+		ContextWindow  int    `json:"context_window"`
+		SupportsTools  bool   `json:"supports_tools"`
+		SupportsVision bool   `json:"supports_vision"`
+		PricingInput   string `json:"pricing_input"`
+		PricingOutput  string `json:"pricing_output"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+
+	if raw.ID == "" {
+		return nil, fmt.Errorf("model not found in models.dev")
+	}
+
+	return &ModelInfo{
+		ID:             raw.ID,
+		ContextWindow:  raw.ContextWindow,
+		SupportsTools:  raw.SupportsTools,
+		SupportsVision: raw.SupportsVision,
+		PricingInput:   raw.PricingInput,
+		PricingOutput:  raw.PricingOutput,
+	}, nil
+}
+
+// GetModelInfoWithFallback returns ModelInfo for a model ID.
+// It checks DefaultModelInfo first, then falls back to models.dev.
+func GetModelInfoWithFallback(modelID string) ModelInfo {
+	if info, ok := DefaultModelInfo[modelID]; ok {
+		return info
+	}
+	if meta, err := FetchModelMetadata(modelID); err == nil {
+		return *meta
+	}
+	return ModelInfo{ID: modelID}
+}
