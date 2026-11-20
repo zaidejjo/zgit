@@ -919,6 +919,9 @@ interface AppState {
   generateCommitMessageWithContext: () => Promise<string | null>;
   generateCommitMessageStream: (onToken: (token: string) => void, onDone: (content: string) => void, onError: (err: string) => void) => () => void;
   getCachedProviderModelsWithMetadata: (provider: string) => Promise<Array<{ id: string; context_window?: number; supports_tools?: boolean; supports_vision?: boolean; pricing_input?: string; pricing_output?: string; best_for?: string }>>;
+  getCustomModels: (provider: string) => Promise<string[]>;
+  addCustomModel: (provider: string, model: string) => Promise<void>;
+  removeCustomModel: (provider: string, model: string) => Promise<void>;
   aiGetRepoContext: () => Promise<string | null>;
   aiReviewPR: (source: string, target: string) => Promise<string | null>;
   generatePRDescription: (head: string, base?: string) => Promise<string | null>;
@@ -2840,6 +2843,36 @@ export const useAppStore = create<AppState>((set, get) => ({
       return await backend.GetCachedProviderModelsWithMetadata(provider);
     } catch (_) {
       return [];
+    }
+  },
+
+  getCustomModels: async (provider) => {
+    const backend = getBackend();
+    if (!backend) return [];
+    try {
+      return await backend.GetCustomModels(provider);
+    } catch (_) {
+      return [];
+    }
+  },
+
+  addCustomModel: async (provider, model) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.AddCustomModel(provider, model);
+    } catch (e: any) {
+      set({ error: e.message || "Failed to add custom model" });
+    }
+  },
+
+  removeCustomModel: async (provider, model) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.RemoveCustomModel(provider, model);
+    } catch (e: any) {
+      set({ error: e.message || "Failed to remove custom model" });
     }
   },
 

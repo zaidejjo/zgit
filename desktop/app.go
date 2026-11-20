@@ -1122,6 +1122,23 @@ func (a *App) GetCachedProviderModelsWithMetadata(provider string) ([]ai.ModelIn
 	return result, nil
 }
 
+// GetCustomModels returns the user's custom models for a provider.
+func (a *App) GetCustomModels(provider string) ([]string, error) {
+	return a.engine.Config.GetCustomModels(provider), nil
+}
+
+// AddCustomModel adds a custom model for a provider.
+func (a *App) AddCustomModel(provider, model string) error {
+	a.engine.Config.AddCustomModel(provider, model)
+	return a.engine.Config.Save()
+}
+
+// RemoveCustomModel removes a custom model for a provider.
+func (a *App) RemoveCustomModel(provider, model string) error {
+	a.engine.Config.RemoveCustomModel(provider, model)
+	return a.engine.Config.Save()
+}
+
 // TestProviderConnection checks if a provider's API is reachable.
 // Returns (ok, latencyMs, error).
 func (a *App) TestProviderConnection(provider string) (bool, int64, error) {

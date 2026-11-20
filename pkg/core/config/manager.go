@@ -300,6 +300,18 @@ func (m *Manager) AddCustomModel(provider string, model string) {
 	m.v.Set("ai.providers."+provider+".custom_models", models)
 }
 
+// RemoveCustomModel removes a model from the provider's custom models list.
+func (m *Manager) RemoveCustomModel(provider string, model string) {
+	models := m.GetCustomModels(provider)
+	filtered := make([]string, 0, len(models))
+	for _, m := range models {
+		if m != model {
+			filtered = append(filtered, m)
+		}
+	}
+	m.v.Set("ai.providers."+provider+".custom_models", filtered)
+}
+
 // GetUserPreferences returns the stored user preferences.
 func (m *Manager) GetUserPreferences() UserPreferences {
 	return UserPreferences{
