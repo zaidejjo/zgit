@@ -103,16 +103,41 @@ export default function ModelSelectorPopover({
   align = "left",
   variant = "header",
 }: ModelSelectorPopoverProps) {
-  const { aiConfig, fetchAIConfig, setAIConfigAction } = useAppStore();
+  const {
+    aiConfig, fetchAIConfig, setAIConfigAction,
+    getCachedProviderModelsWithMetadata,
+  } = useAppStore();
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("openrouter");
   const [customInput, setCustomInput] = useState("");
+  const [providerMetadata, setProviderMetadata] = useState<Record<string, Array<{ id: string; context_window?: number; supports_tools?: boolean; supports_vision?: boolean; pricing_input?: string; pricing_output?: string; best_for?: string }>>>({});
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const currentModel = aiConfig?.model || "";
   const currentProvider = aiConfig?.provider || "";
-  const currentBadge = currentModel ? getModelBadge(currentModel) : null;
+  const currentBadge = currentModel ? providerMetadata[currentProvider]?.find((m) => m.id === currentModel) : null;
+
+  useEffect(() => {
+    fetchAIConfig();
+  }, [fetchAIConfig]);
+
+  // Fetch metadata for current provider on mount
+  useEffect(() => {
+    if (currentProvider && getCachedProviderModelsWithMetadata) {
+      getCachedProviderModelsWithMetadata(currentProvider).then((models) => {
+        setProviderMetadata((prev) => ({ ...prev, [currentProvider]: models }));
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProvider, getCachedProviderModelsWithMetadata]);
+
+  // Focus input on open
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [open]);
 
   useEffect(() => {
     fetchAIConfig();
@@ -183,9 +208,9 @@ export default function ModelSelectorPopover({
         <Sparkles className="w-3 h-3 shrink-0 text-muted-foreground" />
         <span className="flex items-center gap-1">
           <span className="truncate">{currentModel || "Select model"}</span>
-          {currentBadge?.ctxWindow && (
+          {currentBadge?.context_window && (
             <span className="text-[9px] text-muted-foreground/40 shrink-0">
-              {currentBadge.ctxWindow / 1000}k ctx
+              {currentBadge.context_window / 1000}k ctx
             </span>
           )}
         </span>
@@ -251,7 +276,7 @@ export default function ModelSelectorPopover({
             <div className="space-y-0.5">
               {(PROVIDER_CATEGORIES.find((c) => c.id === activeTab)?.models || []).map((m) => {
                 const isActive = currentModel === m.model;
-                const badge = getModelBadge(m.model);
+                const meta = providerMetadata[currentProvider]?.find((mm) => mm.id === m.model);
                 return (
                   <button
                     key={m.model}
@@ -270,7 +295,7 @@ export default function ModelSelectorPopover({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1">
                         <span className="block truncate font-medium">{m.label}</span>
-                        {badge.tools && (
+                        {meta?.supports_tools && (
                           <span title="Tool calling">
                             <Zap className="w-3 h-3 text-[10px] text-primary/60 shrink-0" />
                           </span>
@@ -280,16 +305,16 @@ export default function ModelSelectorPopover({
                         <span className="block truncate text-[10px] text-muted-foreground/60 font-mono">
                           {m.model}
                         </span>
-                        {badge.ctxWindow && (
+                        {meta?.context_window && (
                           <span className="text-[9px] text-muted-foreground/40 shrink-0">
-                            {badge.ctxWindow / 1000}k ctx
+                            {meta.context_window / 1000}k ctx
                           </span>
                         )}
-                        {badge.pricing && (
+                        {meta?.pricing_input && meta?.pricing_output && (
                           <>
                             <DollarSign className="w-3 h-3 text-[9px] text-muted-foreground/40 shrink-0" />
                             <span className="text-[9px] text-muted-foreground/40 shrink-0">
-                              {badge.pricing} /1M
+                              {meta.pricing_input}/{meta.pricing_output} /1M
                             </span>
                           </>
                         )}

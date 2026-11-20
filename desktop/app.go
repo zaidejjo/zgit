@@ -1108,6 +1108,20 @@ func (a *App) cacheProviderModels(provider string, models []string) error {
 	return a.engine.Store.SetCacheEntry(scope, key, data)
 }
 
+// GetCachedProviderModelsWithMetadata returns cached provider models with merged metadata
+// (DefaultModelInfo + models.dev fallback). Returns model IDs with their ModelInfo.
+func (a *App) GetCachedProviderModelsWithMetadata(provider string) ([]ai.ModelInfo, error) {
+	models, err := a.GetCachedProviderModels(provider)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]ai.ModelInfo, 0, len(models))
+	for _, modelID := range models {
+		result = append(result, ai.GetModelInfoWithFallback(modelID))
+	}
+	return result, nil
+}
+
 // TestProviderConnection checks if a provider's API is reachable.
 // Returns (ok, latencyMs, error).
 func (a *App) TestProviderConnection(provider string) (bool, int64, error) {
