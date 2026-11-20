@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { applyAccentColor as applyAccent, applyBrightness as applyBgBrightness } from "@/lib/theme";
+import { EventsOn } from "../../wailsjs/runtime";
 
 // Types matching the Go backend models (snake_case — matches Wails JSON serialization)
 export interface StatusFile {
@@ -280,6 +281,14 @@ export interface GitHubUser {
   public_repos: number;
 }
 
+export interface Dashboard {
+  my_prs: PRSummary[];
+  review_prs: PRSummary[];
+  my_issues: Issue[];
+  recent_runs: WorkflowRun[];
+  repos: Repo[];
+}
+
 export interface DeviceFlowCode {
   device_code: string;
   user_code: string;
@@ -417,7 +426,18 @@ declare global {
           GitMerge(branch: string): Promise<string>;
           IsGitHubAuthenticated(): Promise<boolean>;
           GetPullRequests(): Promise<PRSummary[]>;
+          GetPullRequestDetail(number: number): Promise<PullRequestDetail>;
+          GetPRChecks(number: number): Promise<PRChecks>;
           GetIssues(): Promise<Issue[]>;
+          GetIssueDetail(number: number): Promise<Issue>;
+          CreateIssue(title: string, body: string): Promise<Issue>;
+          CloseIssue(number: number): Promise<void>;
+          CreatePullRequest(title: string, body: string, head: string, base: string, draft: boolean): Promise<PRSummary>;
+          MergePullRequest(number: number, method: string): Promise<void>;
+          GetNotifications(showAll?: boolean): Promise<NotificationItem[]>;
+          MarkNotificationRead(threadID: string): Promise<void>;
+          MarkAllNotificationsRead(): Promise<void>;
+          GetDashboard(): Promise<Dashboard>;
           GetRepository(): Promise<Repo>;
           GetCurrentRepoPath(): Promise<string>;
           GetGitHubUser(): Promise<GitHubUser>;
@@ -510,6 +530,11 @@ declare global {
           AskChat(message: string): Promise<string>;
           AskChatStream(message: string): Promise<void>;
           AskChatCancel(): Promise<void>;
+          // AI Explain
+          ExplainCommit(sha: string): Promise<string>;
+          ExplainFileDiff(path: string, ref1: string, ref2: string): Promise<string>;
+          ExplainSelection(diffText: string): Promise<string>;
+          ExplainStream(message: string): Promise<void>;
           // Sessions
           SessionCreate(name: string, mode: string): Promise<ChatSession>;
           SessionList(): Promise<ChatSession[]>;
@@ -678,6 +703,11 @@ interface AppState {
   // AI Commit Message
   aiConfig: AIConfig | null;
   aiGenerating: boolean;
+
+  // AI Explain
+  explainResult: string | null;
+  explainLoading: boolean;
+  explainError: string | null;
 
   // Agentic AI Assistant (shared for Ask + Agent modes)
   aiPanelOpen: boolean;
@@ -887,6 +917,14 @@ interface AppState {
   generatePRDescription: (head: string, base?: string) => Promise<string | null>;
   generatePRMetadata: (base: string, head: string) => Promise<string | null>;
 
+  // AI Explain
+  explainCommit: (sha: string) => Promise<string | null>;
+  explainFileDiff: (path: string, ref1: string, ref2: string) => Promise<string | null>;
+  explainSelection: (diffText: string) => Promise<string | null>;
+  explainStream: (message: string, onToken: (token: string) => void, onDone: (content: string) => void, onError: (err: string) => void) => () => void;
+  explainCancel: () => void;
+  clearExplain: () => void;
+
   // Agentic AI Assistant — Dual Mode
   toggleAIPanel: () => void;
   setAIMode: (mode: "ask" | "agent") => void;
@@ -1004,6 +1042,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   aiConfig: null,
   aiGenerating: false,
   aiPanelOpen: false,
+
+  explainResult: null,
+  explainLoading: false,
+  explainError: null,
+
   aiSessionActive: false,
   aiMessages: [],
   aiProposals: [],
@@ -2816,6 +2859,100 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ aiGenerating: false });
       return null;
     }
+  },
+
+  // --- AI Explain ---
+
+  explainCommit: async (sha: string) => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      set({ explainLoading: true, explainError: null, explainResult: null });
+      const result: string = await backend.ExplainCommit(sha);
+      set({ explainResult: result, explainLoading: false });
+      return result;
+    } catch (e: any) {
+      set({ explainError: e.message || "Failed to explain commit", explainLoading: false });
+      return null;
+    }
+  },
+
+  explainFileDiff: async (path: string, ref1: string, ref2: string) => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      set({ explainLoading: true, explainError: null, explainResult: null });
+      const result: string = await backend.ExplainFileDiff(path, ref1, ref2);
+      set({ explainResult: result, explainLoading: false });
+      return result;
+    } catch (e: any) {
+      set({ explainError: e.message || "Failed to explain file diff", explainLoading: false });
+      return null;
+    }
+  },
+
+  explainSelection: async (diffText: string) => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      set({ explainLoading: true, explainError: null, explainResult: null });
+      const result: string = await backend.ExplainSelection(diffText);
+      set({ explainResult: result, explainLoading: false });
+      return result;
+    } catch (e: any) {
+      set({ explainError: e.message || "Failed to explain selection", explainLoading: false });
+      return null;
+    }
+  },
+
+  explainStream: (message: string, onToken: (token: string) => void, onDone: (content: string) => void, onError: (err: string) => void) => {
+    const backend = getBackend();
+    if (!backend) return () => {};
+    set({ explainLoading: true, explainError: null, explainResult: null });
+
+    let cancelled = false;
+
+    const unwatchToken = EventsOn("ai:token", (token: string) => {
+      if (cancelled) return;
+      onToken(token);
+    });
+    const unwatchDone = EventsOn("ai:done", (content: string) => {
+      if (cancelled) return;
+      unwatchToken();
+      unwatchDone();
+      unwatchError();
+      set({ explainLoading: false, explainResult: content });
+      onDone(content);
+    });
+    const unwatchError = EventsOn("ai:error", (err: string) => {
+      if (cancelled) return;
+      unwatchToken();
+      unwatchDone();
+      unwatchError();
+      set({ explainLoading: false, explainError: err || "Explain stream error" });
+      onError(err || "Explain stream error");
+    });
+
+    void backend.ExplainStream(message);
+
+    return () => {
+      cancelled = true;
+      unwatchToken();
+      unwatchDone();
+      unwatchError();
+      set({ explainLoading: false });
+    };
+  },
+
+  explainCancel: () => {
+    const backend = getBackend();
+    if (!backend) return;
+    backend.AskChatCancel().catch(() => {});
+    set({ explainLoading: false });
+  },
+
+  clearExplain: () => {
+    set({ explainResult: null, explainError: null, explainLoading: false });
   },
 
   // --- Agentic AI Assistant — Dual Mode ---

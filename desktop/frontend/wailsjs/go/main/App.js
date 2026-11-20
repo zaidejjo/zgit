@@ -150,6 +150,22 @@ export function DiscardFile(arg1) {
   return window['go']['main']['App']['DiscardFile'](arg1);
 }
 
+export function ExplainCommit(arg1) {
+  return window['go']['main']['App']['ExplainCommit'](arg1);
+}
+
+export function ExplainFileDiff(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ExplainFileDiff'](arg1, arg2, arg3);
+}
+
+export function ExplainSelection(arg1) {
+  return window['go']['main']['App']['ExplainSelection'](arg1);
+}
+
+export function ExplainStream(arg1) {
+  return window['go']['main']['App']['ExplainStream'](arg1);
+}
+
 export function FetchAllRepos() {
   return window['go']['main']['App']['FetchAllRepos']();
 }
@@ -304,6 +320,42 @@ export function GetWorktrees() {
 
 export function GitFetch() {
   return window['go']['main']['App']['GitFetch']();
+}
+
+export function GitHubCloseIssue(arg1) {
+  return window['go']['main']['App']['GitHubCloseIssue'](arg1);
+}
+
+export function GitHubCreateIssue(arg1, arg2) {
+  return window['go']['main']['App']['GitHubCreateIssue'](arg1, arg2);
+}
+
+export function GitHubCreatePullRequest(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['GitHubCreatePullRequest'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function GitHubGetDashboard() {
+  return window['go']['main']['App']['GitHubGetDashboard']();
+}
+
+export function GitHubGetPullRequest(arg1) {
+  return window['go']['main']['App']['GitHubGetPullRequest'](arg1);
+}
+
+export function GitHubListIssues(arg1) {
+  return window['go']['main']['App']['GitHubListIssues'](arg1);
+}
+
+export function GitHubListNotifications(arg1) {
+  return window['go']['main']['App']['GitHubListNotifications'](arg1);
+}
+
+export function GitHubListPullRequests(arg1) {
+  return window['go']['main']['App']['GitHubListPullRequests'](arg1);
+}
+
+export function GitHubMergePullRequest(arg1, arg2) {
+  return window['go']['main']['App']['GitHubMergePullRequest'](arg1, arg2);
 }
 
 export function GitMerge(arg1) {

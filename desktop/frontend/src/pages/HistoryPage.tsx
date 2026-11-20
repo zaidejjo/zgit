@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { History, Search, GitCommitHorizontal, AlignLeft, FileText } from "lucide-react";
+import { History, Search, GitCommitHorizontal, AlignLeft, FileText, Sparkles, LoaderCircle, X } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import EmptyState from "@/components/EmptyState";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose,
+} from "@/components/ui/dialog";
 
 export default function HistoryPage() {
   const {
     blame, fileHistory, historyPath, loading, repoPath, repoFiles,
     fetchBlame, fetchFileHistory, fetchRepoFiles,
+    explainFileDiff, explainResult, explainLoading, explainError, clearExplain,
   } = useAppStore();
 
   const [path, setPath] = useState(historyPath);
@@ -24,11 +28,29 @@ export default function HistoryPage() {
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestIdx, setSuggestIdx] = useState(0);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [explainingFile, setExplainingFile] = useState<{ path: string; ref1: string; ref2: string } | null>(null);
+  const [showExplain, setShowExplain] = useState(false);
 
   useEffect(() => {
     fetchRepoFiles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repoPath]);
+
+  // Explain selected file diff
+  useEffect(() => {
+    if (!explainingFile) return;
+    (async () => {
+      await explainFileDiff(explainingFile.path, explainingFile.ref1, explainingFile.ref2);
+      setShowExplain(true);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [explainingFile]);
+
+  const handleCloseExplain = () => {
+    setShowExplain(false);
+    setExplainingFile(null);
+    clearExplain();
+  };
 
   useEffect(() => () => {
     if (blurTimer.current) clearTimeout(blurTimer.current);
@@ -205,7 +227,7 @@ export default function HistoryPage() {
             <ScrollArea className="h-[calc(100vh-19rem)]">
               <div className="space-y-0.5">
                 {fileHistory.map((c) => (
-                  <div key={c.hash} className="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-accent/50 transition-colors">
+                  <div key={c.hash} className="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-accent/50 transition-colors group">
                     <span className="font-mono text-xs text-primary shrink-0 mt-0.5">{c.hash.slice(0, 8)}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm truncate">{c.message}</p>
@@ -214,6 +236,15 @@ export default function HistoryPage() {
                         {c.ref_names ? ` · ${c.ref_names}` : ""}
                       </p>
                     </div>
+                    <button
+                      className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100"
+                      onClick={() => {
+                        setExplainingFile({ path, ref1: "HEAD~1", ref2: "HEAD" });
+                      }}
+                      title="Explain with AI"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -257,4 +288,46 @@ export default function HistoryPage() {
       </Tabs>
     </div>
   );
+
+  // Explain with AI Dialog (rendered as a sibling overlay)
+  if (showExplain) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={handleCloseExplain}>
+        <div className="max-w-2xl bg-background border rounded-lg p-1 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold">Explain File Diff</h2>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            {explainingFile?.path} — {explainingFile?.ref1}..{explainingFile?.ref2}
+          </p>
+          <div className="max-h-[60vh] overflow-auto">
+            <div className="p-4 space-y-3">
+              {explainLoading && (
+                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                  <LoaderCircle className="w-6 h-6 animate-spin mb-2" />
+                  <p>Explaining with AI...</p>
+                </div>
+              )}
+              {explainError && (
+                <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
+                  {explainError}
+                </div>
+              )}
+              {explainResult && (
+                <div className="text-sm leading-relaxed text-muted-foreground bg-muted/20 rounded-lg p-3 whitespace-pre-wrap break-words">
+                  {explainResult}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button variant="outline" onClick={handleCloseExplain} disabled={explainLoading}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 }

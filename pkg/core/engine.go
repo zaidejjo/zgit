@@ -18,6 +18,7 @@ import (
 	gitpkg "github.com/zaidejjo/zgit/pkg/core/git"
 	"github.com/zaidejjo/zgit/pkg/core/github"
 	"github.com/zaidejjo/zgit/pkg/core/models"
+	"github.com/zaidejjo/zgit/pkg/core/pcache"
 )
 
 // EngineOptions configures engine behavior.
@@ -49,6 +50,7 @@ type Engine struct {
 	Config *config.Manager
 	Cache  *cache.Cache
 	Store  *db.Store
+	PCache *pcache.Cache
 
 	opts EngineOptions
 	mu   sync.Mutex
@@ -147,6 +149,10 @@ func (e *Engine) OpenRepo(repoPath string) error {
 		}
 	}
 
+	// Set up the persistent, repo-scoped cache now that the repo path is known.
+	// Keys are namespaced under this repo so they never collide across repos.
+	e.PCache = pcache.New(repoPath, e.Store, e.Cache)
+
 	if err := e.Git.Open(repoPath); err != nil {
 		// Exit code 128 = empty repo / unborn HEAD — handle gracefully
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -204,6 +210,9 @@ func (e *Engine) CloseRepo() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.repo = nil
+	if e.PCache != nil {
+		e.PCache.InvalidateRepo()
+	}
 	return e.Git.Close()
 }
 

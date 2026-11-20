@@ -52,8 +52,8 @@ type CleanupCandidate struct {
 	LastTime    int64  `json:"last_time,omitempty"`
 }
 
-// Protected lists branches withheld with a reason instead of offered.
-type Protected struct {
+// WithheldBranch lists branches withheld with a reason instead of offered.
+type WithheldBranch struct {
 	RepoPath string `json:"repo_path"`
 	RepoName string `json:"repo_name"`
 	Branch   string `json:"branch"`

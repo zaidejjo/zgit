@@ -267,7 +267,7 @@ var defaultProtected = map[string]bool{"main": true, "master": true, "dev": true
 
 // CleanupScan returns deletion candidates and withheld branches for one repo.
 // base empty defaults to the repo's current branch.
-func (e *Engine) CleanupScan(repoPath, base string) (candidates []models.CleanupCandidate, withheld []models.Protected, err error) {
+func (e *Engine) CleanupScan(repoPath, base string) (candidates []models.CleanupCandidate, withheld []models.WithheldBranch, err error) {
 	git, err := gitpkg.NewNativeExec("")
 	if err != nil {
 		return nil, nil, err
@@ -294,11 +294,11 @@ func (e *Engine) CleanupScan(repoPath, base string) (candidates []models.Cleanup
 	for _, b := range merged {
 		switch {
 		case b == base:
-			withheld = append(withheld, models.Protected{RepoPath: repoPath, RepoName: name, Branch: b, Reason: "merge base"})
+			withheld = append(withheld, models.WithheldBranch{RepoPath: repoPath, RepoName: name, Branch: b, Reason: "merge base"})
 		case b == current:
-			withheld = append(withheld, models.Protected{RepoPath: repoPath, RepoName: name, Branch: b, Reason: "checked out"})
+			withheld = append(withheld, models.WithheldBranch{RepoPath: repoPath, RepoName: name, Branch: b, Reason: "checked out"})
 		case defaultProtected[b]:
-			withheld = append(withheld, models.Protected{RepoPath: repoPath, RepoName: name, Branch: b, Reason: "protected"})
+			withheld = append(withheld, models.WithheldBranch{RepoPath: repoPath, RepoName: name, Branch: b, Reason: "protected"})
 		default:
 			c := models.CleanupCandidate{RepoPath: repoPath, RepoName: name, Branch: b}
 			if commits, err := git.Log(ctx, gitpkg.LogOptions{Branch: b, Count: 1}); err == nil && len(commits) > 0 {
@@ -312,7 +312,7 @@ func (e *Engine) CleanupScan(repoPath, base string) (candidates []models.Cleanup
 		candidates = []models.CleanupCandidate{}
 	}
 	if withheld == nil {
-		withheld = []models.Protected{}
+		withheld = []models.WithheldBranch{}
 	}
 	return candidates, withheld, nil
 }
@@ -333,16 +333,16 @@ func (e *Engine) DeleteRepoBranch(repoPath, branch string) error {
 
 // ProjectCleanupScan scans every member repo. Base applies where set;
 // empty base resolves per repo.
-func (e *Engine) ProjectCleanupScan(id, base string) ([]models.CleanupCandidate, []models.Protected, error) {
+func (e *Engine) ProjectCleanupScan(id, base string) ([]models.CleanupCandidate, []models.WithheldBranch, error) {
 	if e.Store == nil {
 		return nil, nil, fmt.Errorf("store not initialized")
 	}
 	var candidates []models.CleanupCandidate
-	var withheld []models.Protected
+	var withheld []models.WithheldBranch
 	for _, p := range e.Store.ProjectRepos(id) {
 		c, w, err := e.CleanupScan(p, base)
 		if err != nil {
-			withheld = append(withheld, models.Protected{RepoPath: p, RepoName: filepath.Base(p), Branch: "", Reason: "scan failed: " + err.Error()})
+			withheld = append(withheld, models.WithheldBranch{RepoPath: p, RepoName: filepath.Base(p), Branch: "", Reason: "scan failed: " + err.Error()})
 			continue
 		}
 		candidates = append(candidates, c...)
@@ -352,7 +352,7 @@ func (e *Engine) ProjectCleanupScan(id, base string) ([]models.CleanupCandidate,
 		candidates = []models.CleanupCandidate{}
 	}
 	if withheld == nil {
-		withheld = []models.Protected{}
+		withheld = []models.WithheldBranch{}
 	}
 	return candidates, withheld, nil
 }

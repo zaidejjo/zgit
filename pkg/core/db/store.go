@@ -104,6 +104,20 @@ func (s *Store) migrate() error {
 	);`); err != nil {
 		return fmt.Errorf("migrate overview_cache: %w", err)
 	}
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS cache_entries(
+		scope TEXT NOT NULL,
+		key TEXT NOT NULL,
+		data TEXT NOT NULL,
+		fetched_at INTEGER NOT NULL,
+		ttl_seconds INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY(scope, key)
+	);`); err != nil {
+		return fmt.Errorf("migrate cache_entries: %w", err)
+	}
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_cache_entries_scope
+		ON cache_entries(scope);`); err != nil {
+		return fmt.Errorf("migrate cache_entries index: %w", err)
+	}
 	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS ai_sessions(
 		id TEXT PRIMARY KEY,
 		name TEXT NOT NULL DEFAULT '',
@@ -167,6 +181,41 @@ func (s *Store) SetCachedOverview(ov *models.RepoOverview) error {
 // InvalidateOverview drops one cached snapshot.
 func (s *Store) InvalidateOverview(path string) {
 	_, _ = s.db.Exec(`DELETE FROM overview_cache WHERE path = ?`, path)
+}
+
+// GetCacheEntry returns a cached blob when fresher than ttlSeconds.
+// scope is a namespacing prefix (e.g. a repo path) so entries never
+// collide between repos or entry classes.
+func (s *Store) GetCacheEntry(scope, key string, ttlSeconds int64) ([]byte, bool) {
+	var data string
+	var fetchedAt int64
+	if err := s.db.QueryRow(`SELECT data, fetched_at FROM cache_entries WHERE scope = ? AND key = ?`,
+		scope, key).Scan(&data, &fetchedAt); err != nil {
+		return nil, false
+	}
+	if ttlSeconds > 0 && time.Now().Unix()-fetchedAt > ttlSeconds {
+		return nil, false
+	}
+	return []byte(data), true
+}
+
+// SetCacheEntry stores a blob under scope/key (upsert).
+func (s *Store) SetCacheEntry(scope, key string, value []byte) error {
+	_, err := s.db.Exec(`INSERT INTO cache_entries(scope, key, data, fetched_at)
+		VALUES(?, ?, ?, ?)
+		ON CONFLICT(scope, key) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at`,
+		scope, key, string(value), time.Now().Unix())
+	return err
+}
+
+// InvalidateCacheEntry drops one cached entry.
+func (s *Store) InvalidateCacheEntry(scope, key string) {
+	_, _ = s.db.Exec(`DELETE FROM cache_entries WHERE scope = ? AND key = ?`, scope, key)
+}
+
+// InvalidateCacheScope drops all entries under a scope (e.g. on repo switch/close).
+func (s *Store) InvalidateCacheScope(scope string) {
+	_, _ = s.db.Exec(`DELETE FROM cache_entries WHERE scope = ?`, scope)
 }
 
 func (s *Store) getMeta(key string) string {
