@@ -1108,6 +1108,37 @@ func (a *App) cacheProviderModels(provider string, models []string) error {
 	return a.engine.Store.SetCacheEntry(scope, key, data)
 }
 
+// GetCachedProviderModelsWithMetadata returns cached provider models with merged metadata
+// (DefaultModelInfo + models.dev fallback). Returns model IDs with their ModelInfo.
+func (a *App) GetCachedProviderModelsWithMetadata(provider string) ([]ai.ModelInfo, error) {
+	models, err := a.GetCachedProviderModels(provider)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]ai.ModelInfo, 0, len(models))
+	for _, modelID := range models {
+		result = append(result, ai.GetModelInfoWithFallback(modelID))
+	}
+	return result, nil
+}
+
+// GetCustomModels returns the user's custom models for a provider.
+func (a *App) GetCustomModels(provider string) ([]string, error) {
+	return a.engine.Config.GetCustomModels(provider), nil
+}
+
+// AddCustomModel adds a custom model for a provider.
+func (a *App) AddCustomModel(provider, model string) error {
+	a.engine.Config.AddCustomModel(provider, model)
+	return a.engine.Config.Save()
+}
+
+// RemoveCustomModel removes a custom model for a provider.
+func (a *App) RemoveCustomModel(provider, model string) error {
+	a.engine.Config.RemoveCustomModel(provider, model)
+	return a.engine.Config.Save()
+}
+
 // TestProviderConnection checks if a provider's API is reachable.
 // Returns (ok, latencyMs, error).
 func (a *App) TestProviderConnection(provider string) (bool, int64, error) {
@@ -1204,6 +1235,29 @@ func (a *App) GenerateCommitMessageWithContext() (string, error) {
 				Message:        aiErr.Message + " (fallback to " + aiErr.SuggestedModel + " also failed)",
 			}
 		}
+		return "", aiErr
+	}
+
+	return msg, nil
+}
+
+// GenerateCommitMessageStream streams a commit message via onToken callback.
+// Returns the full message when complete.
+func (a *App) GenerateCommitMessageStream(onToken func(string)) (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 120e9)
+	defer cancel()
+
+	aiCfg := a.aiConfig()
+	if aiCfg.Provider == "" {
+		return "", fmt.Errorf("AI provider not configured — go to Settings to set up AI commit message generation")
+	}
+	if aiCfg.APIKey == "" {
+		return "", fmt.Errorf("API key not configured — go to Settings to set your API key")
+	}
+
+	msg, err := a.engine.GenerateCommitMessageWithContextStream(ctx, aiCfg, onToken)
+	if err != nil {
+		aiErr := categorizeError(err)
 		return "", aiErr
 	}
 

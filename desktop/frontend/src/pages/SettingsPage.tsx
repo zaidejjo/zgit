@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "@tanstack/react-router";
 import {
   FolderOpen, GitBranch, User, Sparkles, Eye, EyeOff,
-  Save, X, Palette, Keyboard,
+  Save, X, Plus, Palette, Keyboard,
   Check, ChevronRight, Sun,
   LogOut, Github, Terminal, Sliders,
   RotateCcw, Monitor, ExternalLink, RefreshCw,
@@ -542,6 +542,8 @@ function AITab() {
     setAIConfigAction, setProviderAIConfigAction,
     deleteProviderAIConfigAction, fetchProviderModelsAction,
     getCachedProviderModels, testProviderConnection,
+    getCustomModels, addCustomModel, removeCustomModel,
+    setError,
   } = useAppStore();
 
   const [selectedProvider, setSelectedProvider] = useState("");
@@ -559,6 +561,11 @@ function AITab() {
 
   // Per-provider cached models (key = provider name)
   const [providerModels, setProviderModels] = useState<Record<string, string[]>>({});
+
+  // Custom models (key = provider name)
+  const [customModels, setCustomModels] = useState<Record<string, string[]>>({});
+  const [customModelInput, setCustomModelInput] = useState("");
+  const [addingCustomModel, setAddingCustomModel] = useState(false);
 
   // Reset local state when provider changes
   useEffect(() => {
@@ -651,9 +658,13 @@ function AITab() {
           setProviderHealth((prev) => ({ ...prev, [p.provider]: health }));
         });
       }
+      // Fetch custom models for all configured providers (even without key)
+      getCustomModels(p.provider).then((models) => {
+        setCustomModels((prev) => ({ ...prev, [p.provider]: models }));
+      });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiConfig?.providers, fetchCachedModels, testProviderConnection]);
+  }, [aiConfig?.providers, fetchCachedModels, testProviderConnection, getCustomModels]);
 
   const handleSaveKey = async () => {
     if (!selectedProvider || !keyInput) return;
@@ -682,6 +693,30 @@ function AITab() {
       setFetchedModels([]);
     } finally {
       setAiSaving(false);
+    }
+  };
+
+  const handleAddCustomModel = async () => {
+    if (!selectedProvider || !customModelInput.trim()) return;
+    setAddingCustomModel(true);
+    try {
+      await addCustomModel(selectedProvider, customModelInput.trim());
+      setCustomModelInput("");
+      const models = await getCustomModels(selectedProvider);
+      setCustomModels((prev) => ({ ...prev, [selectedProvider]: models }));
+    } finally {
+      setAddingCustomModel(false);
+    }
+  };
+
+  const handleRemoveCustomModel = async (model: string) => {
+    if (!selectedProvider) return;
+    try {
+      await removeCustomModel(selectedProvider, model);
+      const models = await getCustomModels(selectedProvider);
+      setCustomModels((prev) => ({ ...prev, [selectedProvider]: models }));
+    } catch (e: any) {
+      setError(e.message || "Failed to remove custom model");
     }
   };
 
@@ -944,6 +979,69 @@ function AITab() {
                       ? "Save an API key and click refresh to fetch models."
                       : "Enter any model name supported by this provider."}
                 </p>
+              </div>
+
+              {/* Custom models */}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Label>Custom Models</Label>
+                  <span className="text-[9px] text-muted-foreground/40">
+                    Saved per-provider custom models
+                  </span>
+                </div>
+                <div className="flex gap-1">
+                  <Input
+                    className="h-7 text-xs flex-1 font-mono"
+                    value={customModelInput}
+                    onChange={(e) => setCustomModelInput(e.target.value)}
+                    placeholder="Enter custom model name"
+                    onKeyDown={(e) => e.key === "Enter" && handleAddCustomModel()}
+                  />
+                  <button
+                    onClick={handleAddCustomModel}
+                    disabled={addingCustomModel || !customModelInput.trim()}
+                    className="h-7 px-2.5 rounded-lg text-xs border border-border/30 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all press-scale disabled:opacity-40"
+                  >
+                    {addingCustomModel ? (
+                      <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+                {customModels[selectedProvider]?.length && (
+                  <div className="flex flex-wrap gap-1">
+                    {customModels[selectedProvider].map((m) => (
+                      <button
+                        key={"custom-" + m}
+                        onClick={() => setModel(m)}
+                        onClickCapture={(e) => e.stopPropagation()}
+                        className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                          model === m
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border/30 text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {m}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveCustomModel(m);
+                          }}
+                          className="ml-1 p-0.5 text-[9px] text-muted-foreground hover:text-destructive"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!customModels[selectedProvider]?.length && (
+                  <p className="text-[9px] text-muted-foreground/40 mt-0.5">
+                    No custom models saved for this provider.
+                  </p>
+                )}
               </div>
 
               {/* Endpoint */}

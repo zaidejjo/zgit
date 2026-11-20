@@ -917,6 +917,11 @@ interface AppState {
   testProviderConnection: (provider: string) => Promise<{ ok: boolean; latencyMs: number; error?: string }>;
   generateCommitMessage: () => Promise<string | null>;
   generateCommitMessageWithContext: () => Promise<string | null>;
+  generateCommitMessageStream: (onToken: (token: string) => void, onDone: (content: string) => void, onError: (err: string) => void) => () => void;
+  getCachedProviderModelsWithMetadata: (provider: string) => Promise<Array<{ id: string; context_window?: number; supports_tools?: boolean; supports_vision?: boolean; pricing_input?: string; pricing_output?: string; best_for?: string }>>;
+  getCustomModels: (provider: string) => Promise<string[]>;
+  addCustomModel: (provider: string, model: string) => Promise<void>;
+  removeCustomModel: (provider: string, model: string) => Promise<void>;
   aiGetRepoContext: () => Promise<string | null>;
   aiReviewPR: (source: string, target: string) => Promise<string | null>;
   generatePRDescription: (head: string, base?: string) => Promise<string | null>;
@@ -2831,6 +2836,46 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  getCachedProviderModelsWithMetadata: async (provider) => {
+    const backend = getBackend();
+    if (!backend) return [];
+    try {
+      return await backend.GetCachedProviderModelsWithMetadata(provider);
+    } catch (_) {
+      return [];
+    }
+  },
+
+  getCustomModels: async (provider) => {
+    const backend = getBackend();
+    if (!backend) return [];
+    try {
+      return await backend.GetCustomModels(provider);
+    } catch (_) {
+      return [];
+    }
+  },
+
+  addCustomModel: async (provider, model) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.AddCustomModel(provider, model);
+    } catch (e: any) {
+      set({ error: e.message || "Failed to add custom model" });
+    }
+  },
+
+  removeCustomModel: async (provider, model) => {
+    const backend = getBackend();
+    if (!backend) return;
+    try {
+      await backend.RemoveCustomModel(provider, model);
+    } catch (e: any) {
+      set({ error: e.message || "Failed to remove custom model" });
+    }
+  },
+
   testProviderConnection: async (provider) => {
     const backend = getBackend();
     if (!backend) return { ok: false, latencyMs: 0, error: "No backend" };
@@ -2870,6 +2915,37 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ aiGenerating: false });
       return null;
     }
+  },
+
+  generateCommitMessageStream: (onToken, onDone, onError) => {
+    const backend = getBackend();
+    if (!backend) {
+      onError("No backend");
+      return () => {};
+    }
+    set({ aiGenerating: true });
+    let cancelled = false;
+    (async () => {
+      try {
+        const fullContent: string = await backend.GenerateCommitMessageStream((token: string) => {
+          if (!cancelled) {
+            onToken(token);
+          }
+        });
+        if (!cancelled) {
+          set({ aiGenerating: false });
+          onDone(fullContent);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          set({ aiGenerating: false });
+          onError(e.message || "Stream failed");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   },
 
   aiGetRepoContext: async () => {

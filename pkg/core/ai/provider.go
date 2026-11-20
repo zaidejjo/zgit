@@ -64,6 +64,9 @@ type Generator interface {
 	// GenerateCommitMessageWithContext sends the diff plus repository context to the AI provider.
 	// The context (branch, recent commits, status) helps the AI match project conventions.
 	GenerateCommitMessageWithContext(ctx context.Context, diff string, context CommitContext, cfg Config) (string, error)
+
+	// GenerateCommitMessageStream streams tokens via onToken callback and returns the full message.
+	GenerateCommitMessageStream(ctx context.Context, diff string, context CommitContext, cfg Config, onToken func(string)) (string, error)
 }
 
 // NewGenerator creates the appropriate provider based on config.
