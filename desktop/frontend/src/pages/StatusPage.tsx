@@ -4,7 +4,7 @@ import {
   GitCommitHorizontal, SquarePen, AlignLeft, CheckCheck,
   AlertTriangle, ChevronDown, FileText,
   RefreshCw, AlertOctagon, ArrowRight, Sparkles,
-  GitFork, Eye, EyeOff, Plus, Trash2, Info, Redo,
+  GitFork, Eye, EyeOff, Plus, Trash2, Info, Redo, AlertCircle,
 } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,9 @@ export default function StatusPage() {
   const [summary, setSummary] = useState("");
   const [description, setDescription] = useState("");
   const [committing, setCommitting] = useState(false);
+
+  // AI error state
+  const [aiError, setAiError] = useState<{ category?: string; message: string; retryable?: boolean; suggestedModel?: string } | null>(null);
 
   // Stash state
   const [stashMsg, setStashMsg] = useState("");
@@ -440,16 +443,40 @@ export default function StatusPage() {
                       <TooltipTrigger asChild>
                         <button
                           onClick={async () => {
-                            const msg = await generateCommitMessageWithContext();
-                            if (msg) {
-                              const nl = msg.indexOf("\n");
-                              if (nl >= 0) {
-                                setSummary(msg.slice(0, nl).trim());
-                                setDescription(msg.slice(nl + 1).trim());
-                              } else {
-                                setSummary(msg.trim());
+                            setAiError(null);
+                            try {
+                              const msg = await generateCommitMessageWithContext();
+                              if (msg) {
+                                const nl = msg.indexOf("\n");
+                                if (nl >= 0) {
+                                  setSummary(msg.slice(0, nl).trim());
+                                  setDescription(msg.slice(nl + 1).trim());
+                                } else {
+                                  setSummary(msg.trim());
+                                }
+                                setSuccessMessage("Commit message generated with AI");
                               }
-                              setSuccessMessage("Commit message generated with AI");
+                            } catch (e: any) {
+                              const msg = e.message || "Unknown AI error";
+                              const lower = msg.toLowerCase();
+                              let category = "provider";
+                              let retryable = true;
+                              let suggestedModel: string | undefined;
+                              if (lower.includes("401") || lower.includes("403") || lower.includes("invalid api key") || lower.includes("unauthorized")) {
+                                category = "auth";
+                                retryable = false;
+                              } else if (lower.includes("429") || lower.includes("rate limit") || lower.includes("too many requests")) {
+                                category = "rate_limit";
+                                retryable = true;
+                              } else if (lower.includes("context length") || lower.includes("maximum context") || lower.includes("token limit")) {
+                                category = "context_length";
+                                retryable = true;
+                                suggestedModel = "claude-3-haiku-20240307";
+                              } else if (lower.includes("connection") || lower.includes("timeout") || lower.includes("network")) {
+                                category = "network";
+                                retryable = true;
+                              }
+                              setAiError({ category, message: msg, retryable, suggestedModel });
                             }
                           }}
                           disabled={aiGenerating}
@@ -478,14 +505,64 @@ export default function StatusPage() {
                       </TooltipContent>
                     </Tooltip>
 
+                    {/* AI error with retry */}
+                    {aiError && (
+                      <div className="p-3 rounded-lg border border-destructive/20 bg-destructive/10">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="w-3 h-3 text-destructive shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <p className="text-xs text-destructive font-medium">{aiError.category || "Error"}</p>
+                            <p className="text-[10px] text-destructive/80">{aiError.message}</p>
+                            {aiError.retryable && (
+                              <button
+                                onClick={() => {
+                                  setAiError(null);
+                                  generateCommitMessageWithContext();
+                                }}
+                                className="mt-1.5 text-xs underline underline-offset-4 hover:text-destructive transition-colors"
+                              >
+                                {aiError.suggestedModel
+                                  ? `Retry with ${aiError.suggestedModel}`
+                                  : "Retry"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Regenerate button */}
                     {summary && (
                       <button
-                        onClick={() => {
+                        onClick={async () => {
+                          setAiError(null);
                           setSummary("");
                           setDescription("");
                           setSuccessMessage("");
-                          useAppStore.getState().generateCommitMessageWithContext();
+                          try {
+                            await useAppStore.getState().generateCommitMessageWithContext();
+                          } catch (e: any) {
+                            const msg = e.message || "Unknown AI error";
+                            const lower = msg.toLowerCase();
+                            let category = "provider";
+                            let retryable = true;
+                            let suggestedModel: string | undefined;
+                            if (lower.includes("401") || lower.includes("403") || lower.includes("invalid api key") || lower.includes("unauthorized")) {
+                              category = "auth";
+                              retryable = false;
+                            } else if (lower.includes("429") || lower.includes("rate limit") || lower.includes("too many requests")) {
+                              category = "rate_limit";
+                              retryable = true;
+                            } else if (lower.includes("context length") || lower.includes("maximum context") || lower.includes("token limit")) {
+                              category = "context_length";
+                              retryable = true;
+                              suggestedModel = "claude-3-haiku-20240307";
+                            } else if (lower.includes("connection") || lower.includes("timeout") || lower.includes("network")) {
+                              category = "network";
+                              retryable = true;
+                            }
+                            setAiError({ category, message: msg, retryable, suggestedModel });
+                          }
                         }}
                         disabled={aiGenerating}
                         className="text-xs py-1 rounded-md border border-border/30 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center gap-1.5"

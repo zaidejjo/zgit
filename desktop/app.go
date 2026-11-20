@@ -1132,6 +1132,39 @@ func (a *App) TestProviderConnection(provider string) (bool, int64, error) {
 	return true, latencyMs, nil
 }
 
+// AIError categorizes AI provider errors for user-friendly recovery.
+type AIError struct {
+	Category       string // "auth", "rate_limit", "context_length", "network", "provider"
+	Retryable      bool
+	SuggestedModel string // fallback model to try
+	Message        string
+}
+
+func (e *AIError) Error() string {
+	return e.Message
+}
+
+// categorizeError inspects an error message and returns a typed AIError.
+func categorizeError(err error) *AIError {
+	msg := err.Error()
+	if msg == "" {
+		return &AIError{Category: "provider", Retryable: true, Message: "unknown AI error"}
+	}
+	lower := strings.ToLower(msg)
+	switch {
+	case strings.Contains(lower, "401") || strings.Contains(lower, "403") || strings.Contains(lower, "invalid api key") || strings.Contains(lower, "authentication"):
+		return &AIError{Category: "auth", Retryable: false, Message: "API key invalid or unauthorized — check your API key in Settings"}
+	case strings.Contains(lower, "429") || strings.Contains(lower, "rate limit") || strings.Contains(lower, "too many requests"):
+		return &AIError{Category: "rate_limit", Retryable: true, Message: "API rate limit exceeded — please wait and retry"}
+	case strings.Contains(lower, "context length") || strings.Contains(lower, "maximum context") || strings.Contains(lower, "token limit"):
+		return &AIError{Category: "context_length", Retryable: true, SuggestedModel: "claude-3-haiku-20240307", Message: "Input too long for model context window"}
+	case strings.Contains(lower, "connection") || strings.Contains(lower, "timeout") || strings.Contains(lower, "network") || strings.Contains(lower, "unreachable"):
+		return &AIError{Category: "network", Retryable: true, Message: "Network error — check your internet connection"}
+	default:
+		return &AIError{Category: "provider", Retryable: true, Message: msg}
+	}
+}
+
 // GenerateCommitMessage reads the staged diff and returns an AI-generated conventional commit message.
 func (a *App) GenerateCommitMessage() (string, error) {
 	return a.GenerateCommitMessageWithContext()
@@ -1139,6 +1172,7 @@ func (a *App) GenerateCommitMessage() (string, error) {
 
 // GenerateCommitMessageWithContext generates a commit message using the staged diff
 // plus repository context (branch, recent commits, status) to match project conventions.
+// On context_length errors, auto-falls back to a smaller model.
 func (a *App) GenerateCommitMessageWithContext() (string, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
 	defer cancel()
@@ -1153,7 +1187,24 @@ func (a *App) GenerateCommitMessageWithContext() (string, error) {
 
 	msg, err := a.engine.GenerateCommitMessageWithContext(ctx, aiCfg)
 	if err != nil {
-		return "", fmt.Errorf("AI generation failed: %w", err)
+		aiErr := categorizeError(err)
+		// Auto-fallback on context_length errors
+		if aiErr.Category == "context_length" && aiErr.SuggestedModel != "" && aiCfg.Model != aiErr.SuggestedModel {
+			fallbackCfg := aiCfg
+			fallbackCfg.Model = aiErr.SuggestedModel
+			msg, fbErr := a.engine.GenerateCommitMessageWithContext(ctx, fallbackCfg)
+			if fbErr == nil {
+				return msg, nil
+			}
+			// If fallback also fails, return the original error with fallback info
+			return "", &AIError{
+				Category:       aiErr.Category,
+				Retryable:      aiErr.Retryable,
+				SuggestedModel: aiErr.SuggestedModel,
+				Message:        aiErr.Message + " (fallback to " + aiErr.SuggestedModel + " also failed)",
+			}
+		}
+		return "", aiErr
 	}
 
 	return msg, nil
