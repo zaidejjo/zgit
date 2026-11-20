@@ -1108,6 +1108,30 @@ func (a *App) cacheProviderModels(provider string, models []string) error {
 	return a.engine.Store.SetCacheEntry(scope, key, data)
 }
 
+// TestProviderConnection checks if a provider's API is reachable.
+// Returns (ok, latencyMs, error).
+func (a *App) TestProviderConnection(provider string) (bool, int64, error) {
+	cfg := a.engine.Config
+	cfgDir := cfg.ConfigPath()
+	pc := cfg.GetProviderConfig(provider)
+	apiKey := pc.APIKey
+	if apiKey != "" {
+		decrypted, err := ai.DecryptAPIKey(apiKey, cfgDir)
+		if err == nil {
+			apiKey = decrypted
+		}
+	}
+
+	start := time.Now()
+	_, err := ai.FetchProviderModels(provider, apiKey)
+	latencyMs := time.Since(start).Milliseconds()
+
+	if err != nil {
+		return false, latencyMs, err
+	}
+	return true, latencyMs, nil
+}
+
 // GenerateCommitMessage reads the staged diff and returns an AI-generated conventional commit message.
 func (a *App) GenerateCommitMessage() (string, error) {
 	return a.GenerateCommitMessageWithContext()

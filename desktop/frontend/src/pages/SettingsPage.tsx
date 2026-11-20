@@ -6,7 +6,7 @@ import {
   Check, ChevronRight, Sun,
   LogOut, Github, Terminal, Sliders,
   RotateCcw, Monitor, ExternalLink, RefreshCw,
-  Users, GitFork, BookOpen, Crown,
+  Users, GitFork, BookOpen, Crown, Circle, AlertCircle,
 } from "lucide-react";
 import { useAppStore, type Theme, THEMES, type GitHubUser } from "@/store/app";
 import { Input } from "@/components/ui/input";
@@ -541,7 +541,7 @@ function AITab() {
     aiConfig, fetchAIConfig,
     setAIConfigAction, setProviderAIConfigAction,
     deleteProviderAIConfigAction, fetchProviderModelsAction,
-    getCachedProviderModels,
+    getCachedProviderModels, testProviderConnection,
   } = useAppStore();
 
   const [selectedProvider, setSelectedProvider] = useState("");
@@ -555,6 +555,7 @@ function AITab() {
   const [refreshingProvider, setRefreshingProvider] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [providerHealth, setProviderHealth] = useState<Record<string, { ok: boolean; latencyMs: number; error?: string } | null>>({});
 
   // Per-provider cached models (key = provider name)
   const [providerModels, setProviderModels] = useState<Record<string, string[]>>({});
@@ -640,6 +641,20 @@ function AITab() {
     }
   };
 
+  // Auto-fetch cached models and check health for all configured providers on mount
+  useEffect(() => {
+    if (!aiConfig?.providers) return;
+    aiConfig.providers.forEach((p) => {
+      if (p.has_key) {
+        fetchCachedModels(p.provider);
+        testProviderConnection(p.provider).then((health) => {
+          setProviderHealth((prev) => ({ ...prev, [p.provider]: health }));
+        });
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiConfig?.providers, fetchCachedModels, testProviderConnection]);
+
   const handleSaveKey = async () => {
     if (!selectedProvider || !keyInput) return;
     setAiSaving(true);
@@ -721,6 +736,8 @@ function AITab() {
               {AI_PROVIDERS.map((p) => {
                 const isActive = selectedProvider === p.value;
                 const provStatus = aiConfig?.providers?.find((ps) => ps.provider === p.value);
+                const health = providerHealth[p.value];
+                const hasKey = provStatus?.has_key ?? false;
                 return (
                   <button
                     key={p.value}
@@ -740,9 +757,23 @@ function AITab() {
                   >
                     <span className={cn(
                       "w-1.5 h-1.5 rounded-full shrink-0",
-                      provStatus?.has_key ? "bg-success" : "bg-muted-foreground/30"
+                      hasKey ? "bg-success" : "bg-muted-foreground/30"
                     )} />
                     {p.label}
+                    {hasKey && health && (
+                      <span className="flex items-center gap-1">
+                        <span className={cn(
+                          "w-1.5 h-1.5 rounded-full shrink-0",
+                          health.ok ? "bg-success" : health.latencyMs > 2000 ? "bg-warning" : "bg-destructive"
+                        )} />
+                        <span className="text-[9px] text-muted-foreground/60 shrink-0">
+                          {health.ok ? health.latencyMs + "ms" : "error"}
+                        </span>
+                      </span>
+                    )}
+                    {hasKey && !health && (
+                      <span className="text-[9px] text-muted-foreground/40 shrink-0">checking…</span>
+                    )}
                   </button>
                 );
               })}

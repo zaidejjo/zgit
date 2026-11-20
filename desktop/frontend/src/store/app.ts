@@ -914,6 +914,7 @@ interface AppState {
   deleteProviderAIConfigAction: (provider: string) => Promise<void>;
   fetchProviderModelsAction: (provider: string, apiKey?: string) => Promise<string[]>;
   getCachedProviderModels: (provider: string) => Promise<string[]>;
+  testProviderConnection: (provider: string) => Promise<{ ok: boolean; latencyMs: number; error?: string }>;
   generateCommitMessage: () => Promise<string | null>;
   generateCommitMessageWithContext: () => Promise<string | null>;
   generatePRDescription: (head: string, base?: string) => Promise<string | null>;
@@ -2825,6 +2826,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       return await backend.GetCachedProviderModels(provider);
     } catch (_) {
       return [];
+    }
+  },
+
+  testProviderConnection: async (provider) => {
+    const backend = getBackend();
+    if (!backend) return { ok: false, latencyMs: 0, error: "No backend" };
+    try {
+      const [ok, latencyMs, err] = await backend.TestProviderConnection(provider);
+      return { ok, latencyMs, error: err?.message };
+    } catch (e: any) {
+      return { ok: false, latencyMs: 0, error: e.message };
     }
   },
 
