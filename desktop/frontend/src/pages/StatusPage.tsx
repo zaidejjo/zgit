@@ -4,7 +4,7 @@ import {
   GitCommitHorizontal, SquarePen, AlignLeft, CheckCheck,
   AlertTriangle, ChevronDown, FileText,
   RefreshCw, AlertOctagon, ArrowRight, Sparkles,
-  GitFork, Eye, EyeOff, Plus, Trash2,
+  GitFork, Eye, EyeOff, Plus, Trash2, Info, Redo,
 } from "lucide-react";
 import { useAppStore } from "@/store/app";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,8 @@ export default function StatusPage() {
     stashes, fetchStashes, stashPush, stashPop, stashApply, stashDrop,
     gitFetch, gitPull, gitPushForce,
     resolveConflict, openMergeEditor,
-    aiConfig, aiGenerating, generateCommitMessage, fetchAIConfig,
+    aiConfig, aiGenerating, generateCommitMessage, generateCommitMessageWithContext, fetchAIConfig,
+    setSuccessMessage, setError,
   } = useAppStore();
 
   // Diff selection
@@ -416,33 +417,84 @@ export default function StatusPage() {
                   autoFocus
                 />
                 {aiConfig?.provider && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={async () => {
-                          const msg = await generateCommitMessage();
-                          if (msg) {
-                            const nl = msg.indexOf("\n");
-                            if (nl >= 0) {
-                              setSummary(msg.slice(0, nl).trim());
-                              setDescription(msg.slice(nl + 1).trim());
-                            } else {
-                              setSummary(msg.trim());
+                  <>
+                    {/* Context preview chip */}
+                    <div className="p-3 rounded-lg border border-border/20 bg-popover/50 text-xs text-muted-foreground/80">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Info className="w-3 h-3 shrink-0" />
+                        <span>
+                          AI context: {aiConfig?.model || "default model"} | branch:
+                          {status?.branch || "unknown"}
+                        </span>
+                      </div>
+                      {status && (
+                        <div className="text-[10px] font-mono text-muted-foreground/60">
+                          {status.staged_count} staged | {status.unstaged_count} unstaged |{" "}
+                          {status.untracked_count} untracked
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Generate button (context-aware) */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={async () => {
+                            const msg = await generateCommitMessageWithContext();
+                            if (msg) {
+                              const nl = msg.indexOf("\n");
+                              if (nl >= 0) {
+                                setSummary(msg.slice(0, nl).trim());
+                                setDescription(msg.slice(nl + 1).trim());
+                              } else {
+                                setSummary(msg.trim());
+                              }
+                              setSuccessMessage("Commit message generated with AI");
                             }
-                          }
+                          }}
+                          disabled={aiGenerating}
+                          className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+                          style={{
+                            background: aiGenerating
+                              ? "var(--primary/20)"
+                              : "var(--primary)",
+                            color: aiGenerating
+                              ? "var(--primary-foreground)"
+                              : "var(--primary-foreground)",
+                          }}
+                        >
+                          {aiGenerating ? (
+                            <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full" />
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5" />
+                          )}
+                          <span>
+                            {aiGenerating ? "Generating..." : "Generate Commit Message"}
+                          </span>
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        Generate a conventional commit message using AI (context-aware)
+                      </TooltipContent>
+                    </Tooltip>
+
+                    {/* Regenerate button */}
+                    {summary && (
+                      <button
+                        onClick={() => {
+                          setSummary("");
+                          setDescription("");
+                          setSuccessMessage("");
+                          useAppStore.getState().generateCommitMessageWithContext();
                         }}
                         disabled={aiGenerating}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-40"
+                        className="text-xs py-1 rounded-md border border-border/30 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center gap-1.5"
                       >
-                        {aiGenerating ? (
-                          <span className="block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <Sparkles className="w-3.5 h-3.5" />
-                        )}
+                        <Redo className="w-3.5 h-3.5 shrink-0" />
+                        <span>Regenerate</span>
                       </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">Generate commit message with AI</TooltipContent>
-                  </Tooltip>
+                    )}
+                  </>
                 )}
               </div>
 

@@ -47,6 +47,10 @@ type chatResponse struct {
 }
 
 func (o *OpenAI) GenerateCommitMessage(ctx context.Context, diff string, cfg Config) (string, error) {
+	return o.GenerateCommitMessageWithContext(ctx, diff, CommitContext{}, cfg)
+}
+
+func (o *OpenAI) GenerateCommitMessageWithContext(ctx context.Context, diff string, context CommitContext, cfg Config) (string, error) {
 	endpoint := cfg.Endpoint
 	if endpoint == "" {
 		endpoint = DefaultEndpoints[cfg.Provider]
@@ -69,10 +73,33 @@ func (o *OpenAI) GenerateCommitMessage(ctx context.Context, diff string, cfg Con
 		return "", fmt.Errorf("staged diff is empty — stage some changes first (this repo has no commits yet)")
 	}
 
+	// Build context-aware system prompt
+	systemPrompt := buildSystemPrompt()
+	if context.Branch != "" || len(context.RecentMessages) > 0 {
+		var contextLines []string
+		if context.Branch != "" {
+			contextLines = append(contextLines, fmt.Sprintf("Current branch: %s", context.Branch))
+		}
+		if context.StatusSummary != "" {
+			contextLines = append(contextLines, fmt.Sprintf("Repo status: %s", context.StatusSummary))
+		}
+		if context.ChangedFiles > 0 {
+			contextLines = append(contextLines, fmt.Sprintf("Changed files: %d", context.ChangedFiles))
+		}
+		if len(context.RecentMessages) > 0 {
+			contextLines = append(contextLines, "Recent commit messages (match this style):")
+			for _, msg := range context.RecentMessages {
+				contextLines = append(contextLines, fmt.Sprintf("  - %s", msg))
+			}
+		}
+		contextBlock := strings.Join(contextLines, "\n")
+		systemPrompt = fmt.Sprintf("%s\n\nRepository Context:\n%s", systemPrompt, contextBlock)
+	}
+
 	reqBody := chatRequest{
 		Model: model,
 		Messages: []chatMessage{
-			{Role: "system", Content: buildSystemPrompt()},
+			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: fmt.Sprintf("Generate a commit message for this diff:\n\n```\n%s\n```", truncatedDiff)},
 		},
 		MaxTokens:   300,

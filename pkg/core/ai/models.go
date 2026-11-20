@@ -90,6 +90,16 @@ type ProposalResult struct {
 	Error      string         `json:"error,omitempty"`
 }
 
+// CommitContext holds repository state used to inform AI commit message generation.
+// Including branch name and recent commit history lets the AI match project conventions.
+type CommitContext struct {
+	Branch         string   `json:"branch"`          // current branch name
+	RecentMessages []string `json:"recent_messages"` // last N commit messages (style matching)
+	StatusSummary  string   `json:"status_summary"`  // e.g. "3 staged, 2 unstaged, 1 untracked"
+	ChangedFiles   int      `json:"changed_files"`   // number of files changed in diff
+	RepoPath       string   `json:"repo_path"`       // absolute repo path
+}
+
 // AgentConfig wraps AI config with agent-specific settings.
 type AgentConfig struct {
 	Provider ProviderKind `json:"provider"`

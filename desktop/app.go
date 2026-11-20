@@ -1110,27 +1110,14 @@ func (a *App) cacheProviderModels(provider string, models []string) error {
 
 // GenerateCommitMessage reads the staged diff and returns an AI-generated conventional commit message.
 func (a *App) GenerateCommitMessage() (string, error) {
+	return a.GenerateCommitMessageWithContext()
+}
+
+// GenerateCommitMessageWithContext generates a commit message using the staged diff
+// plus repository context (branch, recent commits, status) to match project conventions.
+func (a *App) GenerateCommitMessageWithContext() (string, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
 	defer cancel()
-
-	// Get staged diff with token-optimized summarization
-	diff, err := a.engine.Git.Diff(ctx, git.DiffOptions{Cached: true, Unified: true})
-	if err != nil {
-		return "", fmt.Errorf("get staged diff: %w", err)
-	}
-	if diff == nil || len(diff.Files) == 0 {
-		return "", fmt.Errorf("no staged changes — stage files before generating a commit message")
-	}
-
-	summary := ai.SummarizeDiff(diff)
-	diffText := summary.Summary
-	if strings.TrimSpace(diffText) == "" || diffText == "No changes." {
-		return "", fmt.Errorf("no staged changes — stage files before generating a commit message")
-	}
-
-	// Prefix with file stats to compensate for possible truncation
-	diffText = fmt.Sprintf("Stats: %d files changed (%d lockfile/binary filtered).\n\n%s",
-		summary.ChangedFiles, summary.Filtered, diffText)
 
 	aiCfg := a.aiConfig()
 	if aiCfg.Provider == "" {
@@ -1140,12 +1127,7 @@ func (a *App) GenerateCommitMessage() (string, error) {
 		return "", fmt.Errorf("API key not configured — go to Settings to set your API key")
 	}
 
-	generator, err := ai.NewGenerator(aiCfg)
-	if err != nil {
-		return "", err
-	}
-
-	msg, err := generator.GenerateCommitMessage(ctx, diffText, aiCfg)
+	msg, err := a.engine.GenerateCommitMessageWithContext(ctx, aiCfg)
 	if err != nil {
 		return "", fmt.Errorf("AI generation failed: %w", err)
 	}

@@ -915,6 +915,7 @@ interface AppState {
   fetchProviderModelsAction: (provider: string, apiKey?: string) => Promise<string[]>;
   getCachedProviderModels: (provider: string) => Promise<string[]>;
   generateCommitMessage: () => Promise<string | null>;
+  generateCommitMessageWithContext: () => Promise<string | null>;
   generatePRDescription: (head: string, base?: string) => Promise<string | null>;
   generatePRMetadata: (base: string, head: string) => Promise<string | null>;
 
@@ -2833,6 +2834,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       set({ aiGenerating: true });
       const message: string = await backend.GenerateCommitMessage();
+      set({ aiGenerating: false });
+      return message;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to generate commit message" });
+      set({ aiGenerating: false });
+      return null;
+    }
+  },
+
+  generateCommitMessageWithContext: async () => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      set({ aiGenerating: true });
+      const message: string = await backend.GenerateCommitMessageWithContext();
       set({ aiGenerating: false });
       return message;
     } catch (e: any) {
