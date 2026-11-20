@@ -207,11 +207,23 @@ func (a *App) restartFileWatcher() {
 }
 
 // isIgnoredFile returns true for paths that should not trigger a refresh.
+// It skips git internals, editor temp files, and common dependency/build
+// directories so changelogs don't churn on large node_modules/target/etc.
 func isIgnoredFile(path string) bool {
 	ignoredSuffixes := []string{".git/index.lock", ".git/HEAD.lock", ".git/refs/", ".git/objects/", ".git/logs/", "~", ".swp", ".swx"}
 	for _, suffix := range ignoredSuffixes {
 		if len(path) >= len(suffix) && path[len(path)-len(suffix):] == suffix {
 			return true
+		}
+	}
+	// Skip common dependency/build/output directories anywhere in the path.
+	ignoredDirs := []string{"node_modules", ".git", "target", "build", "dist", ".next", "vendor", ".venv", "__pycache__"}
+	parts := splitPath(path, string(filepath.Separator))
+	for _, p := range parts {
+		for _, d := range ignoredDirs {
+			if p == d {
+				return true
+			}
 		}
 	}
 	return false
@@ -786,7 +798,7 @@ func (a *App) FetchProject(id string) (int, error) {
 // (bindings support a single value plus error).
 type ProjectCleanup struct {
 	Candidates []*models.CleanupCandidate `json:"candidates"`
-	Withheld   []*models.Protected        `json:"withheld"`
+	Withheld   []*models.WithheldBranch   `json:"withheld"`
 }
 
 // GetProjectCleanup scans member repos for branches merged into base.
@@ -796,7 +808,7 @@ func (a *App) GetProjectCleanup(id, base string) (*ProjectCleanup, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := &ProjectCleanup{Candidates: []*models.CleanupCandidate{}, Withheld: []*models.Protected{}}
+	out := &ProjectCleanup{Candidates: []*models.CleanupCandidate{}, Withheld: []*models.WithheldBranch{}}
 	for i := range candidates {
 		out.Candidates = append(out.Candidates, &candidates[i])
 	}
@@ -1570,6 +1582,412 @@ func (a *App) AskChatCancel() error {
 		a.askCancel = nil
 	}
 	return nil
+}
+
+// --- AI Explain ---
+
+// explainRequest carries the diff + context the AI should explain.
+type explainRequest struct {
+	Diff    string `json:"diff"`
+	Context string `json:"context"` // e.g. commit message, file path, refs
+	Kind    string `json:"kind"`    // "commit", "filediff", "selection"
+}
+
+// buildExplainPrompt constructs the system-ish prompt prepended to the user message.
+func buildExplainPrompt(req explainRequest) string {
+	var sb strings.Builder
+	sb.WriteString("You are a helpful coding assistant explaining Git changes. Explain the following diff clearly and concisely.\n\n")
+	sb.WriteString("Focus on:\n")
+	sb.WriteString("- What changed and why it matters\n")
+	sb.WriteString("- Whether the change is likely safe or risky\n")
+	sb.WriteString("- Any obvious issues (bugs, missing tests, security concerns)\n\n")
+	sb.WriteString("Format:\n")
+	sb.WriteString("## Summary\n<2-3 sentence overview>\n\n")
+	sb.WriteString("## Key Changes\n- <change 1>\n- <change 2>\n\n")
+	sb.WriteString("## Notes\n<optional cautions or suggestions>\n\n")
+	sb.WriteString("Return only the explanation. No extra commentary.\n\n")
+	sb.WriteString("Diff context: " + req.Context + "\n\n")
+	sb.WriteString("```diff\n" + req.Diff + "\n```\n")
+	return sb.String()
+}
+
+// explainWithAI runs the diff through the AI ask provider and returns the explanation.
+func (a *App) explainWithAI(req explainRequest) (string, error) {
+	aiCfg := a.getAskConfig()
+	if aiCfg.Provider == "" {
+		return "", fmt.Errorf("AI provider not configured — go to Settings to set up AI")
+	}
+	if aiCfg.APIKey == "" {
+		return "", fmt.Errorf("API key not configured — go to Settings to set your API key")
+	}
+
+	provider, err := ai.NewAskProvider(aiCfg)
+	if err != nil {
+		return "", fmt.Errorf("create ask provider: %w", err)
+	}
+
+	session := a.sessionManager.Active()
+	if session == nil || session.Mode != "ask" {
+		session, err = a.sessionManager.Create("Explain Session", "ask")
+		if err != nil {
+			return "", fmt.Errorf("create session: %w", err)
+		}
+	}
+
+	prompt := buildExplainPrompt(req)
+	if err := a.sessionManager.AddMessage(session.ID, ai.Message{Role: "user", Content: prompt}); err != nil {
+		return "", fmt.Errorf("add message: %w", err)
+	}
+
+	messages, err := a.sessionManager.GetMessages(session.ID)
+	if err != nil {
+		return "", fmt.Errorf("get messages: %w", err)
+	}
+
+	resp, err := provider.Ask(a.getContext(), messages)
+	if err != nil {
+		return "", fmt.Errorf("explain failed: %w", err)
+	}
+
+	if err := a.sessionManager.AddMessage(session.ID, resp); err != nil {
+		return "", fmt.Errorf("add response: %w", err)
+	}
+
+	return resp.Content, nil
+}
+
+// ExplainCommit explains a single commit: its message + diff.
+func (a *App) ExplainCommit(sha string) (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+
+	if sha == "" {
+		return "", fmt.Errorf("commit SHA is required")
+	}
+
+	// Get the commit message for context.
+	commits, err := a.engine.Git.Log(ctx, git.LogOptions{Branch: sha, Count: 1})
+	if err != nil {
+		return "", fmt.Errorf("get commit: %w", err)
+	}
+	context := "Commit " + sha[:7]
+	if len(commits) > 0 {
+		context = fmt.Sprintf("Commit %s (%s)\nMessage: %s", sha[:7], commits[0].Author, commits[0].Message)
+	}
+
+	// Get the commit diff (parent..commit). Root commits have no parent.
+	var diffText string
+	diff, err := a.engine.Git.Diff(ctx, git.DiffOptions{A: sha + "^", B: sha, Unified: true})
+	if err != nil {
+		// Root commit or no parent — explain from message only.
+		diffText = "(no parent diff available — root commit)"
+	} else {
+		diffText = diffToString(diff)
+	}
+
+	return a.explainWithAI(explainRequest{
+		Kind:    "commit",
+		Context: context,
+		Diff:    diffText,
+	})
+}
+
+// ExplainFileDiff explains the diff of a file between two refs.
+func (a *App) ExplainFileDiff(path, ref1, ref2 string) (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+
+	if path == "" {
+		return "", fmt.Errorf("file path is required")
+	}
+	if ref1 == "" {
+		ref1 = "HEAD~1"
+	}
+	if ref2 == "" {
+		ref2 = "HEAD"
+	}
+
+	diff, err := a.engine.Git.Diff(ctx, git.DiffOptions{A: ref1, B: ref2, Pathspec: path, Unified: true})
+	if err != nil {
+		return "", fmt.Errorf("get file diff: %w", err)
+	}
+
+	context := fmt.Sprintf("File: %s\nRange: %s..%s", path, ref1, ref2)
+	return a.explainWithAI(explainRequest{
+		Kind:    "filediff",
+		Context: context,
+		Diff:    diffToString(diff),
+	})
+}
+
+// ExplainSelection explains arbitrary diff text provided by the frontend.
+func (a *App) ExplainSelection(diffText string) (string, error) {
+	if strings.TrimSpace(diffText) == "" {
+		return "", fmt.Errorf("no diff text to explain")
+	}
+	return a.explainWithAI(explainRequest{
+		Kind:    "selection",
+		Context: "User-selected diff",
+		Diff:    diffText,
+	})
+}
+
+// diffToString flattens a models.Diff into a readable unified-diff string.
+func diffToString(d *models.Diff) string {
+	if d == nil || len(d.Files) == 0 {
+		return "(no changes)"
+	}
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Total: %d files, +%d / -%d lines\n\n", len(d.Files), d.TotalAdds, d.TotalDeletes))
+	for _, f := range d.Files {
+		b.WriteString(fmt.Sprintf("File: %s (%s, +%d / -%d)\n", f.NewPath, changeType(f.Type), f.Additions, f.Deletions))
+		if f.UnifiedDiff != "" {
+			b.WriteString(f.UnifiedDiff)
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
+}
+
+// changeType returns a short label for a file change type.
+func changeType(t models.FileChangeType) string {
+	switch t {
+	case models.FileAdded:
+		return "added"
+	case models.FileModified:
+		return "modified"
+	case models.FileDeleted:
+		return "deleted"
+	case models.FileRenamed:
+		return "renamed"
+	case models.FileCopied:
+		return "copied"
+	default:
+		return "changed"
+	}
+}
+
+// ExplainStream streams an explanation token-by-token via ai:token events.
+func (a *App) ExplainStream(message string) error {
+	aiCfg := a.getAskConfig()
+	if aiCfg.Provider == "" {
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", "AI provider not configured — go to Settings to set up AI")
+		return nil
+	}
+	if aiCfg.APIKey == "" {
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", "API key not configured — go to Settings to set your API key")
+		return nil
+	}
+
+	provider, err := ai.NewAskProvider(aiCfg)
+	if err != nil {
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("create ask provider: %s", err.Error()))
+		return nil
+	}
+
+	session := a.sessionManager.Active()
+	if session == nil || session.Mode != "ask" {
+		session, err = a.sessionManager.Create("Explain Stream Session", "ask")
+		if err != nil {
+			wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("create session: %s", err.Error()))
+			return nil
+		}
+	}
+
+	if err := a.sessionManager.AddMessage(session.ID, ai.Message{Role: "user", Content: message}); err != nil {
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("add message: %s", err.Error()))
+		return nil
+	}
+
+	messages, err := a.sessionManager.GetMessages(session.ID)
+	if err != nil {
+		wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("get messages: %s", err.Error()))
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(a.getContext())
+	a.askCancelMu.Lock()
+	if a.askCancel != nil {
+		a.askCancel()
+	}
+	a.askCancel = cancel
+	a.askCancelMu.Unlock()
+
+	go func() {
+		defer cancel()
+
+		resp, err := provider.AskStream(ctx, messages, func(token string) {
+			wailsRuntime.EventsEmit(a.ctx, "ai:token", token)
+		})
+		if err != nil {
+			wailsRuntime.EventsEmit(a.ctx, "ai:error", err.Error())
+			return
+		}
+
+		if err := a.sessionManager.AddMessage(session.ID, resp); err != nil {
+			wailsRuntime.EventsEmit(a.ctx, "ai:error", fmt.Sprintf("save response: %s", err.Error()))
+			return
+		}
+
+		wailsRuntime.EventsEmit(a.ctx, "ai:done", resp.Content)
+	}()
+
+	return nil
+}
+
+// --- GitHub PR & Issue Hub ---
+
+// githubRepo returns the owner/name of the currently open repo, or an error
+// if no repo is open or it has no GitHub metadata.
+func (a *App) githubRepo() (string, string, error) {
+	repo := a.engine.CurrentRepo()
+	if repo == nil || repo.Owner == "" || repo.Name == "" {
+		return "", "", fmt.Errorf("no GitHub repo detected for the current repository")
+	}
+	return repo.Owner, repo.Name, nil
+}
+
+// requireGitHub returns the GitHub client, erroring if not authenticated.
+func (a *App) requireGitHub() (github.GitHubClient, error) {
+	if a.engine.GitHub == nil {
+		return nil, fmt.Errorf("GitHub not authenticated — set a token in Settings first")
+	}
+	return a.engine.GitHub, nil
+}
+
+// GitHubListPullRequests lists PRs for the current repo.
+func (a *App) GitHubListPullRequests(state string) ([]*models.PullRequestSummary, error) {
+	gh, err := a.requireGitHub()
+	if err != nil {
+		return nil, err
+	}
+	owner, repo, err := a.githubRepo()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
+	defer cancel()
+	opts := github.PRFilter{State: state, Limit: 50}
+	return gh.ListPullRequests(ctx, owner, repo, opts)
+}
+
+// GitHubGetPullRequest returns a single PR by number.
+func (a *App) GitHubGetPullRequest(number int) (*models.PullRequestDetail, error) {
+	gh, err := a.requireGitHub()
+	if err != nil {
+		return nil, err
+	}
+	owner, repo, err := a.githubRepo()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
+	defer cancel()
+	return gh.GetPullRequest(ctx, owner, repo, number)
+}
+
+// GitHubCreatePullRequest creates a PR from head onto base.
+func (a *App) GitHubCreatePullRequest(title, body, head, base string, draft bool) (*models.PullRequestSummary, error) {
+	gh, err := a.requireGitHub()
+	if err != nil {
+		return nil, err
+	}
+	owner, repo, err := a.githubRepo()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+	return gh.CreatePullRequest(ctx, owner, repo, github.PRRequest{
+		Title: title,
+		Body:  body,
+		Head:  head,
+		Base:  base,
+		Draft: draft,
+	})
+}
+
+// GitHubMergePullRequest merges a PR by number.
+func (a *App) GitHubMergePullRequest(number int, method string) error {
+	gh, err := a.requireGitHub()
+	if err != nil {
+		return err
+	}
+	owner, repo, err := a.githubRepo()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
+	defer cancel()
+	return gh.MergePullRequest(ctx, owner, repo, number, method)
+}
+
+// GitHubListIssues lists issues for the current repo.
+func (a *App) GitHubListIssues(state string) ([]*models.Issue, error) {
+	gh, err := a.requireGitHub()
+	if err != nil {
+		return nil, err
+	}
+	owner, repo, err := a.githubRepo()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
+	defer cancel()
+	opts := github.IssuesFilter{State: state, Limit: 50}
+	return gh.ListIssues(ctx, owner, repo, opts)
+}
+
+// GitHubCreateIssue creates an issue in the current repo.
+func (a *App) GitHubCreateIssue(title, body string) (*models.Issue, error) {
+	gh, err := a.requireGitHub()
+	if err != nil {
+		return nil, err
+	}
+	owner, repo, err := a.githubRepo()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
+	defer cancel()
+	return gh.CreateIssue(ctx, owner, repo, github.IssueRequest{Title: title, Body: body})
+}
+
+// GitHubCloseIssue closes an issue by number.
+func (a *App) GitHubCloseIssue(number int) error {
+	gh, err := a.requireGitHub()
+	if err != nil {
+		return err
+	}
+	owner, repo, err := a.githubRepo()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
+	defer cancel()
+	return gh.CloseIssue(ctx, owner, repo, number)
+}
+
+// GitHubListNotifications lists the authenticated user's GitHub notifications.
+func (a *App) GitHubListNotifications(all bool) ([]*models.Notification, error) {
+	gh, err := a.requireGitHub()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
+	defer cancel()
+	return gh.ListNotifications(ctx, all, 50)
+}
+
+// GitHubGetDashboard returns the GitHub dashboard (my PRs, review PRs, issues, runs).
+func (a *App) GitHubGetDashboard() (*models.Dashboard, error) {
+	gh, err := a.requireGitHub()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(a.getContext(), 30e9)
+	defer cancel()
+	return gh.GetDashboard(ctx)
 }
 
 // AgentCancel cancels any in-flight agent Chat call.

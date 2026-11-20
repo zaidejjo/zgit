@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   GitCommitHorizontal, Undo2, RotateCcw, AlertTriangle,
   GitBranch, GitMerge, GripVertical, Pencil, Trash2,
-  Layers, ArrowUpDown, Network,
+  Layers, ArrowUpDown, Network, Sparkles, LoaderCircle, X,
 } from "lucide-react";
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
@@ -17,7 +17,9 @@ import { CSS } from "@dnd-kit/utilities";
 import { useAppStore, RebaseCommitOp, Commit } from "@/store/app";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose,
+} from "@/components/ui/dialog";
 import { cn, formatTimeAgo, truncate } from "@/lib/utils";
 import EmptyState from "@/components/EmptyState";
 import MergeRebaseDialog from "@/components/MergeRebaseDialog";
@@ -50,7 +52,12 @@ export default function LogPage() {
     applyRebase,
     showMergeRebaseDialog, mergeRebaseDialog,
     repoPath,
+    explainCommit, explainResult, explainLoading, explainError, clearExplain,
   } = useAppStore();
+
+  // Explain state
+  const [explainingCommit, setExplainingCommit] = useState<Commit | null>(null);
+  const [showExplain, setShowExplain] = useState(false);
 
   // Cherry-pick / revert / reset state
   const [actionTarget, setActionTarget] = useState<Commit | null>(null);
@@ -73,6 +80,22 @@ export default function LogPage() {
     fetchGraphLog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Explain selected commit
+  useEffect(() => {
+    if (!explainingCommit) return;
+    (async () => {
+      await explainCommit(explainingCommit.hash);
+      setShowExplain(true);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [explainingCommit]);
+
+  const handleCloseExplain = () => {
+    setShowExplain(false);
+    setExplainingCommit(null);
+    clearExplain();
+  };
 
   // ── Handlers ──
 
@@ -267,6 +290,7 @@ export default function LogPage() {
                   onCherryPick={() => { setActionTarget(commit); setActionType("cherry-pick"); }}
                   onRevert={() => { setActionTarget(commit); setActionType("revert"); }}
                   onReset={() => { setResetTarget(commit); setResetMode("mixed"); setShowReset(true); }}
+                  onExplain={() => { setExplainingCommit(commit); }}
                   isActive={false}
                 />
               ))}
@@ -384,6 +408,49 @@ export default function LogPage() {
 
       {/* Merge / Rebase Dialog */}
       <MergeRebaseDialog />
+
+      {/* Explain with AI Dialog */}
+      <Dialog open={showExplain} onOpenChange={handleCloseExplain}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" />
+              Explain Commit
+            </DialogTitle>
+            <DialogDescription>
+              {explainingCommit?.hash.slice(0, 7)} — {truncate(explainingCommit?.message || "", 80)}
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 min-h-[300px] max-h-[500px]">
+            <div className="p-4 space-y-3">
+              {explainLoading && (
+                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                  <LoaderCircle className="w-6 h-6 animate-spin mb-2" />
+                  <p>Explaining with AI...</p>
+                </div>
+              )}
+              {explainError && (
+                <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
+                  {explainError}
+                </div>
+              )}
+              {explainResult && (
+                <div className="text-sm leading-relaxed text-muted-foreground bg-muted/20 rounded-lg p-3 whitespace-pre-wrap break-words">
+                  {explainResult}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+          <div className="flex justify-end gap-2 pt-2">
+            <DialogClose asChild>
+              <Button variant="outline" onClick={handleCloseExplain} disabled={explainLoading}>
+                <X className="w-4 h-4 mr-1.5" />
+                Close
+              </Button>
+            </DialogClose>
+          </div>
+        </DialogContent>
+      </Dialog>
     </DndContext>
   );
 }
@@ -395,12 +462,14 @@ function CommitRow({
   onCherryPick,
   onRevert,
   onReset,
+  onExplain,
   isActive,
 }: {
   commit: { hash: string; author: string; timestamp: string; message: string; ref_names?: string };
   onCherryPick: () => void;
   onRevert: () => void;
   onReset: () => void;
+  onExplain: () => void;
   isActive: boolean;
 }) {
   const { setNodeRef } = useDroppable({ id: commit.hash, data: { commit } });
@@ -466,6 +535,9 @@ function CommitRow({
         </button>
         <button className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" onClick={onReset} title="Reset">
           <RotateCcw className="w-3.5 h-3.5" />
+        </button>
+        <button className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" onClick={onExplain} title="Explain with AI">
+          <Sparkles className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>

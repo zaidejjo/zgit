@@ -79,6 +79,14 @@ export function DiscardAllFiles():Promise<void>;
 
 export function DiscardFile(arg1:string):Promise<void>;
 
+export function ExplainCommit(arg1:string):Promise<string>;
+
+export function ExplainFileDiff(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function ExplainSelection(arg1:string):Promise<string>;
+
+export function ExplainStream(arg1:string):Promise<void>;
+
 export function FetchAllRepos():Promise<number>;
 
 export function FetchProject(arg1:string):Promise<number>;
@@ -156,6 +164,24 @@ export function GetWorkflowJobLogs(arg1:number):Promise<string>;
 export function GetWorktrees():Promise<Array<models.Worktree>>;
 
 export function GitFetch():Promise<void>;
+
+export function GitHubCloseIssue(arg1:number):Promise<void>;
+
+export function GitHubCreateIssue(arg1:string,arg2:string):Promise<models.Issue>;
+
+export function GitHubCreatePullRequest(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<models.PullRequestSummary>;
+
+export function GitHubGetDashboard():Promise<models.Dashboard>;
+
+export function GitHubGetPullRequest(arg1:number):Promise<models.PullRequestDetail>;
+
+export function GitHubListIssues(arg1:string):Promise<Array<models.Issue>>;
+
+export function GitHubListNotifications(arg1:boolean):Promise<Array<models.Notification>>;
+
+export function GitHubListPullRequests(arg1:string):Promise<Array<models.PullRequestSummary>>;
+
+export function GitHubMergePullRequest(arg1:number,arg2:string):Promise<void>;
 
 export function GitMerge(arg1:string):Promise<string>;
 

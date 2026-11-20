@@ -255,7 +255,7 @@ export namespace main {
 	}
 	export class ProjectCleanup {
 	    candidates: models.CleanupCandidate[];
-	    withheld: models.Protected[];
+	    withheld: models.WithheldBranch[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ProjectCleanup(source);
@@ -264,7 +264,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.candidates = this.convertValues(source["candidates"], models.CleanupCandidate);
-	        this.withheld = this.convertValues(source["withheld"], models.Protected);
+	        this.withheld = this.convertValues(source["withheld"], models.WithheldBranch);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -568,6 +568,289 @@ export namespace models {
 	        this.block_count = source["block_count"];
 	    }
 	}
+	export class Repo {
+	    path: string;
+	    is_bare: boolean;
+	    owner?: string;
+	    name?: string;
+	    full_name?: string;
+	    default_branch?: string;
+	    description?: string;
+	    language?: string;
+	    is_private: boolean;
+	    is_fork: boolean;
+	    stars: number;
+	    forks: number;
+	    open_issues: number;
+	    // Go type: time
+	    created_at?: any;
+	    // Go type: time
+	    updated_at?: any;
+	    html_url?: string;
+	    ssh_url?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Repo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.is_bare = source["is_bare"];
+	        this.owner = source["owner"];
+	        this.name = source["name"];
+	        this.full_name = source["full_name"];
+	        this.default_branch = source["default_branch"];
+	        this.description = source["description"];
+	        this.language = source["language"];
+	        this.is_private = source["is_private"];
+	        this.is_fork = source["is_fork"];
+	        this.stars = source["stars"];
+	        this.forks = source["forks"];
+	        this.open_issues = source["open_issues"];
+	        this.created_at = this.convertValues(source["created_at"], null);
+	        this.updated_at = this.convertValues(source["updated_at"], null);
+	        this.html_url = source["html_url"];
+	        this.ssh_url = source["ssh_url"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class WorkflowRun {
+	    id: number;
+	    workflow_name: string;
+	    event: string;
+	    status: string;
+	    conclusion?: string;
+	    branch: string;
+	    head_sha: string;
+	    run_number: number;
+	    // Go type: time
+	    created_at: any;
+	    // Go type: time
+	    updated_at: any;
+	    html_url: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkflowRun(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.workflow_name = source["workflow_name"];
+	        this.event = source["event"];
+	        this.status = source["status"];
+	        this.conclusion = source["conclusion"];
+	        this.branch = source["branch"];
+	        this.head_sha = source["head_sha"];
+	        this.run_number = source["run_number"];
+	        this.created_at = this.convertValues(source["created_at"], null);
+	        this.updated_at = this.convertValues(source["updated_at"], null);
+	        this.html_url = source["html_url"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Label {
+	    name: string;
+	    color: string;
+	    description?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Label(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.color = source["color"];
+	        this.description = source["description"];
+	    }
+	}
+	export class Issue {
+	    number: number;
+	    title: string;
+	    state: string;
+	    author: string;
+	    body: string;
+	    // Go type: time
+	    created_at: any;
+	    // Go type: time
+	    updated_at: any;
+	    // Go type: time
+	    closed_at?: any;
+	    labels?: Label[];
+	    assignees?: string[];
+	    comments: number;
+	    is_pull_request: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Issue(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.number = source["number"];
+	        this.title = source["title"];
+	        this.state = source["state"];
+	        this.author = source["author"];
+	        this.body = source["body"];
+	        this.created_at = this.convertValues(source["created_at"], null);
+	        this.updated_at = this.convertValues(source["updated_at"], null);
+	        this.closed_at = this.convertValues(source["closed_at"], null);
+	        this.labels = this.convertValues(source["labels"], Label);
+	        this.assignees = source["assignees"];
+	        this.comments = source["comments"];
+	        this.is_pull_request = source["is_pull_request"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PullRequestSummary {
+	    number: number;
+	    title: string;
+	    state: string;
+	    author: string;
+	    // Go type: time
+	    created_at: any;
+	    // Go type: time
+	    updated_at: any;
+	    is_draft: boolean;
+	    mergeable: string;
+	    head_ref: string;
+	    base_ref: string;
+	    head_sha?: string;
+	    status_emoji: string;
+	    review_state: string;
+	    labels?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PullRequestSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.number = source["number"];
+	        this.title = source["title"];
+	        this.state = source["state"];
+	        this.author = source["author"];
+	        this.created_at = this.convertValues(source["created_at"], null);
+	        this.updated_at = this.convertValues(source["updated_at"], null);
+	        this.is_draft = source["is_draft"];
+	        this.mergeable = source["mergeable"];
+	        this.head_ref = source["head_ref"];
+	        this.base_ref = source["base_ref"];
+	        this.head_sha = source["head_sha"];
+	        this.status_emoji = source["status_emoji"];
+	        this.review_state = source["review_state"];
+	        this.labels = source["labels"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Dashboard {
+	    my_prs: PullRequestSummary[];
+	    review_prs: PullRequestSummary[];
+	    my_issues: Issue[];
+	    recent_runs: WorkflowRun[];
+	    repos: Repo[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Dashboard(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.my_prs = this.convertValues(source["my_prs"], PullRequestSummary);
+	        this.review_prs = this.convertValues(source["review_prs"], PullRequestSummary);
+	        this.my_issues = this.convertValues(source["my_issues"], Issue);
+	        this.recent_runs = this.convertValues(source["recent_runs"], WorkflowRun);
+	        this.repos = this.convertValues(source["repos"], Repo);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class DeviceFlowCode {
 	    device_code: string;
 	    user_code: string;
@@ -663,77 +946,7 @@ export namespace models {
 	        this.unstaged = source["unstaged"];
 	    }
 	}
-	export class Label {
-	    name: string;
-	    color: string;
-	    description?: string;
 	
-	    static createFrom(source: any = {}) {
-	        return new Label(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.color = source["color"];
-	        this.description = source["description"];
-	    }
-	}
-	export class Issue {
-	    number: number;
-	    title: string;
-	    state: string;
-	    author: string;
-	    body: string;
-	    // Go type: time
-	    created_at: any;
-	    // Go type: time
-	    updated_at: any;
-	    // Go type: time
-	    closed_at?: any;
-	    labels?: Label[];
-	    assignees?: string[];
-	    comments: number;
-	    is_pull_request: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new Issue(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.number = source["number"];
-	        this.title = source["title"];
-	        this.state = source["state"];
-	        this.author = source["author"];
-	        this.body = source["body"];
-	        this.created_at = this.convertValues(source["created_at"], null);
-	        this.updated_at = this.convertValues(source["updated_at"], null);
-	        this.closed_at = this.convertValues(source["closed_at"], null);
-	        this.labels = this.convertValues(source["labels"], Label);
-	        this.assignees = source["assignees"];
-	        this.comments = source["comments"];
-	        this.is_pull_request = source["is_pull_request"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	export class Step {
 	    name: string;
 	    status: string;
@@ -908,24 +1121,6 @@ export namespace models {
 	        this.repos = source["repos"];
 	    }
 	}
-	export class Protected {
-	    repo_path: string;
-	    repo_name: string;
-	    branch: string;
-	    reason: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new Protected(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.repo_path = source["repo_path"];
-	        this.repo_name = source["repo_name"];
-	        this.branch = source["branch"];
-	        this.reason = source["reason"];
-	    }
-	}
 	
 	export class Review {
 	    id: number;
@@ -1050,64 +1245,7 @@ export namespace models {
 		    return a;
 		}
 	}
-	export class PullRequestSummary {
-	    number: number;
-	    title: string;
-	    state: string;
-	    author: string;
-	    // Go type: time
-	    created_at: any;
-	    // Go type: time
-	    updated_at: any;
-	    is_draft: boolean;
-	    mergeable: string;
-	    head_ref: string;
-	    base_ref: string;
-	    head_sha?: string;
-	    status_emoji: string;
-	    review_state: string;
-	    labels?: string[];
 	
-	    static createFrom(source: any = {}) {
-	        return new PullRequestSummary(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.number = source["number"];
-	        this.title = source["title"];
-	        this.state = source["state"];
-	        this.author = source["author"];
-	        this.created_at = this.convertValues(source["created_at"], null);
-	        this.updated_at = this.convertValues(source["updated_at"], null);
-	        this.is_draft = source["is_draft"];
-	        this.mergeable = source["mergeable"];
-	        this.head_ref = source["head_ref"];
-	        this.base_ref = source["base_ref"];
-	        this.head_sha = source["head_sha"];
-	        this.status_emoji = source["status_emoji"];
-	        this.review_state = source["review_state"];
-	        this.labels = source["labels"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	export class RebaseResult {
 	    success: boolean;
 	    message?: string;
@@ -1183,70 +1321,7 @@ export namespace models {
 	        this.type = source["type"];
 	    }
 	}
-	export class Repo {
-	    path: string;
-	    is_bare: boolean;
-	    owner?: string;
-	    name?: string;
-	    full_name?: string;
-	    default_branch?: string;
-	    description?: string;
-	    language?: string;
-	    is_private: boolean;
-	    is_fork: boolean;
-	    stars: number;
-	    forks: number;
-	    open_issues: number;
-	    // Go type: time
-	    created_at?: any;
-	    // Go type: time
-	    updated_at?: any;
-	    html_url?: string;
-	    ssh_url?: string;
 	
-	    static createFrom(source: any = {}) {
-	        return new Repo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.path = source["path"];
-	        this.is_bare = source["is_bare"];
-	        this.owner = source["owner"];
-	        this.name = source["name"];
-	        this.full_name = source["full_name"];
-	        this.default_branch = source["default_branch"];
-	        this.description = source["description"];
-	        this.language = source["language"];
-	        this.is_private = source["is_private"];
-	        this.is_fork = source["is_fork"];
-	        this.stars = source["stars"];
-	        this.forks = source["forks"];
-	        this.open_issues = source["open_issues"];
-	        this.created_at = this.convertValues(source["created_at"], null);
-	        this.updated_at = this.convertValues(source["updated_at"], null);
-	        this.html_url = source["html_url"];
-	        this.ssh_url = source["ssh_url"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	export class RepoOverview {
 	    path: string;
 	    name: string;
@@ -1460,58 +1535,25 @@ export namespace models {
 		    return a;
 		}
 	}
-	export class WorkflowRun {
-	    id: number;
-	    workflow_name: string;
-	    event: string;
-	    status: string;
-	    conclusion?: string;
+	export class WithheldBranch {
+	    repo_path: string;
+	    repo_name: string;
 	    branch: string;
-	    head_sha: string;
-	    run_number: number;
-	    // Go type: time
-	    created_at: any;
-	    // Go type: time
-	    updated_at: any;
-	    html_url: string;
+	    reason: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new WorkflowRun(source);
+	        return new WithheldBranch(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.workflow_name = source["workflow_name"];
-	        this.event = source["event"];
-	        this.status = source["status"];
-	        this.conclusion = source["conclusion"];
+	        this.repo_path = source["repo_path"];
+	        this.repo_name = source["repo_name"];
 	        this.branch = source["branch"];
-	        this.head_sha = source["head_sha"];
-	        this.run_number = source["run_number"];
-	        this.created_at = this.convertValues(source["created_at"], null);
-	        this.updated_at = this.convertValues(source["updated_at"], null);
-	        this.html_url = source["html_url"];
+	        this.reason = source["reason"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
+	
 	export class Worktree {
 	    path: string;
 	    head?: string;
