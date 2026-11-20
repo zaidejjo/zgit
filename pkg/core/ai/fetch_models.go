@@ -29,6 +29,9 @@ func FetchProviderModels(provider, apiKey string) ([]string, error) {
 		return fetchGroqModels(apiKey)
 	case ProviderOllama:
 		return fetchOllamaModels()
+	case ProviderOpenCodeZen:
+		// OpenCodeZen is OpenAI-compatible, reuse the OpenAI fetcher
+		return fetchOpenAIModels(apiKey)
 	default:
 		return nil, nil
 	}

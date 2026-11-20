@@ -40,7 +40,7 @@ var DefaultModels = map[ProviderKind]string{
 	ProviderOpenRouter:  "openai/gpt-4o-mini",
 	ProviderGroq:        "llama-3.1-8b-instant",
 	ProviderOllama:      "llama3.2",
-	ProviderOpenCodeZen: "",
+	ProviderOpenCodeZen: "opencodezen/opencodezen",
 	ProviderCustom:      "",
 }
 
@@ -52,7 +52,7 @@ var DefaultEndpoints = map[ProviderKind]string{
 	ProviderOpenRouter:  "https://openrouter.ai/api/v1/chat/completions",
 	ProviderGroq:        "https://api.groq.com/openai/v1/chat/completions",
 	ProviderOllama:      "http://localhost:11434/v1/chat/completions",
-	ProviderOpenCodeZen: "",
+	ProviderOpenCodeZen: "opencodezen/opencodezen",
 	ProviderCustom:      "",
 }
 

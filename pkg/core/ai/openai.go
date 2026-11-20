@@ -65,7 +65,8 @@ func (o *OpenAI) GenerateCommitMessage(ctx context.Context, diff string, cfg Con
 
 	// Ensure diff has content
 	if strings.TrimSpace(truncatedDiff) == "" {
-		return "", fmt.Errorf("staged diff is empty — stage some changes first")
+		// Check if this is an empty repo (no commits at all)
+		return "", fmt.Errorf("staged diff is empty — stage some changes first (this repo has no commits yet)")
 	}
 
 	reqBody := chatRequest{
