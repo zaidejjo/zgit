@@ -913,6 +913,7 @@ interface AppState {
   setProviderAIConfigAction: (provider: string, apiKey: string, model: string, endpoint?: string) => Promise<void>;
   deleteProviderAIConfigAction: (provider: string) => Promise<void>;
   fetchProviderModelsAction: (provider: string, apiKey?: string) => Promise<string[]>;
+  getCachedProviderModels: (provider: string) => Promise<string[]>;
   generateCommitMessage: () => Promise<string | null>;
   generatePRDescription: (head: string, base?: string) => Promise<string | null>;
   generatePRMetadata: (base: string, head: string) => Promise<string | null>;
@@ -2811,6 +2812,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!backend) return [];
     try {
       return await backend.FetchProviderModels(provider, apiKey || "");
+    } catch (_) {
+      return [];
+    }
+  },
+
+  getCachedProviderModels: async (provider) => {
+    const backend = getBackend();
+    if (!backend) return [];
+    try {
+      return await backend.GetCachedProviderModels(provider);
     } catch (_) {
       return [];
     }

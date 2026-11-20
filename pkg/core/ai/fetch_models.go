@@ -12,6 +12,10 @@ import (
 // fetchModelsTimeout is the HTTP timeout for model list requests.
 const fetchModelsTimeout = 15 * time.Second
 
+// ProviderModelCacheTTL is how long cached provider model lists remain valid.
+// 24 hours = 86400 seconds.
+const ProviderModelCacheTTL int64 = 86400
+
 // FetchProviderModels queries the provider's /models API and returns available model IDs.
 // Supported providers: openai, openrouter, anthropic, deepseek, groq, ollama.
 // Returns nil for unsupported providers.

@@ -541,6 +541,7 @@ function AITab() {
     aiConfig, fetchAIConfig,
     setAIConfigAction, setProviderAIConfigAction,
     deleteProviderAIConfigAction, fetchProviderModelsAction,
+    getCachedProviderModels,
   } = useAppStore();
 
   const [selectedProvider, setSelectedProvider] = useState("");
@@ -551,7 +552,12 @@ function AITab() {
   const [endpoint, setEndpoint] = useState("");
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
+  const [refreshingProvider, setRefreshingProvider] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
+
+  // Per-provider cached models (key = provider name)
+  const [providerModels, setProviderModels] = useState<Record<string, string[]>>({});
 
   // Reset local state when provider changes
   useEffect(() => {
@@ -559,6 +565,7 @@ function AITab() {
     setShowKeyInput(false);
     setShowApiKey(false);
     setFetchedModels([]);
+    setRefreshError(null);
 
     if (!aiConfig || !selectedProvider) {
       setModel("");
@@ -576,10 +583,10 @@ function AITab() {
       setEndpoint(aiConfig.endpoint || "");
     }
 
-    // Auto-fetch models if supported and key exists
+    // Auto-fetch cached models if supported and key exists
     const prov = AI_PROVIDERS.find((p) => p.value === selectedProvider);
     if (prov?.fetchModels && providerStatus?.has_key) {
-      fetchModels(selectedProvider);
+      fetchCachedModels(selectedProvider);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProvider, aiConfig?.providers, aiConfig?.provider]);
@@ -597,11 +604,37 @@ function AITab() {
     return ps || null;
   };
 
+  const fetchCachedModels = async (provider: string) => {
+    setFetchingModels(true);
+    try {
+      const models = await getCachedProviderModels(provider);
+      setFetchedModels(models || []);
+      setProviderModels((prev) => ({ ...prev, [provider]: models || [] }));
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  const refreshProviderModels = async (provider: string) => {
+    setRefreshingProvider(provider);
+    setRefreshError(null);
+    try {
+      const models = await fetchProviderModelsAction(provider, "");
+      setFetchedModels(models || []);
+      setProviderModels((prev) => ({ ...prev, [provider]: models || [] }));
+    } catch (e: any) {
+      setRefreshError(e.message || "Failed to refresh models");
+    } finally {
+      setRefreshingProvider(null);
+    }
+  };
+
   const fetchModels = async (provider: string, overrideKey?: string) => {
     setFetchingModels(true);
     try {
       const models = await fetchProviderModelsAction(provider, overrideKey || "");
       setFetchedModels(models || []);
+      setProviderModels((prev) => ({ ...prev, [provider]: models || [] }));
     } finally {
       setFetchingModels(false);
     }
@@ -614,10 +647,10 @@ function AITab() {
       await setProviderAIConfigAction(selectedProvider, keyInput, model, endpoint);
       setKeyInput("");
       setShowKeyInput(false);
-      // Fetch models after saving the key
+      // Fetch cached models after saving the key
       const prov = AI_PROVIDERS.find((p) => p.value === selectedProvider);
       if (prov?.fetchModels) {
-        fetchModels(selectedProvider, keyInput);
+        fetchCachedModels(selectedProvider);
       }
     } finally {
       setAiSaving(false);
@@ -659,7 +692,7 @@ function AITab() {
 
   const handleFetchModels = () => {
     if (!selectedProvider) return;
-    fetchModels(selectedProvider);
+    refreshProviderModels(selectedProvider);
   };
 
   const status = getProviderStatus();
@@ -807,9 +840,9 @@ function AITab() {
                       placeholder={provInfo?.modelHint || "Model name"}
                       list="ai-model-list"
                     />
-                    {fetchedModels.length > 0 && (
+                    {((fetchedModels.length > 0) || (providerModels[selectedProvider]?.length ?? 0) > 0) && (
                       <datalist id="ai-model-list">
-                        {fetchedModels.map((m) => (
+                        {[...fetchedModels, ...(providerModels[selectedProvider] || [])].map((m) => (
                           <option key={m} value={m} />
                         ))}
                       </datalist>
@@ -818,40 +851,64 @@ function AITab() {
                   {canFetchModels && (
                     <button
                       onClick={handleFetchModels}
-                      disabled={fetchingModels || (!status?.has_key && !keyInput)}
+                      disabled={fetchingModels || refreshingProvider === selectedProvider || (!status?.has_key && !keyInput)}
                       className="h-8 px-2.5 rounded-lg text-xs border border-border/30 text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all press-scale disabled:opacity-40"
-                      title="Fetch models from provider"
+                      title="Refresh models from provider"
                     >
-                      <RefreshCw className={cn("w-3.5 h-3.5", fetchingModels && "animate-spin")} />
+                      <RefreshCw className={cn("w-3.5 h-3.5", fetchingModels || refreshingProvider === selectedProvider && "animate-spin")} />
                     </button>
                   )}
                 </div>
-                {fetchedModels.length > 0 && (
-                  <div className="max-h-32 overflow-y-auto flex flex-wrap gap-1">
-                    {fetchedModels.slice(0, 30).map((m) => (
+                {/* Refresh error */}
+                {refreshError && (
+                  <p className="text-[10px] text-destructive mt-0.5">
+                    {refreshError}
+                  </p>
+                )}
+
+                {/* Combined model list: fetched + cached */}
+                <div className="max-h-32 overflow-y-auto flex flex-wrap gap-1">
+                  {fetchedModels.slice(0, 30).map((m) => (
+                    <button
+                      key={"fetched-" + m}
+                      onClick={() => setModel(m)}
+                      className={cn(
+                        "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                        model === m
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border/30 text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                  {providerModels[selectedProvider]
+                    .filter((m) => !fetchedModels.includes(m))
+                    .slice(0, 30)
+                    .map((m) => (
                       <button
-                        key={m}
+                        key={"cached-" + m}
                         onClick={() => setModel(m)}
                         className={cn(
-                          "text-[10px] px-1.5 py-0.5 rounded border transition-colors",
+                          "text-[10px] px-1.5 py-0.5 rounded border border-primary/20 text-primary/70 transition-colors",
                           model === m
                             ? "border-primary bg-primary/10 text-primary"
-                            : "border-border/30 text-muted-foreground hover:text-foreground"
+                            : "border-primary/20 text-primary/60 hover:text-primary hover:bg-primary/5"
                         )}
                       >
                         {m}
                       </button>
                     ))}
-                    {fetchedModels.length > 30 && (
-                      <span className="text-[10px] text-muted-foreground/50 self-center">
-                        +{fetchedModels.length - 30} more
-                      </span>
-                    )}
-                  </div>
-                )}
+                  {(fetchedModels.length + providerModels[selectedProvider].length) > 30 && (
+                    <span className="text-[10px] text-muted-foreground/50 self-center">
+                      +{(fetchedModels.length + providerModels[selectedProvider].length) - 30} more
+                    </span>
+                  )}
+                </div>
+
                 <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-                  {fetchedModels.length > 0
-                    ? `Fetched ${fetchedModels.length} models. Click a model or type custom.`
+                  {fetchedModels.length > 0 || providerModels[selectedProvider]?.length > 0
+                    ? `Available: ${fetchedModels.length} fetched + ${providerModels[selectedProvider]?.length ?? 0} cached. Click a model or type custom.`
                     : canFetchModels
                       ? "Save an API key and click refresh to fetch models."
                       : "Enter any model name supported by this provider."}
