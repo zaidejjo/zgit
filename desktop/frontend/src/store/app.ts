@@ -917,6 +917,7 @@ interface AppState {
   testProviderConnection: (provider: string) => Promise<{ ok: boolean; latencyMs: number; error?: string }>;
   generateCommitMessage: () => Promise<string | null>;
   generateCommitMessageWithContext: () => Promise<string | null>;
+  generateCommitMessageStream: (onToken: (token: string) => void, onDone: (content: string) => void, onError: (err: string) => void) => () => void;
   aiGetRepoContext: () => Promise<string | null>;
   aiReviewPR: (source: string, target: string) => Promise<string | null>;
   generatePRDescription: (head: string, base?: string) => Promise<string | null>;
@@ -2870,6 +2871,37 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ aiGenerating: false });
       return null;
     }
+  },
+
+  generateCommitMessageStream: (onToken, onDone, onError) => {
+    const backend = getBackend();
+    if (!backend) {
+      onError("No backend");
+      return () => {};
+    }
+    set({ aiGenerating: true });
+    let cancelled = false;
+    (async () => {
+      try {
+        const fullContent: string = await backend.GenerateCommitMessageStream((token: string) => {
+          if (!cancelled) {
+            onToken(token);
+          }
+        });
+        if (!cancelled) {
+          set({ aiGenerating: false });
+          onDone(fullContent);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          set({ aiGenerating: false });
+          onError(e.message || "Stream failed");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   },
 
   aiGetRepoContext: async () => {

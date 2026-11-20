@@ -41,7 +41,7 @@ export default function StatusPage() {
     stashes, fetchStashes, stashPush, stashPop, stashApply, stashDrop,
     gitFetch, gitPull, gitPushForce,
     resolveConflict, openMergeEditor,
-    aiConfig, aiGenerating, generateCommitMessage, generateCommitMessageWithContext, fetchAIConfig,
+    aiConfig, aiGenerating, generateCommitMessage, generateCommitMessageWithContext, generateCommitMessageStream, fetchAIConfig,
     setSuccessMessage, setError,
   } = useAppStore();
 
@@ -56,6 +56,10 @@ export default function StatusPage() {
 
   // AI error state
   const [aiError, setAiError] = useState<{ category?: string; message: string; retryable?: boolean; suggestedModel?: string } | null>(null);
+
+  // AI streaming state
+  const [streamingContent, setStreamingContent] = useState("");
+  const [streamCancel, setStreamCancel] = useState(() => () => {});
 
   // Stash state
   const [stashMsg, setStashMsg] = useState("");
@@ -438,72 +442,94 @@ export default function StatusPage() {
                       )}
                     </div>
 
-                    {/* Generate button (context-aware) */}
+                    {/* Generate button (context-aware, streaming) */}
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
-                          onClick={async () => {
+                          onClick={() => {
                             setAiError(null);
-                            try {
-                              const msg = await generateCommitMessageWithContext();
-                              if (msg) {
-                                const nl = msg.indexOf("\n");
+                            setStreamingContent("");
+                            const cancel = generateCommitMessageStream(
+                              (token: string) => {
+                                setStreamingContent((prev) => prev + token);
+                              },
+                              (content: string) => {
+                                const nl = content.indexOf("\n");
                                 if (nl >= 0) {
-                                  setSummary(msg.slice(0, nl).trim());
-                                  setDescription(msg.slice(nl + 1).trim());
+                                  setSummary(content.slice(0, nl).trim());
+                                  setDescription(content.slice(nl + 1).trim());
                                 } else {
-                                  setSummary(msg.trim());
+                                  setSummary(content.trim());
                                 }
                                 setSuccessMessage("Commit message generated with AI");
+                                setStreamCancel(() => () => {});
+                              },
+                              (err: string) => {
+                                const lower = err.toLowerCase();
+                                let category = "provider";
+                                let retryable = true;
+                                let suggestedModel: string | undefined;
+                                if (lower.includes("401") || lower.includes("403") || lower.includes("invalid api key") || lower.includes("unauthorized")) {
+                                  category = "auth";
+                                  retryable = false;
+                                } else if (lower.includes("429") || lower.includes("rate limit") || lower.includes("too many requests")) {
+                                  category = "rate_limit";
+                                  retryable = true;
+                                } else if (lower.includes("context length") || lower.includes("maximum context") || lower.includes("token limit")) {
+                                  category = "context_length";
+                                  retryable = true;
+                                  suggestedModel = "claude-3-haiku-20240307";
+                                } else if (lower.includes("connection") || lower.includes("timeout") || lower.includes("network")) {
+                                  category = "network";
+                                  retryable = true;
+                                }
+                                setAiError({ category, message: err, retryable, suggestedModel });
+                                setStreamCancel(() => () => {});
                               }
-                            } catch (e: any) {
-                              const msg = e.message || "Unknown AI error";
-                              const lower = msg.toLowerCase();
-                              let category = "provider";
-                              let retryable = true;
-                              let suggestedModel: string | undefined;
-                              if (lower.includes("401") || lower.includes("403") || lower.includes("invalid api key") || lower.includes("unauthorized")) {
-                                category = "auth";
-                                retryable = false;
-                              } else if (lower.includes("429") || lower.includes("rate limit") || lower.includes("too many requests")) {
-                                category = "rate_limit";
-                                retryable = true;
-                              } else if (lower.includes("context length") || lower.includes("maximum context") || lower.includes("token limit")) {
-                                category = "context_length";
-                                retryable = true;
-                                suggestedModel = "claude-3-haiku-20240307";
-                              } else if (lower.includes("connection") || lower.includes("timeout") || lower.includes("network")) {
-                                category = "network";
-                                retryable = true;
-                              }
-                              setAiError({ category, message: msg, retryable, suggestedModel });
-                            }
+                            );
+                            setStreamCancel(cancel);
                           }}
-                          disabled={aiGenerating}
+                          disabled={aiGenerating || streamingContent.length > 0 && !summary}
                           className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
                           style={{
-                            background: aiGenerating
+                            background: aiGenerating || streamingContent.length > 0
                               ? "var(--primary/20)"
                               : "var(--primary)",
-                            color: aiGenerating
+                            color: aiGenerating || streamingContent.length > 0
                               ? "var(--primary-foreground)"
                               : "var(--primary-foreground)",
                           }}
                         >
-                          {aiGenerating ? (
+                          {streamingContent.length > 0 ? (
+                            <span className="flex items-center gap-1">
+                              <span className="animate-pulse inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full" />
+                              <span className="text-xs">Streaming…</span>
+                            </span>
+                          ) : aiGenerating ? (
                             <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full" />
                           ) : (
                             <Sparkles className="w-3.5 h-3.5" />
                           )}
                           <span>
-                            {aiGenerating ? "Generating..." : "Generate Commit Message"}
+                            {streamingContent.length > 0 ? "Streaming…" : aiGenerating ? "Generating..." : "Generate Commit Message"}
                           </span>
                         </button>
                       </TooltipTrigger>
                       <TooltipContent side="top">
-                        Generate a conventional commit message using AI (context-aware)
+                        Generate a conventional commit message using AI (streaming, context-aware)
                       </TooltipContent>
                     </Tooltip>
+
+                    {/* Streaming preview */}
+                    {streamingContent && !summary && (
+                      <div className="p-3 rounded-lg border border-border/20 bg-muted/30 text-xs text-muted-foreground/70">
+                        <div className="flex items-center gap-1 mb-1">
+                          <Sparkles className="w-3 h-3 shrink-0" />
+                          <span className="font-medium">Streaming preview:</span>
+                        </div>
+                        <div className="font-mono break-words whitespace-pre-wrap">{streamingContent}</div>
+                      </div>
+                    )}
 
                     {/* AI error with retry */}
                     {aiError && (

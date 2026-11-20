@@ -1210,6 +1210,29 @@ func (a *App) GenerateCommitMessageWithContext() (string, error) {
 	return msg, nil
 }
 
+// GenerateCommitMessageStream streams a commit message via onToken callback.
+// Returns the full message when complete.
+func (a *App) GenerateCommitMessageStream(onToken func(string)) (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 120e9)
+	defer cancel()
+
+	aiCfg := a.aiConfig()
+	if aiCfg.Provider == "" {
+		return "", fmt.Errorf("AI provider not configured — go to Settings to set up AI commit message generation")
+	}
+	if aiCfg.APIKey == "" {
+		return "", fmt.Errorf("API key not configured — go to Settings to set your API key")
+	}
+
+	msg, err := a.engine.GenerateCommitMessageWithContextStream(ctx, aiCfg, onToken)
+	if err != nil {
+		aiErr := categorizeError(err)
+		return "", aiErr
+	}
+
+	return msg, nil
+}
+
 // GeneratePRDescription generates a PR title and description from the diff between head and base branches.
 func (a *App) GeneratePRDescription(head, base string) (string, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 120e9)

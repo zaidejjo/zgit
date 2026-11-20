@@ -389,6 +389,45 @@ func (e *Engine) GenerateCommitMessageWithContext(ctx context.Context, cfg ai.Co
 	return generator.GenerateCommitMessageWithContext(ctx, diffSummary, context, cfg)
 }
 
+// GenerateCommitMessageWithContextStream streams a commit message via onToken callback.
+func (e *Engine) GenerateCommitMessageWithContextStream(ctx context.Context, cfg ai.Config, onToken func(string)) (string, error) {
+	// Get staged diff
+	diff, err := e.Git.Diff(ctx, gitpkg.DiffOptions{Cached: true, Unified: true})
+	if err != nil {
+		return "", fmt.Errorf("get staged diff: %w", err)
+	}
+	if len(diff.Files) == 0 {
+		return "", fmt.Errorf("staged diff is empty — stage some changes first")
+	}
+
+	// Build context
+	context := ai.CommitContext{RepoPath: e.repo.Path}
+
+	if branch, err := e.Git.CurrentBranch(ctx); err == nil {
+		context.Branch = branch
+	}
+
+	if status, err := e.Git.Status(ctx); err == nil {
+		context.StatusSummary = fmt.Sprintf("%d staged, %d unstaged, %d untracked",
+			status.StagedCount, status.UnstagedCount, status.UntrackedCount)
+		context.ChangedFiles = len(status.Files)
+	}
+
+	if log, err := e.Git.Log(ctx, gitpkg.LogOptions{Count: 5}); err == nil {
+		for _, c := range log {
+			context.RecentMessages = append(context.RecentMessages, c.Message)
+		}
+	}
+
+	diffSummary := diffSummaryString(diff)
+
+	generator, err := ai.NewGenerator(cfg)
+	if err != nil {
+		return "", err
+	}
+	return generator.GenerateCommitMessageStream(ctx, diffSummary, context, cfg, onToken)
+}
+
 // diffSummaryString builds a concise diff summary for AI consumption.
 func diffSummaryString(diff *models.Diff) string {
 	var sb strings.Builder
