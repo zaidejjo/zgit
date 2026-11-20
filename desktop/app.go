@@ -1108,29 +1108,74 @@ func (a *App) cacheProviderModels(provider string, models []string) error {
 	return a.engine.Store.SetCacheEntry(scope, key, data)
 }
 
+// TestProviderConnection checks if a provider's API is reachable.
+// Returns (ok, latencyMs, error).
+func (a *App) TestProviderConnection(provider string) (bool, int64, error) {
+	cfg := a.engine.Config
+	cfgDir := cfg.ConfigPath()
+	pc := cfg.GetProviderConfig(provider)
+	apiKey := pc.APIKey
+	if apiKey != "" {
+		decrypted, err := ai.DecryptAPIKey(apiKey, cfgDir)
+		if err == nil {
+			apiKey = decrypted
+		}
+	}
+
+	start := time.Now()
+	_, err := ai.FetchProviderModels(provider, apiKey)
+	latencyMs := time.Since(start).Milliseconds()
+
+	if err != nil {
+		return false, latencyMs, err
+	}
+	return true, latencyMs, nil
+}
+
+// AIError categorizes AI provider errors for user-friendly recovery.
+type AIError struct {
+	Category       string // "auth", "rate_limit", "context_length", "network", "provider"
+	Retryable      bool
+	SuggestedModel string // fallback model to try
+	Message        string
+}
+
+func (e *AIError) Error() string {
+	return e.Message
+}
+
+// categorizeError inspects an error message and returns a typed AIError.
+func categorizeError(err error) *AIError {
+	msg := err.Error()
+	if msg == "" {
+		return &AIError{Category: "provider", Retryable: true, Message: "unknown AI error"}
+	}
+	lower := strings.ToLower(msg)
+	switch {
+	case strings.Contains(lower, "401") || strings.Contains(lower, "403") || strings.Contains(lower, "invalid api key") || strings.Contains(lower, "authentication"):
+		return &AIError{Category: "auth", Retryable: false, Message: "API key invalid or unauthorized — check your API key in Settings"}
+	case strings.Contains(lower, "429") || strings.Contains(lower, "rate limit") || strings.Contains(lower, "too many requests"):
+		return &AIError{Category: "rate_limit", Retryable: true, Message: "API rate limit exceeded — please wait and retry"}
+	case strings.Contains(lower, "context length") || strings.Contains(lower, "maximum context") || strings.Contains(lower, "token limit"):
+		return &AIError{Category: "context_length", Retryable: true, SuggestedModel: "claude-3-haiku-20240307", Message: "Input too long for model context window"}
+	case strings.Contains(lower, "connection") || strings.Contains(lower, "timeout") || strings.Contains(lower, "network") || strings.Contains(lower, "unreachable"):
+		return &AIError{Category: "network", Retryable: true, Message: "Network error — check your internet connection"}
+	default:
+		return &AIError{Category: "provider", Retryable: true, Message: msg}
+	}
+}
+
 // GenerateCommitMessage reads the staged diff and returns an AI-generated conventional commit message.
 func (a *App) GenerateCommitMessage() (string, error) {
+	return a.GenerateCommitMessageWithContext()
+}
+
+// GenerateCommitMessageWithContext generates a commit message using the staged diff
+// plus repository context (branch, recent commits, status) to match project conventions.
+// On context_length errors, auto-falls back to a smaller model.
+func (a *App) GenerateCommitMessageWithContext() (string, error) {
 	ctx, cancel := context.WithTimeout(a.getContext(), 60e9)
 	defer cancel()
-
-	// Get staged diff with token-optimized summarization
-	diff, err := a.engine.Git.Diff(ctx, git.DiffOptions{Cached: true, Unified: true})
-	if err != nil {
-		return "", fmt.Errorf("get staged diff: %w", err)
-	}
-	if diff == nil || len(diff.Files) == 0 {
-		return "", fmt.Errorf("no staged changes — stage files before generating a commit message")
-	}
-
-	summary := ai.SummarizeDiff(diff)
-	diffText := summary.Summary
-	if strings.TrimSpace(diffText) == "" || diffText == "No changes." {
-		return "", fmt.Errorf("no staged changes — stage files before generating a commit message")
-	}
-
-	// Prefix with file stats to compensate for possible truncation
-	diffText = fmt.Sprintf("Stats: %d files changed (%d lockfile/binary filtered).\n\n%s",
-		summary.ChangedFiles, summary.Filtered, diffText)
 
 	aiCfg := a.aiConfig()
 	if aiCfg.Provider == "" {
@@ -1140,14 +1185,26 @@ func (a *App) GenerateCommitMessage() (string, error) {
 		return "", fmt.Errorf("API key not configured — go to Settings to set your API key")
 	}
 
-	generator, err := ai.NewGenerator(aiCfg)
+	msg, err := a.engine.GenerateCommitMessageWithContext(ctx, aiCfg)
 	if err != nil {
-		return "", err
-	}
-
-	msg, err := generator.GenerateCommitMessage(ctx, diffText, aiCfg)
-	if err != nil {
-		return "", fmt.Errorf("AI generation failed: %w", err)
+		aiErr := categorizeError(err)
+		// Auto-fallback on context_length errors
+		if aiErr.Category == "context_length" && aiErr.SuggestedModel != "" && aiCfg.Model != aiErr.SuggestedModel {
+			fallbackCfg := aiCfg
+			fallbackCfg.Model = aiErr.SuggestedModel
+			msg, fbErr := a.engine.GenerateCommitMessageWithContext(ctx, fallbackCfg)
+			if fbErr == nil {
+				return msg, nil
+			}
+			// If fallback also fails, return the original error with fallback info
+			return "", &AIError{
+				Category:       aiErr.Category,
+				Retryable:      aiErr.Retryable,
+				SuggestedModel: aiErr.SuggestedModel,
+				Message:        aiErr.Message + " (fallback to " + aiErr.SuggestedModel + " also failed)",
+			}
+		}
+		return "", aiErr
 	}
 
 	return msg, nil
@@ -1312,6 +1369,93 @@ Return ONLY the PR title and description. No extra commentary.`
 	}
 
 	return msg, nil
+}
+
+// AIGetRepoContext returns a formatted snapshot of the current repository state
+// for use by AI slash commands and the agent.
+func (a *App) AIGetRepoContext() (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 30*time.Second)
+	defer cancel()
+
+	var sb strings.Builder
+
+	// Branch
+	branch, err := a.engine.Git.CurrentBranch(ctx)
+	if err == nil {
+		sb.WriteString("Branch: " + branch + "\n")
+	}
+
+	// Status
+	status, err := a.engine.Git.Status(ctx)
+	if err == nil {
+		sb.WriteString(fmt.Sprintf("Status: %d staged, %d unstaged, %d untracked\n",
+			status.StagedCount, status.UnstagedCount, status.UntrackedCount))
+		sb.WriteString(fmt.Sprintf("Clean: %v, Merging: %v, Rebasing: %v\n",
+			status.IsClean, status.IsMerging, status.IsRebasing))
+	}
+
+	// Recent log (last 10)
+	log, err := a.engine.Git.Log(ctx, git.LogOptions{Count: 10})
+	if err == nil {
+		sb.WriteString("\nRecent commits:\n")
+		for _, c := range log {
+			sb.WriteString(fmt.Sprintf("  %s %s\n", c.Hash[:7], c.Message))
+		}
+	}
+
+	// Unstaged diffs (truncated)
+	diff, err := a.engine.Git.Diff(ctx, git.DiffOptions{Unified: true})
+	if err == nil && len(diff.Files) > 0 {
+		sb.WriteString("\nUnstaged changes:\n")
+		summary := ai.SummarizeDiff(diff)
+		sb.WriteString(summary.Summary)
+	}
+
+	// Conflict files
+	conflicts, err := a.engine.Git.ConflictFiles(ctx)
+	if err == nil && len(conflicts) > 0 {
+		sb.WriteString("\nMerge conflicts:\n")
+		for _, cf := range conflicts {
+			sb.WriteString(fmt.Sprintf("  %s (%d blocks)\n", cf.Path, cf.BlockCount))
+		}
+	}
+
+	return sb.String(), nil
+}
+
+// AIReviewPR returns the diff between source and target branches for code review.
+func (a *App) AIReviewPR(source, target string) (string, error) {
+	ctx, cancel := context.WithTimeout(a.getContext(), 60*time.Second)
+	defer cancel()
+
+	if source == "" {
+		return "", fmt.Errorf("source branch is required")
+	}
+	if target == "" {
+		target = "main"
+	}
+
+	diff, err := a.engine.Git.Diff(ctx, git.DiffOptions{
+		A:       target,
+		B:       source,
+		Unified: true,
+	})
+	if err != nil {
+		return "", fmt.Errorf("get branch diff: %w", err)
+	}
+	if diff == nil || len(diff.Files) == 0 {
+		return "No differences between " + target + " and " + source, nil
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Diff between %s (base) and %s (source):\n", target, source))
+	sb.WriteString(fmt.Sprintf("Total: %d files, +%d / -%d lines\n\n",
+		len(diff.Files), diff.TotalAdds, diff.TotalDeletes))
+
+	summary := ai.SummarizeDiff(diff)
+	sb.WriteString(summary.Summary)
+
+	return sb.String(), nil
 }
 
 // aiConfig extracts AI provider config from the engine settings.

@@ -914,7 +914,11 @@ interface AppState {
   deleteProviderAIConfigAction: (provider: string) => Promise<void>;
   fetchProviderModelsAction: (provider: string, apiKey?: string) => Promise<string[]>;
   getCachedProviderModels: (provider: string) => Promise<string[]>;
+  testProviderConnection: (provider: string) => Promise<{ ok: boolean; latencyMs: number; error?: string }>;
   generateCommitMessage: () => Promise<string | null>;
+  generateCommitMessageWithContext: () => Promise<string | null>;
+  aiGetRepoContext: () => Promise<string | null>;
+  aiReviewPR: (source: string, target: string) => Promise<string | null>;
   generatePRDescription: (head: string, base?: string) => Promise<string | null>;
   generatePRMetadata: (base: string, head: string) => Promise<string | null>;
 
@@ -2827,6 +2831,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  testProviderConnection: async (provider) => {
+    const backend = getBackend();
+    if (!backend) return { ok: false, latencyMs: 0, error: "No backend" };
+    try {
+      const [ok, latencyMs, err] = await backend.TestProviderConnection(provider);
+      return { ok, latencyMs, error: err?.message };
+    } catch (e: any) {
+      return { ok: false, latencyMs: 0, error: e.message };
+    }
+  },
+
   generateCommitMessage: async () => {
     const backend = getBackend();
     if (!backend) return null;
@@ -2837,6 +2852,51 @@ export const useAppStore = create<AppState>((set, get) => ({
       return message;
     } catch (e: any) {
       set({ error: e.message || "Failed to generate commit message" });
+      set({ aiGenerating: false });
+      return null;
+    }
+  },
+
+  generateCommitMessageWithContext: async () => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      set({ aiGenerating: true });
+      const message: string = await backend.GenerateCommitMessageWithContext();
+      set({ aiGenerating: false });
+      return message;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to generate commit message" });
+      set({ aiGenerating: false });
+      return null;
+    }
+  },
+
+  aiGetRepoContext: async () => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      set({ aiGenerating: true });
+      const context: string = await backend.AIGetRepoContext();
+      set({ aiGenerating: false });
+      return context;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to get repo context" });
+      set({ aiGenerating: false });
+      return null;
+    }
+  },
+
+  aiReviewPR: async (source, target) => {
+    const backend = getBackend();
+    if (!backend) return null;
+    try {
+      set({ aiGenerating: true });
+      const review: string = await backend.AIReviewPR(source, target);
+      set({ aiGenerating: false });
+      return review;
+    } catch (e: any) {
+      set({ error: e.message || "Failed to get PR review" });
       set({ aiGenerating: false });
       return null;
     }

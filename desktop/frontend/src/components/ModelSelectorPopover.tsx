@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useAppStore } from "@/store/app";
 import { cn } from "@/lib/utils";
-import { ChevronDown, Sparkles, Search } from "lucide-react";
+import { ChevronDown, Sparkles, Search, Zap, Eye, DollarSign, Layout } from "lucide-react";
 
 // Provider categories with recommended models (user-facing labels + API model slugs)
 const PROVIDER_CATEGORIES = [
@@ -71,6 +71,29 @@ const PROVIDER_CATEGORIES = [
   },
 ];
 
+// Model badge info extracted from model ID for UI display.
+function getModelBadge(modelId: string): {
+  ctxWindow?: number;
+  tools?: boolean;
+  pricing?: string;
+} {
+  const m = modelId.toLowerCase();
+  if (m.includes("gpt-4o-mini")) return { ctxWindow: 128000, tools: true, pricing: "$0.15/$0.60" };
+  if (m.includes("gpt-4o") && !m.includes("mini")) return { ctxWindow: 128000, tools: true, pricing: "$2.50/$10" };
+  if (m.includes("gpt-4-turbo")) return { ctxWindow: 128000, tools: true, pricing: "$10/$30" };
+  if (m.includes("gpt-3.5")) return { ctxWindow: 16384, tools: true, pricing: "$0.50/$1.50" };
+  if (m.includes("claude-sonnet-4")) return { ctxWindow: 200000, tools: true, pricing: "$3/$15" };
+  if (m.includes("claude-3-5-sonnet")) return { ctxWindow: 200000, tools: true, pricing: "$3/$15" };
+  if (m.includes("claude-3-opus")) return { ctxWindow: 200000, tools: true, pricing: "$15/$75" };
+  if (m.includes("claude-3-haiku")) return { ctxWindow: 200000, tools: true, pricing: "$0.25/$1.25" };
+  if (m.includes("deepseek-chat") || m.includes("deepseek-v4")) return { ctxWindow: 128000, tools: true, pricing: "$0.27/$1.10" };
+  if (m.includes("deepseek-coder")) return { ctxWindow: 16384, tools: true, pricing: "$0.14/$0.28" };
+  if (m.includes("deepseek-reasoner")) return { ctxWindow: 64000, tools: true, pricing: "$0.55/$2.19" };
+  if (m.includes("llama3.2")) return { ctxWindow: 32768, tools: true, pricing: "$0/$0" };
+  if (m.includes("llama3.1")) return { ctxWindow: 128000, tools: true, pricing: "$0/$0" };
+  return {};
+}
+
 interface ModelSelectorPopoverProps {
   align?: "left" | "right";
   variant?: "header" | "settings";
@@ -89,6 +112,7 @@ export default function ModelSelectorPopover({
 
   const currentModel = aiConfig?.model || "";
   const currentProvider = aiConfig?.provider || "";
+  const currentBadge = currentModel ? getModelBadge(currentModel) : null;
 
   useEffect(() => {
     fetchAIConfig();
@@ -157,7 +181,14 @@ export default function ModelSelectorPopover({
         title={`Model: ${currentModel || "not set"}`}
       >
         <Sparkles className="w-3 h-3 shrink-0 text-muted-foreground" />
-        <span className="truncate">{currentModel || "Select model"}</span>
+        <span className="flex items-center gap-1">
+          <span className="truncate">{currentModel || "Select model"}</span>
+          {currentBadge?.ctxWindow && (
+            <span className="text-[9px] text-muted-foreground/40 shrink-0">
+              {currentBadge.ctxWindow / 1000}k ctx
+            </span>
+          )}
+        </span>
         <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
       </button>
 
@@ -220,6 +251,7 @@ export default function ModelSelectorPopover({
             <div className="space-y-0.5">
               {(PROVIDER_CATEGORIES.find((c) => c.id === activeTab)?.models || []).map((m) => {
                 const isActive = currentModel === m.model;
+                const badge = getModelBadge(m.model);
                 return (
                   <button
                     key={m.model}
@@ -236,10 +268,32 @@ export default function ModelSelectorPopover({
                       isActive ? "bg-primary" : "bg-muted-foreground/30"
                     )} />
                     <div className="flex-1 min-w-0">
-                      <span className="block truncate font-medium">{m.label}</span>
-                      <span className="block truncate text-[10px] text-muted-foreground/60 font-mono">
-                        {m.model}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="block truncate font-medium">{m.label}</span>
+                        {badge.tools && (
+                          <span title="Tool calling">
+                            <Zap className="w-3 h-3 text-[10px] text-primary/60 shrink-0" />
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="block truncate text-[10px] text-muted-foreground/60 font-mono">
+                          {m.model}
+                        </span>
+                        {badge.ctxWindow && (
+                          <span className="text-[9px] text-muted-foreground/40 shrink-0">
+                            {badge.ctxWindow / 1000}k ctx
+                          </span>
+                        )}
+                        {badge.pricing && (
+                          <>
+                            <DollarSign className="w-3 h-3 text-[9px] text-muted-foreground/40 shrink-0" />
+                            <span className="text-[9px] text-muted-foreground/40 shrink-0">
+                              {badge.pricing} /1M
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
                     {isActive && (
                       <span className="text-[9px] text-primary font-medium shrink-0">Active</span>

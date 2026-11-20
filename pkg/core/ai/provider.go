@@ -60,6 +60,10 @@ var DefaultEndpoints = map[ProviderKind]string{
 type Generator interface {
 	// GenerateCommitMessage sends the diff to the AI provider and returns a conventional commit message.
 	GenerateCommitMessage(ctx context.Context, diff string, cfg Config) (string, error)
+
+	// GenerateCommitMessageWithContext sends the diff plus repository context to the AI provider.
+	// The context (branch, recent commits, status) helps the AI match project conventions.
+	GenerateCommitMessageWithContext(ctx context.Context, diff string, context CommitContext, cfg Config) (string, error)
 }
 
 // NewGenerator creates the appropriate provider based on config.
