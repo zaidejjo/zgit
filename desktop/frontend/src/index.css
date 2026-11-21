@@ -4,10 +4,10 @@
 
 @layer base {
   /*
-   * ─── Theme: Dark (Blue & Green — Default) ───
+   * ─── Theme: Dark (Blue — Default) ───
    * Background: #050508 / #090d16  → deep near-black with blue tint
    * Primary:    #3B82F6            → hsl(217 91% 60%) crisp blue
-   * Success:    #22C55E            → hsl(142 71% 45%) crisp green
+   * Success:    #3B82F6            → hsl(217 91% 60%) crisp blue
    */
   :root,
   [data-theme="dark"] {
@@ -27,7 +27,7 @@
     --accent-foreground: 210 40% 96%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --success: 142 71% 45%;
+    --success: 217 91% 60%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
@@ -36,11 +36,11 @@
     --ring: 217 91% 60%;
     --radius: 0.5rem;
 
-    --git-added: 142 71% 45%;
+    --git-added: 217 91% 60%;
     --git-modified: 38 92% 50%;
     --git-deleted: 0 84% 60%;
     --git-untracked: 215 12% 60%;
-    --pr-open: 142 71% 45%;
+    --pr-open: 217 91% 60%;
     --pr-closed: 0 84% 60%;
     --pr-merged: 271 81% 66%;
     --pr-draft: 38 92% 50%;
@@ -49,7 +49,7 @@
     --glass-border: 230 10% 22% / 0.5;
     --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 
-    --selection-bg: 142 71% 45% / 0.25;
+    --selection-bg: 217 91% 60% / 0.25;
     --scrollbar-thumb: 230 10% 22%;
     --scrollbar-track: 230 20% 4%;
 
@@ -181,7 +181,7 @@
     --accent-foreground: 222 47% 11%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --success: 142 71% 45%;
+    --success: 217 91% 60%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
@@ -190,12 +190,12 @@
     --ring: 217 91% 60%;
     --radius: 0.5rem;
 
-    --git-added: 142 71% 45%;
+    --git-added: 217 91% 60%;
     --git-modified: 38 92% 50%;
     --git-deleted: 0 84% 60%;
     --git-untracked: 215 16% 47%;
 
-    --pr-open: 142 71% 45%;
+    --pr-open: 217 91% 60%;
     --pr-closed: 0 84% 60%;
     --pr-merged: 271 81% 56%;
     --pr-draft: 38 92% 50%;
