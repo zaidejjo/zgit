@@ -47,7 +47,7 @@ const THEME_PREVIEW_BG: Record<Theme, string> = {
   dracula:    "#282a36",
 };
 const THEME_PREVIEW_ACCENT: Record<Theme, string> = {
-  dark:       "#22C55E",
+  dark:       "#3B82F6",
   catppuccin: "#cba6f7",
   tokyonight: "#7dcfff",
   light:      "#3b82f6",
